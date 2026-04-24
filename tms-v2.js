@@ -188,7 +188,7 @@
     if (!APP.userProfiles.length) {
       APP.userProfiles = [{
         userId: 'admin-seed',
-        nombre: 'Manuel Oñate',
+        nombre: 'Vinelis Garcia',
         email: userEmail || '',
         rol: 'Admin',
         permisosPorModulo: {
