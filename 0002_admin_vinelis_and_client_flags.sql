@@ -17,7 +17,7 @@ where rol = 'Admin'
 insert into public.tms_user_profiles (nombre, email, rol, permisos_por_modulo)
 values (
   'Vinelis Garcia',
-  'vinelis.garcia@tms-alvarez.local',
+  'vinelis.garcia@hbyalvarez.com',
   'Admin',
   jsonb_build_object(
     'importar', jsonb_build_object('ver', true, 'editar', true, 'importar', true),
