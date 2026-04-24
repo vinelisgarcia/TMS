@@ -6,7 +6,7 @@ alter table public.tms_client_configs
 
 update public.tms_user_profiles
 set nombre = 'Vinelis Garcia',
-    email = 'vinelis.garcia@tms-alvarez.local',
+    email = 'vinelis.garcia@hbyalvarez.com',
     updated_at = now()
 where rol = 'Admin'
   and (
