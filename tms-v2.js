@@ -183,33 +183,269 @@
     return cfg.rutaAsignada || inferirZona(clienteNombre, clienteCodigo);
   }
 
+  function buildAdminPermissions() {
+    return {
+      importar: { ver: true, editar: true, importar: true },
+      dashboard: { ver: true, editar: true },
+      calendario: { ver: true, editar: true },
+      rutas: { ver: true, editar: true },
+      reportes: { ver: true, editar: true },
+      comercial: { ver: true, editar: true },
+      configuracion: { ver: true, editar: true, importar: true },
+      solicitudesAlmacen: { ver: true, editar: true },
+      almacen: { ver: true, editar: true }
+    };
+  }
+
   function ensureAdminProfile() {
     const { userEmail } = getSessionInfo();
-    if (!APP.userProfiles.length) {
-      APP.userProfiles = [{
+    const fallbackEmail = userEmail || 'vinelis.garcia@tms-alvarez.local';
+    let adminProfile = APP.userProfiles.find(profile => profile.rol === 'Admin');
+    if (!adminProfile) {
+      adminProfile = {
         userId: 'admin-seed',
         nombre: 'Vinelis Garcia',
-        email: userEmail || '',
+        email: fallbackEmail,
         rol: 'Admin',
-        permisosPorModulo: {
-          importar: { ver: true, editar: true, importar: true },
-          dashboard: { ver: true, editar: true },
-          calendario: { ver: true, editar: true },
-          rutas: { ver: true, editar: true },
-          reportes: { ver: true, editar: true },
-          comercial: { ver: true, editar: true },
-          configuracion: { ver: true, editar: true, importar: true },
-          solicitudesAlmacen: { ver: true, editar: true },
-          almacen: { ver: true, editar: true }
-        }
-      }];
+        permisosPorModulo: buildAdminPermissions()
+      };
+      APP.userProfiles.unshift(adminProfile);
+    } else {
+      if (!text(adminProfile.nombre) || adminProfile.nombre === 'Manuel Oñate') {
+        adminProfile.nombre = 'Vinelis Garcia';
+      }
+      if (!text(adminProfile.email) || adminProfile.email === 'manuel.onate@tms-alvarez.local') {
+        adminProfile.email = fallbackEmail;
+      }
+      adminProfile.permisosPorModulo = adminProfile.permisosPorModulo || buildAdminPermissions();
     }
-    APP.currentUserProfile = APP.userProfiles[0];
+    APP.currentUserProfile =
+      APP.userProfiles.find(profile => text(profile.email).toLowerCase() === fallbackEmail.toLowerCase()) ||
+      adminProfile ||
+      APP.userProfiles[0];
   }
 
   function getSessionInfo() {
     const email = (document.getElementById('userEmail') || {}).textContent || '';
     return { userEmail: email.trim() };
+  }
+
+  function getSupabaseClient() {
+    if (typeof SB !== 'undefined') return SB;
+    return window.SB || null;
+  }
+
+  function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text(value));
+  }
+
+  function safeClone(value) {
+    return JSON.parse(JSON.stringify(value == null ? null : value));
+  }
+
+  function chunkRows(rows, size) {
+    const out = [];
+    for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size));
+    return out;
+  }
+
+  async function getAuthenticatedUser() {
+    const client = getSupabaseClient();
+    if (!client || !client.auth) return null;
+    const { data, error } = await client.auth.getUser();
+    if (error) throw error;
+    return data && data.user ? data.user : null;
+  }
+
+  async function runSupabaseQuery(queryPromise, label) {
+    const { data, error } = await queryPromise;
+    if (error) throw new Error(label + ': ' + error.message);
+    return data || [];
+  }
+
+  async function replaceSupabaseTable(tableName, rows) {
+    const client = getSupabaseClient();
+    await runSupabaseQuery(client.from(tableName).delete().not('id', 'is', null), 'No se pudo limpiar ' + tableName);
+    for (const chunk of chunkRows(rows, 200)) {
+      await runSupabaseQuery(client.from(tableName).insert(chunk), 'No se pudo guardar ' + tableName);
+    }
+  }
+
+  function mapDbOrderLine(row) {
+    const metadata = row.metadata || {};
+    const item = {
+      idInterno: row.id,
+      clienteId: row.cliente_id,
+      clienteNombre: row.cliente_nombre || '',
+      rutaId: row.ruta_id || '',
+      rutaNombre: row.ruta_nombre || '',
+      fechaPlanificada: isoToFechaStr(row.fecha_planificada),
+      fechaControl: isoToFechaStr(row.fecha_control),
+      pedidoCliente: row.pedido_cliente || '',
+      lineaPedidoCliente: row.linea_pedido_cliente || '',
+      articulo: row.articulo || '',
+      descripcionArticulo: row.descripcion_articulo || '',
+      cantidadSolicitada: num(row.cantidad_solicitada),
+      cantidadFacturada: num(row.cantidad_facturada),
+      cantidadPendiente: num(row.cantidad_pendiente),
+      montoPlanificado: num(metadata.montoPlanificado),
+      estadoPlanificacion: row.estado_planificacion || 'planificado',
+      estadoEntrega: row.estado_entrega || '',
+      origen: row.origen || 'planificacion semanal',
+      camionAsignado: row.camion_asignado || '',
+      fechaCreacion: row.created_at || nowIso(),
+      fechaActualizacion: row.updated_at || nowIso(),
+      zona: metadata.zona || row.ruta_nombre || '',
+      observaciones: metadata.observaciones || '',
+      incidencia: metadata.incidencia || '',
+      queueId: metadata.queueId || '',
+      manualProgramado: !!row.manual_programado,
+      asignado: !!metadata.asignado
+    };
+    item.baseKey = buildBaseItemKey(item);
+    return item;
+  }
+
+  function buildOrderLineDbRows(items, dataset) {
+    return items.map(item => {
+      const routeCfg = getRouteConfigByName(item.rutaNombre || item.zona || '');
+      const routeId = routeCfg && isUuid(routeCfg.id) ? routeCfg.id : null;
+      const baseKey = item.baseKey || buildBaseItemKey(item);
+      return {
+        clave_unica: [dataset, baseKey, item.fechaPlanificada || '', item.fechaControl || '', item.camionAsignado || ''].join('|'),
+        cliente_id: text(item.clienteId),
+        cliente_nombre: text(item.clienteNombre),
+        ruta_id: routeId,
+        ruta_nombre: text(item.rutaNombre || item.zona),
+        fecha_planificada: fechaStrToISO(item.fechaPlanificada),
+        fecha_control: fechaStrToISO(item.fechaControl),
+        pedido_cliente: text(item.pedidoCliente),
+        linea_pedido_cliente: text(item.lineaPedidoCliente),
+        articulo: text(item.articulo),
+        descripcion_articulo: text(item.descripcionArticulo),
+        cantidad_solicitada: num(item.cantidadSolicitada),
+        cantidad_facturada: num(item.cantidadFacturada),
+        cantidad_pendiente: num(item.cantidadPendiente),
+        estado_planificacion: text(item.estadoPlanificacion || (dataset === 'control' ? '' : 'planificado')) || 'planificado',
+        estado_entrega: text(item.estadoEntrega || deriveItemStatus(item)) || 'pendiente',
+        origen: text(item.origen || (dataset === 'control' ? 'control diario' : 'planificacion semanal')),
+        camion_asignado: text(item.camionAsignado || chooseTruckForItem(item)) || 'CAMION 1',
+        manual_programado: !!item.manualProgramado,
+        metadata: safeClone({
+          dataset,
+          montoPlanificado: num(item.montoPlanificado),
+          observaciones: item.observaciones || '',
+          incidencia: item.incidencia || '',
+          queueId: item.queueId || '',
+          zona: item.zona || item.rutaNombre || '',
+          asignado: !!item.asignado
+        })
+      };
+    });
+  }
+
+  function mapDbWarehousePlan(row) {
+    const metadata = row.metadata || {};
+    return {
+      codigo: row.cliente_id,
+      cliente: row.cliente_nombre || '',
+      solicitud: row.solicitud_id || '',
+      pedidoCliente: row.pedido_cliente || '',
+      articulo: row.articulo || '',
+      descripcionArticulo: row.descripcion_articulo || '',
+      cantidadSolicitada: num(row.cantidad_solicitada),
+      cantidadCompletada: num(metadata.cantidadCompletada),
+      cantidadPendiente: num(metadata.cantidadPendiente),
+      estadoComunicacion: metadata.estadoComunicacion || '',
+      estadoProceso: metadata.estadoProceso || '',
+      fechaLiberacion: isoToFechaStr(metadata.fechaLiberacion),
+      fechaFinalizada: isoToFechaStr(metadata.fechaFinalizada),
+      fechaEnvio: isoToFechaStr(row.fecha),
+      ubicacion: metadata.ubicacion || '',
+      observaciones: row.observaciones || '',
+      estado: row.estado || 'Prevista',
+      costeSolicitud: num(row.coste_solicitud),
+      tipoSolicitudArchivo: metadata.tipoSolicitudArchivo || 'plan semanal'
+    };
+  }
+
+  function mapDbWarehouseControl(row) {
+    const metadata = row.metadata || {};
+    return {
+      codigo: row.cliente_id,
+      cliente: row.cliente_nombre || '',
+      solicitud: row.solicitud_id || '',
+      pedidoCliente: row.pedido_cliente || '',
+      articulo: row.articulo || '',
+      descripcionArticulo: row.descripcion_articulo || '',
+      cantidadSolicitada: num(row.cantidad_solicitada),
+      cantidadCompletada: num(row.cantidad_completada),
+      cantidadPendiente: num(row.cantidad_pendiente),
+      estadoComunicacion: metadata.estadoComunicacion || '',
+      estadoProceso: metadata.estadoProceso || '',
+      fechaLiberacion: isoToFechaStr(metadata.fechaLiberacion),
+      fechaFinalizada: isoToFechaStr(metadata.fechaFinalizada),
+      fechaEnvio: isoToFechaStr(row.fecha),
+      ubicacion: metadata.ubicacion || '',
+      observaciones: row.observaciones || '',
+      estado: row.estado || 'Pendiente',
+      costeSolicitud: num(row.coste_solicitud),
+      tipoSolicitudArchivo: metadata.tipoSolicitudArchivo || 'control diario'
+    };
+  }
+
+  function buildWarehousePlanDbRows(items) {
+    return items.map(item => ({
+      clave_unica: ['plan', item.codigo, item.solicitud, item.pedidoCliente || '', item.articulo || '', item.fechaEnvio || ''].join('|'),
+      fecha: fechaStrToISO(item.fechaEnvio || item.fechaLiberacion),
+      cliente_id: text(item.codigo),
+      cliente_nombre: text(item.cliente),
+      pedido_cliente: text(item.pedidoCliente),
+      solicitud_id: text(item.solicitud),
+      articulo: text(item.articulo),
+      descripcion_articulo: text(item.descripcionArticulo),
+      cantidad_solicitada: num(item.cantidadSolicitada),
+      estado: text(item.estado || 'Prevista'),
+      coste_solicitud: num(item.costeSolicitud),
+      observaciones: text(item.observaciones),
+      metadata: safeClone({
+        cantidadCompletada: num(item.cantidadCompletada),
+        cantidadPendiente: num(item.cantidadPendiente),
+        estadoComunicacion: item.estadoComunicacion || '',
+        estadoProceso: item.estadoProceso || '',
+        fechaLiberacion: fechaStrToISO(item.fechaLiberacion),
+        fechaFinalizada: fechaStrToISO(item.fechaFinalizada),
+        ubicacion: item.ubicacion || '',
+        tipoSolicitudArchivo: item.tipoSolicitudArchivo || 'plan semanal'
+      })
+    }));
+  }
+
+  function buildWarehouseControlDbRows(items) {
+    return items.map(item => ({
+      clave_unica: ['control', item.codigo, item.solicitud, item.pedidoCliente || '', item.articulo || '', item.fechaEnvio || ''].join('|'),
+      fecha: fechaStrToISO(item.fechaEnvio || item.fechaLiberacion),
+      cliente_id: text(item.codigo),
+      cliente_nombre: text(item.cliente),
+      pedido_cliente: text(item.pedidoCliente),
+      solicitud_id: text(item.solicitud),
+      articulo: text(item.articulo),
+      descripcion_articulo: text(item.descripcionArticulo),
+      cantidad_solicitada: num(item.cantidadSolicitada),
+      cantidad_completada: num(item.cantidadCompletada),
+      cantidad_pendiente: num(item.cantidadPendiente),
+      estado: text(item.estado || 'Pendiente'),
+      coste_solicitud: num(item.costeSolicitud),
+      observaciones: text(item.observaciones),
+      metadata: safeClone({
+        estadoComunicacion: item.estadoComunicacion || '',
+        estadoProceso: item.estadoProceso || '',
+        fechaLiberacion: fechaStrToISO(item.fechaLiberacion),
+        fechaFinalizada: fechaStrToISO(item.fechaFinalizada),
+        ubicacion: item.ubicacion || '',
+        tipoSolicitudArchivo: item.tipoSolicitudArchivo || 'control diario'
+      })
+    }));
   }
 
   function hasPermission(moduleName, action) {
@@ -1991,8 +2227,163 @@
   };
 
   window.cargarDesdeSupabase = async function cargarDesdeSupabaseV2() {
-    ensureAdminProfile();
-    if (loadLocalSnapshot()) {
+    try {
+      const client = getSupabaseClient();
+      const user = await getAuthenticatedUser();
+      ensureAdminProfile();
+      if (!client || !user) {
+        if (loadLocalSnapshot()) {
+          updateSolicitudesImportStatus();
+          actualizarEstadoBanner();
+          actualizarDashboard();
+          renderCalendario();
+          renderRutas();
+          renderComercial();
+          renderConfigClientes();
+          renderSolicitudesAlmacen();
+          renderAlmacen();
+          return;
+        }
+        throw new Error('No hay sesión autenticada para cargar desde Supabase.');
+      }
+
+      const [
+        lineRows,
+        clientConfigRows,
+        routeConfigRows,
+        routeCostRows,
+        warehousePlanRows,
+        warehouseControlRows,
+        warehouseHistoryRows,
+        userProfileRows,
+        settingsRows
+      ] = await Promise.all([
+        runSupabaseQuery(client.from('tms_order_lines').select('*').order('created_at', { ascending: true }), 'No se pudieron cargar las líneas'),
+        runSupabaseQuery(client.from('tms_client_configs').select('*').order('codigo_cliente', { ascending: true }), 'No se pudo cargar la configuración de clientes'),
+        runSupabaseQuery(client.from('tms_route_configs').select('*').order('nombre', { ascending: true }), 'No se pudo cargar la configuración de rutas'),
+        runSupabaseQuery(client.from('tms_route_cost_history').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el histórico de rutas'),
+        runSupabaseQuery(client.from('tms_warehouse_plan').select('*').order('fecha', { ascending: true }), 'No se pudo cargar la planificación de solicitudes'),
+        runSupabaseQuery(client.from('tms_warehouse_control').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el control de solicitudes'),
+        runSupabaseQuery(client.from('tms_warehouse_history').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el histórico de solicitudes'),
+        runSupabaseQuery(client.from('tms_user_profiles').select('*').order('created_at', { ascending: true }), 'No se pudieron cargar los usuarios'),
+        runSupabaseQuery(client.from('tms_settings').select('*'), 'No se pudieron cargar los ajustes')
+      ]);
+
+      APP.clienteConfig = {};
+      clientConfigRows.forEach(row => {
+        APP.clienteConfig[row.codigo_cliente] = {
+          ...buildClientConfigDefault(row.codigo_cliente, row.nombre_cliente || ''),
+          codigoCliente: row.codigo_cliente,
+          nombreCliente: row.nombre_cliente || '',
+          rutaAsignada: row.ruta_asignada || '',
+          diasRecepcion: row.dias_recepcion || [],
+          horarioAlmacen: row.horario_almacen || '',
+          contacto: row.contacto || '',
+          observaciones: row.observaciones || '',
+          condicionesEspeciales: row.condiciones_especiales || '',
+          camionPermitido: row.camion_permitido || 'CUALQUIERA',
+          noMiercoles: !!row.no_miercoles,
+          noUltimaSemana: !!row.no_ultima_semana,
+          configuracionCompleta: !!row.configuracion_completa
+        };
+      });
+
+      APP.routeConfigs = routeConfigRows.map(row => ({
+        id: row.id,
+        nombre: row.nombre,
+        zona: row.zona || '',
+        diasOperacion: row.dias_operacion || [],
+        costeRuta: num(row.coste_ruta),
+        activa: row.activa !== false,
+        observaciones: row.observaciones || ''
+      }));
+
+      APP.userProfiles = userProfileRows.map(row => ({
+        userId: row.id,
+        authUserId: row.auth_user_id || '',
+        nombre: row.nombre,
+        email: row.email,
+        rol: row.rol,
+        permisosPorModulo: row.permisos_por_modulo || buildPermissions('read_only', row.rol),
+        activo: row.activo !== false
+      }));
+
+      const settingsMap = Object.fromEntries(settingsRows.map(row => [row.clave, row.valor || {}]));
+      APP.warehouseSettings = settingsMap.warehouse || { costoSolicitud: 0 };
+      if (settingsMap.app_state) {
+        APP.planLoaded = !!settingsMap.app_state.planLoaded;
+        APP.planFecha = settingsMap.app_state.planFecha || null;
+        APP.controlLoaded = !!settingsMap.app_state.controlLoaded;
+        APP.controlFecha = settingsMap.app_state.controlFecha || null;
+        APP.solicitudesLoaded = !!settingsMap.app_state.solicitudesLoaded;
+        APP.solicitudesFileName = settingsMap.app_state.solicitudesFileName || '';
+        APP.camionExtraEnabled = !!settingsMap.app_state.camionExtraEnabled;
+        APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
+        APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
+      }
+
+      const currentItems = [];
+      const planItems = [];
+      const controlItems = [];
+      lineRows.forEach(row => {
+        const item = mapDbOrderLine(row);
+        const dataset = text((row.metadata || {}).dataset) || (row.fecha_control ? 'control' : 'current');
+        if (dataset === 'plan') planItems.push(item);
+        else if (dataset === 'control') controlItems.push(item);
+        else currentItems.push(item);
+      });
+
+      APP.planLineItems = planItems;
+      APP.controlLineItems = controlItems;
+      APP.lineItems = currentItems.length ? currentItems : (planItems.length ? planItems.map(item => ({ ...item })) : []);
+      APP.planLoaded = APP.planLoaded || APP.planLineItems.length > 0;
+      APP.controlLoaded = APP.controlLoaded || APP.controlLineItems.length > 0;
+      APP.planFecha = APP.planFecha || (APP.planLineItems[0] && APP.planLineItems[0].fechaPlanificada) || null;
+      APP.controlFecha = APP.controlFecha || (APP.controlLineItems[0] && APP.controlLineItems[0].fechaControl) || null;
+
+      APP.routeCostHistory = routeCostRows.map(row => ({
+        fecha: isoToFechaStr(row.fecha),
+        rutaId: row.ruta_id || '',
+        rutaNombre: row.ruta_nombre || '',
+        coste: num(row.coste),
+        fuenteControlDiario: row.fuente_control_diario || '',
+        pedidosAsociados: row.pedidos_asociados || [],
+        cumplimiento: num(row.cumplimiento),
+        importePlanificado: num(row.importe_planificado),
+        importeReal: num(row.importe_real),
+        diferencia: num(row.diferencia)
+      }));
+
+      APP.solicitudesPlanAlmacen = warehousePlanRows.map(mapDbWarehousePlan);
+      APP.solicitudesControlAlmacen = warehouseControlRows.map(mapDbWarehouseControl);
+      APP.solicitudesAlmacen = APP.solicitudesControlAlmacen.length ? APP.solicitudesControlAlmacen : APP.solicitudesPlanAlmacen;
+      APP.solicitudesHistory = warehouseHistoryRows.map(row => ({
+        fecha: isoToFechaStr(row.fecha),
+        clienteId: row.cliente_id,
+        clienteNombre: row.cliente_nombre || '',
+        pedidoCliente: row.pedido_cliente || '',
+        solicitud: row.solicitud_id || '',
+        articulo: row.articulo || '',
+        descripcionArticulo: row.descripcion_articulo || '',
+        cantidadSolicitada: num(row.cantidad_solicitada),
+        cantidadCompletada: num(row.cantidad_completada),
+        cantidadPendiente: num(row.cantidad_pendiente),
+        estado: row.estado || '',
+        costeSolicitud: num(row.coste_solicitud),
+        observaciones: row.observaciones || '',
+        fuente: row.fuente || ''
+      }));
+      APP.solicitudesCompare = buildSolicitudesComparison();
+      APP.solicitudesLoaded = APP.solicitudesLoaded || !!(APP.solicitudesPlanAlmacen.length || APP.solicitudesControlAlmacen.length);
+
+      ensureAdminProfile();
+      APP.currentUserProfile =
+        APP.userProfiles.find(profile => text(profile.email).toLowerCase() === text(user.email).toLowerCase()) ||
+        APP.userProfiles.find(profile => profile.rol === 'Admin') ||
+        APP.userProfiles[0] ||
+        null;
+
+      rebuildDerivedState();
       updateSolicitudesImportStatus();
       actualizarEstadoBanner();
       actualizarDashboard();
@@ -2002,39 +2393,178 @@
       renderConfigClientes();
       renderSolicitudesAlmacen();
       renderAlmacen();
-      return;
+      saveLocalSnapshot();
+    } catch (error) {
+      console.warn('Fallo la carga remota, usando respaldo local si existe:', error);
+      if (loadLocalSnapshot()) {
+        updateSolicitudesImportStatus();
+        actualizarEstadoBanner();
+        actualizarDashboard();
+        renderCalendario();
+        renderRutas();
+        renderComercial();
+        renderConfigClientes();
+        renderSolicitudesAlmacen();
+        renderAlmacen();
+        return;
+      }
+      APP.lineItems = [];
+      APP.planLineItems = [];
+      APP.controlLineItems = [];
+      APP.planLoaded = false;
+      APP.controlLoaded = false;
+      APP.solicitudesLoaded = false;
+      rebuildDerivedState();
+      updateSolicitudesImportStatus();
+      actualizarEstadoBanner();
+      actualizarDashboard();
+      renderCalendario();
+      renderRutas();
+      renderComercial();
+      renderConfigClientes();
+      renderSolicitudesAlmacen();
+      renderAlmacen();
     }
-    APP.lineItems = [];
-    APP.planLineItems = [];
-    APP.controlLineItems = [];
-    APP.planLoaded = false;
-    APP.controlLoaded = false;
-    APP.solicitudesLoaded = false;
-    rebuildDerivedState();
-    updateSolicitudesImportStatus();
-    actualizarEstadoBanner();
-    actualizarDashboard();
-    renderCalendario();
-    renderRutas();
-    renderComercial();
-    renderConfigClientes();
-    renderSolicitudesAlmacen();
-    renderAlmacen();
   };
 
   window.guardarEnSupabase = async function guardarEnSupabaseV2() {
     saveLocalSnapshot();
+    const client = getSupabaseClient();
+    const user = await getAuthenticatedUser();
     const btn = document.getElementById('saveStateBtn');
     const originalText = btn ? btn.textContent : '';
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '✅ Guardado local';
-      setTimeout(() => {
-        btn.disabled = false;
-        btn.textContent = originalText || '💾 Guardar cambios';
-      }, 1400);
+      btn.textContent = '⏳ Guardando...';
     }
-    return Promise.resolve();
+    try {
+      if (!client || !user) throw new Error('No hay sesión autenticada para guardar en Supabase.');
+      ensureAdminProfile();
+      APP.currentUserProfile =
+        APP.currentUserProfile ||
+        APP.userProfiles.find(profile => text(profile.email).toLowerCase() === text(user.email).toLowerCase()) ||
+        APP.userProfiles.find(profile => profile.rol === 'Admin') ||
+        null;
+
+      const settingsRows = [
+        { clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) },
+        {
+          clave: 'app_state',
+          valor: safeClone({
+            planLoaded: !!APP.planLoaded,
+            planFecha: APP.planFecha || null,
+            controlLoaded: !!APP.controlLoaded,
+            controlFecha: APP.controlFecha || null,
+            solicitudesLoaded: !!APP.solicitudesLoaded,
+            solicitudesFileName: APP.solicitudesFileName || '',
+            camionExtraEnabled: !!APP.camionExtraEnabled,
+            feriadosRD: APP.feriadosRD || [],
+            importFiles: APP.importFiles || {}
+          })
+        }
+      ];
+
+      const userRows = APP.userProfiles.map(profile => ({
+        auth_user_id: text(profile.email).toLowerCase() === text(user.email).toLowerCase() ? user.id : (isUuid(profile.authUserId) ? profile.authUserId : null),
+        nombre: profile.nombre || '',
+        email: profile.email || '',
+        rol: profile.rol || 'Solo lectura',
+        permisos_por_modulo: safeClone(profile.permisosPorModulo || buildPermissions('read_only', profile.rol)),
+        activo: profile.activo !== false
+      }));
+
+      const routeRows = APP.routeConfigs.map(route => {
+        const payload = {
+          nombre: route.nombre || route.zona || '',
+          zona: route.zona || route.nombre || '',
+          dias_operacion: route.diasOperacion || [],
+          coste_ruta: num(route.costeRuta),
+          activa: route.activa !== false,
+          observaciones: route.observaciones || ''
+        };
+        if (isUuid(route.id)) payload.id = route.id;
+        return payload;
+      }).filter(route => route.nombre);
+
+      const clientRows = Object.values(APP.clienteConfig || {}).map(cfg => ({
+        codigo_cliente: cfg.codigoCliente || cfg.codigo || '',
+        nombre_cliente: cfg.nombreCliente || '',
+        ruta_asignada: cfg.rutaAsignada || '',
+        dias_recepcion: cfg.diasRecepcion || [],
+        horario_almacen: cfg.horarioAlmacen || '',
+        contacto: cfg.contacto || '',
+        observaciones: cfg.observaciones || '',
+        condiciones_especiales: cfg.condicionesEspeciales || '',
+        camion_permitido: cfg.camionPermitido || 'CUALQUIERA',
+        configuracion_completa: !!cfg.configuracionCompleta,
+        no_miercoles: !!cfg.noMiercoles,
+        no_ultima_semana: !!cfg.noUltimaSemana
+      })).filter(cfg => cfg.codigo_cliente);
+
+      const orderRows = [
+        ...buildOrderLineDbRows(APP.lineItems, 'current'),
+        ...buildOrderLineDbRows(APP.planLineItems, 'plan'),
+        ...buildOrderLineDbRows(APP.controlLineItems, 'control')
+      ];
+
+      const routeHistoryRows = APP.routeCostHistory.map(row => ({
+        fecha: fechaStrToISO(row.fecha),
+        ruta_id: isUuid(row.rutaId) ? row.rutaId : null,
+        ruta_nombre: row.rutaNombre || '',
+        coste: num(row.coste),
+        fuente_control_diario: row.fuenteControlDiario || '',
+        pedidos_asociados: safeClone(row.pedidosAsociados || []),
+        cumplimiento: num(row.cumplimiento),
+        importe_planificado: num(row.importePlanificado),
+        importe_real: num(row.importeReal),
+        diferencia: num(row.diferencia)
+      })).filter(row => row.fecha && row.ruta_nombre);
+
+      const warehousePlanRows = buildWarehousePlanDbRows(APP.solicitudesPlanAlmacen);
+      const warehouseControlRows = buildWarehouseControlDbRows(APP.solicitudesControlAlmacen);
+      const warehouseHistoryRows = APP.solicitudesHistory.map(row => ({
+        fecha: fechaStrToISO(row.fecha),
+        cliente_id: row.clienteId || '',
+        cliente_nombre: row.clienteNombre || '',
+        pedido_cliente: row.pedidoCliente || '',
+        solicitud_id: row.solicitud || '',
+        articulo: row.articulo || '',
+        descripcion_articulo: row.descripcionArticulo || '',
+        cantidad_solicitada: num(row.cantidadSolicitada),
+        cantidad_completada: num(row.cantidadCompletada),
+        cantidad_pendiente: num(row.cantidadPendiente),
+        estado: row.estado || '',
+        coste_solicitud: num(row.costeSolicitud),
+        observaciones: row.observaciones || '',
+        fuente: row.fuente || ''
+      })).filter(row => row.fecha && row.cliente_id);
+
+      await runSupabaseQuery(client.from('tms_settings').upsert(settingsRows, { onConflict: 'clave' }), 'No se pudieron guardar los ajustes');
+      await replaceSupabaseTable('tms_user_profiles', userRows);
+      await replaceSupabaseTable('tms_route_configs', routeRows);
+      await replaceSupabaseTable('tms_client_configs', clientRows);
+      await replaceSupabaseTable('tms_order_lines', orderRows);
+      await replaceSupabaseTable('tms_route_cost_history', routeHistoryRows);
+      await replaceSupabaseTable('tms_warehouse_plan', warehousePlanRows);
+      await replaceSupabaseTable('tms_warehouse_control', warehouseControlRows);
+      await replaceSupabaseTable('tms_warehouse_history', warehouseHistoryRows);
+
+      if (btn) {
+        btn.textContent = '✅ Guardado en nube';
+      }
+      return true;
+    } catch (error) {
+      console.error('Error guardando en Supabase:', error);
+      if (btn) btn.textContent = '⚠️ Guardado local';
+      throw error;
+    } finally {
+      if (btn) {
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = originalText || '💾 Guardar cambios';
+        }, 1400);
+      }
+    }
   };
 
   function initImportSolicitudesCard() {
