@@ -1,0 +1,4236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TMS — ALVAREZ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --primary:   #1B4F72;
+  --secondary: #1D6A3A;
+  --warning:   #B7770D;
+  --danger:    #922B21;
+  --bg:        #F5F7FA;
+  --card:      #FFFFFF;
+  --border:    #E2E6EA;
+  --text:      #1A202C;
+  --muted:     #6B7280;
+  --c1:        #1B4F72;
+  --c2:        #1D6A3A;
+  --c3:        #7D3C98;
+  --calmacen:  #B7770D;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* HEADER */
+#appHeader {
+  background: var(--primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  height: 56px;
+  flex-shrink: 0;
+  gap: 12px;
+  z-index: 100;
+}
+#appHeader h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+#appHeader .logo { font-size: 22px; }
+#sapHeaderInfo {
+  margin-left: auto;
+  font-size: 12px;
+  background: rgba(255,255,255,0.15);
+  padding: 4px 10px;
+  border-radius: 20px;
+  color: #fff;
+}
+#saveStateBtn {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.32);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+#saveStateBtn:hover { background: rgba(255,255,255,0.26); }
+
+/* LAYOUT */
+#mainLayout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* SIDEBAR */
+#sidebar {
+  width: 200px;
+  background: #fff;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 12px 8px;
+  gap: 4px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  width: 100%;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.nav-btn:hover { background: var(--bg); }
+.nav-btn.active { background: var(--primary); color: #fff; }
+.nav-btn .nav-icon { font-size: 16px; }
+
+/* CONTENT */
+#content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* VIEWS */
+.view { display: none; padding: 24px; min-height: 100%; }
+.view.active { display: block; }
+
+/* CARDS */
+.card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 14px;
+}
+
+/* BUTTONS */
+.btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  transition: opacity 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn:hover { opacity: 0.88; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-success { background: var(--secondary); color: #fff; }
+.btn-danger  { background: var(--danger); color: #fff; }
+.btn-warning { background: var(--warning); color: #fff; }
+.btn-outline { background: #fff; border: 1px solid var(--border); color: var(--text); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* STATS */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.stat-box {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+}
+.stat-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.stat-value { font-size: 22px; font-weight: 700; color: var(--primary); }
+.kpi-card {
+  background: var(--card);
+  border-radius: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+.kpi-val { font-size: 20px; font-weight: 700; color: var(--primary); }
+
+/* SEARCH */
+.search-input {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: #fff;
+}
+.search-input:focus { border-color: var(--primary); }
+
+/* SPINNER */
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* TABLE */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th {
+  background: var(--primary);
+  color: #fff;
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: #F8FAFC; }
+.table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+
+/* BADGES */
+.badge {
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
+}
+.badge-c1 { background: #D6E4F0; color: var(--c1); }
+.badge-c2 { background: #D5EDD9; color: var(--c2); }
+.badge-almacen { background: #FAE5C0; color: var(--calmacen); }
+.badge-ok  { background: #D5EDD9; color: #1D6A3A; }
+.badge-warn{ background: #FAE5C0; color: #B7770D; }
+.badge-pend{ background: #E8ECF0; color: #6B7280; }
+
+/* EMPTY STATE */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+.empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+/* MODAL */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal-box {
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px;
+  min-width: 320px;
+  max-width: 480px;
+  width: 90%;
+}
+.modal-title { font-size: 16px; font-weight: 700; color: var(--primary); margin-bottom: 16px; }
+.modal-select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+.modal-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* UPLOAD ZONE */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 14px;
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  background: #fff;
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--primary);
+  background: #EEF4FB;
+}
+.upload-icon { font-size: 48px; margin-bottom: 12px; }
+.upload-text { font-size: 16px; color: var(--text); font-weight: 600; }
+.upload-sub  { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+/* CALENDAR */
+#calContainer {
+  overflow-x: auto;
+}
+.cal-semana {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  min-width: 700px;
+}
+.cal-dia-col {
+  flex: 1;
+  min-width: 140px;
+}
+.cal-dia-header {
+  background: var(--primary);
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 4px;
+}
+.cal-carril {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 4px;
+  min-height: 80px;
+  padding: 6px;
+}
+.cal-carril-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  display: block;
+}
+.ch-c1 { background: #D6E4F0; color: var(--c1); }
+.ch-c2 { background: #D5EDD9; color: var(--c2); }
+.ch-alm{ background: #FAE5C0; color: var(--calmacen); }
+
+.cal-card {
+  background: #F5F7FA;
+  border-radius: 6px;
+  padding: 5px 7px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  cursor: grab;
+  border-left: 3px solid var(--primary);
+  transition: transform 0.1s;
+  position: relative;
+}
+.cal-card:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+.cal-card.dragging { opacity: 0.5; }
+.cal-card-c1 { border-left-color: var(--c1); }
+.cal-card-c2 { border-left-color: var(--c2); }
+.cal-card-alm{ border-left-color: var(--calmacen); }
+.cal-card-name { font-weight: 600; color: var(--text); line-height: 1.3; }
+.cal-card-monto{ color: var(--primary); font-size: 10px; }
+.cal-card-actions { display: flex; gap: 4px; margin-top: 3px; }
+.cal-drop-zone { min-height: 40px; }
+.cal-drop-zone.drag-over { background: #EEF4FB; border: 1px dashed var(--primary); border-radius: 4px; }
+
+/* RUTAS */
+.rutas-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.ruta-col {
+  background: var(--card);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.ruta-col-header {
+  padding: 14px 16px;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.rh-c1  { background: var(--c1); }
+.rh-c2  { background: var(--c2); }
+.rh-alm { background: var(--calmacen); }
+.ruta-col-body { padding: 12px; }
+.ruta-item {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+}
+.ruta-item-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.ruta-item-detail { font-size: 11px; color: var(--muted); }
+.ruta-item-monto { font-size: 13px; color: var(--primary); font-weight: 700; }
+
+/* FILTER BUTTONS */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.filter-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 500;
+}
+.filter-btn:hover { border-color: var(--primary); color: var(--primary); }
+.filter-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* REPORT */
+#reporteOutput {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  min-height: 200px;
+}
+.report-section { margin-bottom: 20px; }
+.report-h2 { font-size: 14px; font-weight: 700; color: var(--primary); border-bottom: 2px solid var(--primary); padding-bottom: 6px; margin-bottom: 12px; }
+.report-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.report-kpi { background: #F0F4F8; border-radius: 8px; padding: 12px; text-align: center; }
+.report-kpi-v { font-size: 18px; font-weight: 700; color: var(--primary); }
+.report-kpi-l { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+
+/* SECTIONS TOOLBAR */
+.view-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  #sidebar { width: 56px; }
+  .nav-btn span.nav-label { display: none; }
+  .rutas-grid { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: 1fr 1fr; }
+}
+
+/* SUCCESS BANNER */
+.success-banner {
+  background: #D5EDD9;
+  border: 1px solid #1D6A3A;
+  border-radius: 10px;
+  padding: 14px 18px;
+  color: #1D6A3A;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* NOTA INLINE */
+.nota-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: none;
+  height: 56px;
+}
+.nota-input:focus { outline: none; border-color: var(--primary); }
+
+/* Cal Month Nav */
+#calMesNav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+
+/* Page title */
+.view-title { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 16px; }
+
+/* DASHBOARD CHARTS */
+.dash-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .dash-charts-grid { grid-template-columns: 1fr; }
+}
+.chart-card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 18px;
+  border: 1px solid var(--border);
+}
+.chart-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.chart-canvas-wrap { position: relative; height: 180px; }
+
+/* PROGRESS BAR (inline) */
+.prog-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.prog-label { font-size: 12px; color: var(--text); flex: 0 0 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prog-bar-bg { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.prog-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+.prog-val { font-size: 11px; color: var(--muted); flex: 0 0 70px; text-align: right; }
+
+/* KPI SECONDARY ROW */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px,1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.kpi-mini {
+  background: var(--card);
+  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.kpi-mini-icon { font-size: 22px; }
+.kpi-mini-text .kpi-mini-val { font-size: 16px; font-weight: 700; color: var(--primary); }
+.kpi-mini-text .kpi-mini-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+
+/* COMERCIAL — tabla con filtros por columna */
+.com-th {
+  background: var(--primary);
+  color: #fff;
+  padding: 10px 10px;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+.com-th:hover { background: #154060; }
+.com-th .sort-icon { font-size: 10px; margin-left: 4px; opacity: 0.6; }
+.com-th.sort-asc .sort-icon::after  { content: ' ↑'; opacity: 1; }
+.com-th.sort-desc .sort-icon::after { content: ' ↓'; opacity: 1; }
+.com-th .sort-icon::after { content: ' ↕'; }
+
+.com-filter-cell {
+  padding: 4px 6px;
+  background: #F0F4F8;
+  border-bottom: 2px solid var(--primary);
+}
+.com-filter-input {
+  width: 100%;
+  padding: 4px 7px;
+  border: 1px solid #C8D6E0;
+  border-radius: 5px;
+  font-size: 11px;
+  background: #fff;
+  color: var(--text);
+  outline: none;
+  min-width: 60px;
+}
+.com-filter-input:focus { border-color: var(--primary); }
+.com-filter-select {
+  width: 100%;
+  padding: 4px 4px;
+  border: 1px solid #C8D6E0;
+  border-radius: 5px;
+  font-size: 11px;
+  background: #fff;
+  color: var(--text);
+  outline: none;
+}
+.com-filter-select:focus { border-color: var(--primary); }
+
+/* Incidencia pill */
+.inc-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #FDE9D5;
+  color: #922B21;
+}
+
+/* QUEUE SEMANAL */
+.queue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+.queue-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  padding: 12px;
+}
+.queue-card-new { border-left-color: var(--warning); background: #FFF8EA; }
+.queue-card-plan { border-left-color: var(--secondary); background: #F4FBF6; }
+.queue-card-title { font-weight: 700; font-size: 13px; color: var(--text); margin-bottom: 4px; }
+.queue-card-meta { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+/* CONFIG CLIENTES */
+.config-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) 1fr;
+  gap: 16px;
+}
+.config-client-list {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  max-height: 560px;
+  overflow-y: auto;
+}
+.config-client-item {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.config-client-item:hover { background: #F8FAFC; }
+.config-client-item.active { background: #EEF4FB; border-left: 4px solid var(--primary); }
+.form-row { margin-bottom: 12px; }
+.form-row label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
+.form-control {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 10px; }
+
+/* SOLICITUDES ALMACEN */
+.solicitud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #EEF4FB;
+  color: var(--primary);
+  margin: 2px 4px 2px 0;
+}
+.sol-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+.sol-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 5px;
+}
+.sol-card-meta { font-size: 11px; color: var(--muted); line-height: 1.5; }
+@media (max-width: 900px) {
+  .config-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== LOGIN SCREEN ===== */
+#loginScreen {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+.login-card {
+  background: #fff; border-radius: 18px; padding: 40px 36px;
+  width: 100%; max-width: 380px;
+  box-shadow: 0 8px 40px rgba(27,79,114,0.14);
+  border: 1px solid var(--border);
+}
+.login-logo { text-align: center; margin-bottom: 24px; }
+.login-logo .login-icon { font-size: 44px; display: block; margin-bottom: 8px; }
+.login-logo h2 { font-size: 22px; font-weight: 800; color: var(--primary); }
+.login-logo p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.login-field { margin-bottom: 14px; }
+.login-field label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 5px; }
+.login-field input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 14px; font-family: inherit; outline: none;
+}
+.login-field input:focus { border-color: var(--primary); }
+.login-btn {
+  width: 100%; padding: 11px; background: var(--primary); color: #fff;
+  border: none; border-radius: 10px; font-size: 15px; font-weight: 700;
+  cursor: pointer; margin-top: 6px; transition: opacity 0.15s;
+}
+.login-btn:hover { opacity: 0.88; }
+.login-btn:disabled { opacity: 0.5; cursor: default; }
+.login-error { color: var(--danger); font-size: 13px; margin-top: 8px; text-align: center; min-height: 18px; }
+#userBadge {
+  display: none; align-items: center; gap: 8px; margin-left: auto;
+  font-size: 12px; color: rgba(255,255,255,0.85);
+}
+#logoutBtn {
+  background: rgba(255,255,255,0.18); color: #fff;
+  border: 1px solid rgba(255,255,255,0.32); border-radius: 8px;
+  padding: 5px 10px; cursor: pointer; font-size: 11px; font-weight: 700;
+}
+#logoutBtn:hover { background: rgba(255,255,255,0.28); }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="login-icon">🚚</span>
+      <h2>TMS - ALVAREZ</h2>
+      <p>Gestión Logística · República Dominicana</p>
+    </div>
+    <div class="login-field">
+      <label>Correo electrónico</label>
+      <input type="email" id="loginEmail" placeholder="correo@empresa.com"
+             onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+    </div>
+    <div class="login-field">
+      <label>Contraseña</label>
+      <input type="password" id="loginPass" placeholder="••••••••"
+             onkeydown="if(event.key==='Enter')iniciarSesion()">
+    </div>
+    <button class="login-btn" id="loginBtn" onclick="iniciarSesion()">Entrar →</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div id="appHeader" style="display:none;">
+  <span class="logo">🚚</span>
+  <h1>TMS - ALVAREZ</h1>
+  <button id="saveStateBtn" onclick="guardarEnSupabase()">💾 Guardar cambios</button>
+  <span id="sapHeaderInfo" style="display:none;"></span>
+  <div id="userBadge">
+    <span id="userEmail" style="opacity:0.8;"></span>
+    <button id="logoutBtn" onclick="cerrarSesion()">Salir</button>
+  </div>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div id="mainLayout" style="display:none;">
+
+  <!-- SIDEBAR -->
+  <nav id="sidebar">
+    <button class="nav-btn" id="nav-importar" onclick="cambiarVista('importar',this)">
+      <span class="nav-icon">📥</span><span class="nav-label">Importar SAP</span>
+    </button>
+    <button class="nav-btn" id="nav-dashboard" onclick="cambiarVista('dashboard',this)">
+      <span class="nav-icon">📊</span><span class="nav-label">Dashboard</span>
+    </button>
+    <button class="nav-btn" id="nav-calendario" onclick="cambiarVista('calendario',this)">
+      <span class="nav-icon">📅</span><span class="nav-label">Calendario</span>
+    </button>
+    <button class="nav-btn" id="nav-rutas" onclick="cambiarVista('rutas',this)">
+      <span class="nav-icon">🚚</span><span class="nav-label">Rutas</span>
+    </button>
+    <button class="nav-btn" id="nav-reportes" onclick="cambiarVista('reportes',this)">
+      <span class="nav-icon">📈</span><span class="nav-label">Reportes</span>
+    </button>
+    <button class="nav-btn" id="nav-comercial" onclick="cambiarVista('comercial',this)">
+      <span class="nav-icon">👔</span><span class="nav-label">Vista Comercial</span>
+    </button>
+    <button class="nav-btn" id="nav-configClientes" onclick="cambiarVista('configClientes',this)">
+      <span class="nav-icon">⚙️</span><span class="nav-label">Config. Clientes</span>
+    </button>
+    <button class="nav-btn" id="nav-solicitudesAlmacen" onclick="cambiarVista('solicitudesAlmacen',this)">
+      <span class="nav-icon">📦</span><span class="nav-label">Solicitudes Almacén</span>
+    </button>
+    <button class="nav-btn" id="nav-almacen" onclick="cambiarVista('almacen',this)">
+      <span class="nav-icon">🏭</span><span class="nav-label">Vista Almacén</span>
+    </button>
+  </nav>
+
+  <!-- CONTENT -->
+  <div id="content">
+
+    <!-- ========== VISTA 1: IMPORTAR SAP ========== -->
+    <div id="importar" class="view active">
+      <div class="view-title">📥 Importar Reporte SAP</div>
+
+      <!-- ESTADO ACTUAL DE ARCHIVOS CARGADOS -->
+      <div id="sapEstadoBanner" style="display:none;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div id="planEstadoCard" style="background:#EEF4FB;border:1px solid #B8D4EA;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:10px;">
+            <span style="font-size:22px;">📋</span>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;">Planificación Semanal</div>
+              <div id="planEstadoTxt" style="font-size:13px;color:var(--text);margin-top:2px;">No cargada</div>
+            </div>
+          </div>
+          <div id="ctrlEstadoCard" style="background:#F0FAF4;border:1px solid #A8D5B5;border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:10px;">
+            <span style="font-size:22px;">📊</span>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--secondary);text-transform:uppercase;">Control Diario</div>
+              <div id="ctrlEstadoTxt" style="font-size:13px;color:var(--text);margin-top:2px;">No cargado</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ZONA 1: PLANIFICACIÓN INICIAL -->
+      <div class="card" style="border-left:4px solid var(--primary);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <span style="font-size:20px;">📋</span>
+          <div>
+            <div class="card-title" style="margin-bottom:0;">Planificación Semanal</div>
+            <div style="font-size:12px;color:var(--muted);">Carga el lunes al inicio de semana. Define las rutas y el calendario. No cambia hasta la próxima semana.</div>
+          </div>
+        </div>
+
+        <div id="uploadZone" class="upload-zone" style="margin-top:14px;padding:28px 20px;"
+             onclick="document.getElementById('sapFile').click()"
+             ondragover="event.preventDefault();this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')"
+             ondrop="event.preventDefault();this.classList.remove('drag-over');procesarArchivo(event.dataTransfer.files[0],'plan')">
+          <div class="upload-icon" style="font-size:36px;">📋</div>
+          <div class="upload-text" id="uploadZoneText" style="font-size:15px;">Arrastra el SAP de planificación aquí</div>
+          <div class="upload-sub">Reporte SAP del lunes — establece la semana completa</div>
+          <div style="margin-top:14px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
+            <input type="file" id="sapFile" accept=".xlsx,.xls" style="display:none"
+                   onchange="procesarArchivo(this.files[0],'plan')">
+            <button class="btn btn-primary" onclick="event.stopPropagation();document.getElementById('sapFile').click()">
+              📂 Seleccionar archivo
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading planificación -->
+        <div id="sapLoading" style="display:none;text-align:center;padding:20px;">
+          <div class="spinner"></div>
+          <p id="sapLoadingMsg" style="margin-top:10px;color:var(--muted);font-size:14px;">Procesando archivo...</p>
+          <div style="background:#E8ECF0;border-radius:10px;height:8px;width:300px;margin:10px auto 0;overflow:hidden;">
+            <div id="sapProgressBar" style="height:100%;width:0%;background:var(--primary);border-radius:10px;transition:width 0.3s;"></div>
+          </div>
+        </div>
+
+        <div id="sapSuccessBanner" style="display:none;" class="success-banner">
+          <span>✅</span>
+          <span id="sapSuccessMsg">Planificación cargada.</span>
+          <button class="btn btn-success btn-sm" style="margin-left:auto;" onclick="cambiarVista('dashboard',document.getElementById('nav-dashboard'))">
+            Ver Dashboard →
+          </button>
+        </div>
+      </div>
+
+      <!-- ZONA 2: CONTROL DIARIO -->
+      <div class="card" style="border-left:4px solid var(--secondary);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+          <span style="font-size:20px;">📊</span>
+          <div>
+            <div class="card-title" style="margin-bottom:0;color:var(--secondary);">Control Diario</div>
+            <div style="font-size:12px;color:var(--muted);">Carga cada tarde con el cierre del día. El Dashboard mostrará el avance real vs. la planificación.</div>
+          </div>
+        </div>
+
+        <!-- Aviso si no hay plan cargado -->
+        <div id="ctrlSinPlan" style="background:#FEF3C7;border:1px solid #D97706;border-radius:8px;padding:10px 14px;font-size:13px;color:#92400E;margin-top:12px;display:none;">
+          ⚠️ Carga primero el archivo de <strong>Planificación Semanal</strong> antes del control diario.
+        </div>
+
+        <div id="ctrlUploadZone" class="upload-zone" style="margin-top:14px;padding:28px 20px;border-color:var(--secondary);"
+             onclick="abrirControlDiario()"
+             ondragover="event.preventDefault();this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')"
+             ondrop="event.preventDefault();this.classList.remove('drag-over');procesarArchivo(event.dataTransfer.files[0],'control')">
+          <div class="upload-icon" style="font-size:36px;">📊</div>
+          <div class="upload-text" id="ctrlUploadZoneText" style="font-size:15px;">Arrastra el SAP de cierre del día aquí</div>
+          <div class="upload-sub">Mismo formato SAP — genera el comparativo Plan vs. Real</div>
+          <div style="margin-top:14px;">
+            <input type="file" id="ctrlFile" accept=".xlsx,.xls" style="display:none"
+                   onchange="procesarArchivo(this.files[0],'control')">
+            <button class="btn btn-success" onclick="event.stopPropagation();abrirControlDiario()">
+              📂 Seleccionar cierre del día
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading control -->
+        <div id="ctrlLoading" style="display:none;text-align:center;padding:20px;">
+          <div class="spinner"></div>
+          <p id="ctrlLoadingMsg" style="margin-top:10px;color:var(--muted);font-size:14px;">Procesando cierre del día...</p>
+          <div style="background:#E8ECF0;border-radius:10px;height:8px;width:300px;margin:10px auto 0;overflow:hidden;">
+            <div id="ctrlProgressBar" style="height:100%;width:0%;background:var(--secondary);border-radius:10px;transition:width 0.3s;"></div>
+          </div>
+        </div>
+
+        <div id="ctrlSuccessBanner" style="display:none;" class="success-banner" style="border-color:var(--secondary);">
+          <span>✅</span>
+          <span id="ctrlSuccessMsg">Control diario cargado.</span>
+          <button class="btn btn-success btn-sm" style="margin-left:auto;" onclick="cambiarVista('dashboard',document.getElementById('nav-dashboard'))">
+            Ver Plan vs. Real →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 2: DASHBOARD ========== -->
+    <div id="dashboard" class="view">
+      <div class="view-title">📊 Dashboard</div>
+
+      <!-- KPIs principales -->
+      <div class="stats" style="margin-bottom:12px;">
+        <div class="stat-box">
+          <div class="stat-label">Total Clientes</div>
+          <div class="stat-value" id="dashClientes">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Confirmado No Entregado</div>
+          <div class="stat-value" id="dashConfirmado" style="font-size:16px;">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Pendiente de Facturar</div>
+          <div class="stat-value" id="dashPendiente" style="font-size:16px;">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Total Pendiente</div>
+          <div class="stat-value" id="dashTotal" style="font-size:16px;">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Rutas Asignadas</div>
+          <div class="stat-value" id="dashRutas">—</div>
+        </div>
+      </div>
+
+      <!-- KPIs secundarios -->
+      <div class="kpi-row">
+        <div class="kpi-mini">
+          <span class="kpi-mini-icon">✅</span>
+          <div class="kpi-mini-text">
+            <div class="kpi-mini-val" id="dashCumplidas">—</div>
+            <div class="kpi-mini-lbl">Cumplidas</div>
+          </div>
+        </div>
+        <div class="kpi-mini">
+          <span class="kpi-mini-icon">🔄</span>
+          <div class="kpi-mini-text">
+            <div class="kpi-mini-val" id="dashPendientes">—</div>
+            <div class="kpi-mini-lbl">Pendientes</div>
+          </div>
+        </div>
+        <div class="kpi-mini">
+          <span class="kpi-mini-icon">⚠️</span>
+          <div class="kpi-mini-text">
+            <div class="kpi-mini-val" id="dashIncidencias">—</div>
+            <div class="kpi-mini-lbl">Incidencias</div>
+          </div>
+        </div>
+        <div class="kpi-mini">
+          <span class="kpi-mini-icon">🚚</span>
+          <div class="kpi-mini-text">
+            <div class="kpi-mini-val" id="dashC1">—</div>
+            <div class="kpi-mini-lbl">Camión 1</div>
+          </div>
+        </div>
+        <div class="kpi-mini">
+          <span class="kpi-mini-icon">🚛</span>
+          <div class="kpi-mini-text">
+            <div class="kpi-mini-val" id="dashC2">—</div>
+            <div class="kpi-mini-lbl">Camión 2</div>
+          </div>
+        </div>
+        <div class="kpi-mini">
+          <span class="kpi-mini-icon">📅</span>
+          <div class="kpi-mini-text">
+            <div class="kpi-mini-val" id="dashDias">—</div>
+            <div class="kpi-mini-lbl">Días planif.</div>
+          </div>
+        </div>
+        <div class="kpi-mini" style="grid-column: span 1; background: linear-gradient(135deg,#EEF4FB,#fff);">
+          <span class="kpi-mini-icon">📈</span>
+          <div class="kpi-mini-text">
+            <div class="kpi-mini-val" id="dashCumplimiento" style="color:var(--secondary);">—</div>
+            <div class="kpi-mini-lbl">Cumplimiento</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GRÁFICOS -->
+      <div class="dash-charts-grid">
+
+        <!-- Gráfico 1: Monto por día -->
+        <div class="chart-card" style="grid-column: span 2;">
+          <div class="chart-card-title">📅 Carga por día (RD$)</div>
+          <div class="chart-canvas-wrap">
+            <canvas id="chartDias"></canvas>
+          </div>
+        </div>
+
+        <!-- Gráfico 2: Donut por camión -->
+        <div class="chart-card">
+          <div class="chart-card-title">🚚 Distribución por Camión</div>
+          <div class="chart-canvas-wrap" style="height:160px;">
+            <canvas id="chartCamiones"></canvas>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Gráfico 3: Top clientes por monto (barras horizontales CSS) -->
+      <div class="chart-card" style="margin-bottom:16px;">
+        <div class="chart-card-title">🏆 Top 10 Clientes por Monto Pendiente</div>
+        <div id="dashTopClientes"></div>
+      </div>
+
+      <!-- PLAN VS. REAL -->
+      <div id="dashPlanVsReal" style="display:none;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="font-size:15px;font-weight:700;color:var(--secondary);">📊 Plan vs. Real — <span id="pvr_fecha">—</span></div>
+          <button class="btn btn-outline btn-sm" onclick="exportarPlanVsRealExcel()">⬇️ Exportar</button>
+        </div>
+
+        <!-- KPIs comparativos -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Clientes Planificados</div>
+            <div style="font-size:22px;font-weight:700;color:var(--primary);" id="pvr_clientesPlan">—</div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Entregados Hoy</div>
+            <div style="font-size:22px;font-weight:700;color:var(--secondary);" id="pvr_entregados">—</div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Pendientes</div>
+            <div style="font-size:22px;font-weight:700;color:var(--warning);" id="pvr_pendientes">—</div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Monto Ejecutado</div>
+            <div style="font-size:16px;font-weight:700;color:var(--secondary);" id="pvr_ejecutado">—</div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Monto Planificado</div>
+            <div style="font-size:16px;font-weight:700;color:var(--primary);" id="pvr_planMonto">—</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#EEF4FB,#F0FAF4);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center;">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">% Avance Monto</div>
+            <div style="font-size:26px;font-weight:700;color:var(--secondary);" id="pvr_pct">—</div>
+          </div>
+        </div>
+
+        <!-- Barra de progreso general -->
+        <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+            <span style="font-size:13px;font-weight:600;">Progreso general de la semana</span>
+            <span id="pvr_barLabel" style="font-size:13px;color:var(--secondary);font-weight:700;">0%</span>
+          </div>
+          <div style="background:var(--bg);border-radius:8px;height:14px;overflow:hidden;">
+            <div id="pvr_bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--secondary),#2ECC71);border-radius:8px;transition:width 0.8s;"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--muted);">
+            <span id="pvr_barEjecutado">Ejecutado: RD$ 0</span>
+            <span id="pvr_barTotal">Total plan: RD$ 0</span>
+          </div>
+        </div>
+
+        <!-- Gráfico Plan vs Real por camión -->
+        <div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;">
+          <div class="chart-card-title">Avance por Camión</div>
+          <div class="chart-canvas-wrap" style="height:160px;">
+            <canvas id="chartPvR"></canvas>
+          </div>
+        </div>
+
+        <!-- Tabla detalle cliente a cliente -->
+        <div style="background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+          <div style="padding:12px 16px;background:var(--secondary);color:#fff;font-weight:700;font-size:14px;">
+            Detalle por Cliente — Plan vs. Real
+          </div>
+          <div id="pvr_tabla" class="table-wrap" style="border:none;border-radius:0;"></div>
+        </div>
+      </div>
+
+      <!-- TABLA CLIENTES -->
+      <div class="card">
+        <div class="view-toolbar">
+          <span class="card-title" style="margin-bottom:0;">📋 Todos los Clientes</span>
+          <input type="text" id="dashSearch" class="search-input" placeholder="🔍 Buscar cliente..." oninput="actualizarTablaClientes(APP.filtroSector||'Todos')" style="max-width:220px;">
+        </div>
+        <div id="dashSectorFiltros" class="filter-bar"></div>
+        <div id="dashContent" class="table-wrap">
+          <div class="empty-state"><div class="empty-icon">📊</div><p>Sin datos. Carga un archivo SAP o usa los datos demo.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 3: CALENDARIO ========== -->
+    <div id="calendario" class="view">
+      <div class="view-title">📅 Calendario de Entregas</div>
+
+      <div class="card" style="padding:14px 16px;">
+        <div class="view-toolbar">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button class="btn btn-outline btn-sm" onclick="navCalMes(-1)">← Anterior</button>
+            <span id="calMesActualLabel" style="font-weight:700;color:var(--primary);min-width:150px;text-align:center;">—</span>
+            <button class="btn btn-outline btn-sm" onclick="navCalMes(1)">Siguiente →</button>
+          </div>
+          <input type="text" id="calSearch" class="search-input" placeholder="🔍 Buscar cliente..." oninput="renderCalendario()" style="max-width:200px;">
+          <button class="btn btn-primary btn-sm" onclick="exportarCalendarioVisiblePDF()">📄 Exportar PDF</button>
+        </div>
+        <div id="calMesNav"></div>
+      </div>
+
+      <div id="calExportArea">
+      <div id="calContainer">
+        <div class="empty-state"><div class="empty-icon">📅</div><p>Sin datos cargados.</p></div>
+      </div>
+      </div>
+
+      <div id="queueSemanaSection" class="card" style="display:none;margin-top:18px;border-left:4px solid var(--warning);">
+        <div class="view-toolbar" style="justify-content:space-between;">
+          <div>
+            <div class="card-title" style="margin-bottom:2px;color:var(--warning);">📥 QUEUE para esta semana</div>
+            <div style="font-size:12px;color:var(--muted);">Clientes detectados en el cierre diario. Verde: ya estaban en planificación. Ámbar: no estaban contemplados.</div>
+          </div>
+          <span id="queueSemanaResumen" class="badge badge-warn">0 pendientes</span>
+        </div>
+        <div id="queueSemanaContainer"></div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 4: RUTAS ========== -->
+    <div id="rutas" class="view">
+      <div class="view-title">🚚 Gestión de Rutas</div>
+
+      <div class="card" style="padding:14px 16px;">
+        <div class="view-toolbar">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <label style="font-size:13px;font-weight:600;color:var(--muted);">Fecha:</label>
+            <select id="rutasDiaSelect" onchange="APP.rutaFecha=this.value;renderRutas()" class="search-input" style="padding:7px 10px;">
+              <option value="">Seleccionar fecha...</option>
+            </select>
+          </div>
+          <input type="text" id="rutasSearch" class="search-input" placeholder="🔍 Buscar..." oninput="renderRutas()" style="max-width:180px;">
+          <button class="btn btn-primary btn-sm" onclick="exportarExcelRutas()">⬇️ Exportar Excel</button>
+        </div>
+      </div>
+
+      <div id="rutasContainer">
+        <div class="empty-state"><div class="empty-icon">🚚</div><p>Selecciona una fecha para ver las rutas.</p></div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 5: REPORTES ========== -->
+    <div id="reportes" class="view">
+      <div class="view-title">📈 Reportes</div>
+
+      <div class="card" style="padding:14px 16px;">
+        <div class="view-toolbar">
+          <input type="text" id="repSearch" class="search-input" placeholder="🔍 Filtrar por cliente..." oninput="generarReporte()" style="max-width:220px;">
+          <button class="btn btn-primary" onclick="generarReporte()">📈 Generar Reporte</button>
+          <button class="btn btn-outline" onclick="descargarPDF()">📄 Descargar PDF</button>
+          <button class="btn btn-success" onclick="exportarReporteExcel()">📊 Exportar Excel</button>
+        </div>
+      </div>
+
+      <div id="reporteLoading" style="display:none;text-align:center;padding:40px;">
+        <div class="spinner"></div>
+        <p style="margin-top:12px;color:var(--muted);">Generando reporte...</p>
+      </div>
+
+      <div id="reporteOutput">
+        <div class="empty-state"><div class="empty-icon">📈</div><p>Haz clic en "Generar Reporte" para comenzar.</p></div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 6: COMERCIAL ========== -->
+    <div id="comercial" class="view">
+      <div class="view-title">👔 Vista Comercial</div>
+
+      <!-- KPIs -->
+      <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+        <div class="kpi-card"><div class="kpi-label">Clientes (filtrados)</div><div class="kpi-val" id="ck1">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Conf. No Entregado</div><div class="kpi-val" id="ck2">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Pte. de Facturar</div><div class="kpi-val" id="ck3">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Pendiente</div><div class="kpi-val" id="ck4">—</div></div>
+      </div>
+
+      <div class="card" style="padding:14px 16px;">
+
+        <!-- Toolbar: accesos rápidos + exportar -->
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px;">
+          <span style="font-size:11px;font-weight:600;color:var(--muted);">Acceso rápido:</span>
+          <button id="cf_todas" class="filter-btn active" onclick="filtrarCom('todas')">Todas</button>
+          <button id="cf_sem1"  class="filter-btn" onclick="filtrarCom('sem1')">Semana 1</button>
+          <button id="cf_sem2"  class="filter-btn" onclick="filtrarCom('sem2')">Semana 2</button>
+          <button id="cf_sem3"  class="filter-btn" onclick="filtrarCom('sem3')">Semana 3</button>
+          <button id="cf_c1"    class="filter-btn" onclick="filtrarCom('c1')">🚚 C1</button>
+          <button id="cf_c2"    class="filter-btn" onclick="filtrarCom('c2')">🚛 C2</button>
+          <div style="margin-left:auto;display:flex;gap:6px;">
+            <button class="btn btn-outline btn-sm" onclick="limpiarFiltrosCom()">✕ Limpiar</button>
+            <button class="btn btn-success btn-sm" onclick="exportarComercialExcel()">⬇️ Excel</button>
+          </div>
+        </div>
+
+        <!-- Tabla con filtros por columna -->
+        <div class="table-wrap">
+          <table class="data-table" id="comTable" style="min-width:700px;">
+            <thead>
+              <!-- Fila 1: cabeceras clicables para ordenar -->
+              <tr id="comHeaderRow"></tr>
+              <!-- Fila 2: inputs de filtro por columna -->
+              <tr id="comFilterRow" style="background:#F0F4F8;"></tr>
+            </thead>
+            <tbody id="comContent">
+              <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--muted);">Sin datos cargados.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="comPieLabel" style="font-size:11px;color:var(--muted);margin-top:8px;text-align:right;"></div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 7: ALMACÉN ========== -->
+    <div id="almacen" class="view">
+      <div class="view-title">🏭 Vista Almacén</div>
+
+      <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+        <div class="kpi-card"><div class="kpi-label">Total Pedidos</div><div class="kpi-val" id="ak1">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Clientes C1</div><div class="kpi-val" id="ak2">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Clientes C2</div><div class="kpi-val" id="ak3">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Próximo Despacho</div><div class="kpi-val" id="ak4">—</div><div class="kpi-label" id="ak4b" style="margin-top:2px;"></div></div>
+      </div>
+
+      <div class="card" style="padding:14px 16px;">
+        <div class="view-toolbar">
+          <input type="text" id="almSearch" class="search-input" placeholder="🔍 Buscar..." oninput="renderAlmacen()" style="max-width:200px;">
+          <button class="btn btn-success btn-sm" onclick="exportarAlmacenExcel()">⬇️ Exportar Excel</button>
+        </div>
+        <div id="almContainer">
+          <div class="empty-state"><div class="empty-icon">🏭</div><p>Sin datos cargados.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 8: CONFIGURACIÓN CLIENTES ========== -->
+    <div id="configClientes" class="view">
+      <div class="view-title">⚙️ Configuración de Clientes</div>
+
+      <div class="card" style="padding:14px 16px;">
+        <div class="view-toolbar">
+          <input type="text" id="configSearch" class="search-input" placeholder="🔍 Buscar cliente..." oninput="renderConfigClientes()" style="max-width:240px;">
+          <input type="file" id="configFile" accept=".xlsx,.xls,.json" style="display:none" onchange="importarConfigClientes(this.files[0])">
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('configFile').click()">📂 Importar configuración</button>
+          <button class="btn btn-success btn-sm" onclick="exportarConfigClientes()">⬇️ Exportar configuración</button>
+          <button class="btn btn-primary btn-sm" onclick="recalcularPlanConConfig()">↻ Recalcular planificación</button>
+          <span id="configResumen" class="badge badge-pend">0 configurados</span>
+        </div>
+      </div>
+
+      <div class="config-grid">
+        <div class="config-client-list" id="configClientList">
+          <div class="empty-state"><div class="empty-icon">⚙️</div><p>Carga una planificación para configurar clientes.</p></div>
+        </div>
+
+        <div class="card" id="configEditor">
+          <div class="empty-state"><div class="empty-icon">👈</div><p>Selecciona un cliente para editar sus reglas operativas.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 9: SOLICITUDES A ALMACÉN ========== -->
+    <div id="solicitudesAlmacen" class="view">
+      <div class="view-title">📦 Solicitudes a Almacén</div>
+
+      <div class="card" style="border-left:4px solid var(--secondary);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:22px;">📦</span>
+          <div>
+            <div class="card-title" style="margin-bottom:0;color:var(--secondary);">Calendario de solicitudes a almacén</div>
+            <div style="font-size:12px;color:var(--muted);">La importación se realiza desde “Importar datos”. Aquí solo visualizas, filtras y exportas.</div>
+          </div>
+        </div>
+        <div class="view-toolbar">
+          <input type="text" id="solSearch" class="search-input" placeholder="🔍 Buscar código, cliente o solicitud..." oninput="renderSolicitudesAlmacen()" style="max-width:280px;">
+          <button class="btn btn-outline btn-sm" onclick="exportarSolicitudesAlmacenExcel()">⬇️ Exportar</button>
+          <span id="solicitudesResumen" class="badge badge-pend">Sin archivo</span>
+        </div>
+      </div>
+
+      <div id="solicitudesContainer">
+        <div class="empty-state"><div class="empty-icon">📦</div><p>Carga el archivo de solicitudes para verlas agrupadas por cliente.</p></div>
+      </div>
+    </div>
+
+  </div><!-- #content -->
+</div><!-- #mainLayout -->
+
+<!-- MODAL: MOVER CLIENTE -->
+<div id="moveModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">📦 Mover Cliente</div>
+    <div id="moveModalClienteNombre" style="font-weight:600;margin-bottom:12px;color:var(--text);font-size:14px;"></div>
+
+    <label class="modal-label">Nueva Fecha</label>
+    <select id="moveFecha" class="modal-select"></select>
+
+    <label class="modal-label">Asignar a</label>
+    <select id="moveCamion" class="modal-select">
+      <option value="CAMION 1">Camión 1</option>
+      <option value="CAMION 2">Camión 2</option>
+      <option value="ALMACEN">Almacén</option>
+    </select>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="cerrarMoveModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarMover()">✅ Mover</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: NOTA / INCIDENCIA -->
+<div id="notaModal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title">📝 Nota / Incidencia</div>
+    <div id="notaModalNombre" style="font-weight:600;margin-bottom:12px;font-size:14px;"></div>
+    <label class="modal-label">Nota</label>
+    <textarea id="notaInput" class="nota-input" placeholder="Escribe una nota..."></textarea>
+    <label class="modal-label" style="margin-top:8px;">Incidencia</label>
+    <textarea id="incidenciaInput" class="nota-input" placeholder="Describe la incidencia (si aplica)..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="document.getElementById('notaModal').classList.remove('show')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarNota()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ===================== ESTADO GLOBAL =====================
+const APP = {
+  // Planificación inicial (cargada una vez al inicio de semana)
+  planLoaded: false, planFecha: null,
+  planificacion: [],           // Clientes con montos originales del plan
+  // Control diario (actualizado cada tarde con el cierre SAP)
+  controlLoaded: false, controlFecha: null,
+  controlDiario: [],           // Snapshot del cierre del día
+  // Estado operativo
+  sapLoaded: false, sapColumns: [], sapRawData: [],
+  clientes: [], facturas: [],
+  rutas: {}, rutaStatus: {},
+  queueSemana: [],
+  solicitudesAlmacen: [], solicitudesLoaded: false, solicitudesFileName: '',
+  clienteConfig: {}, configClienteSel: null,
+  calMeses: [], calMesIdx: 0, calSemanas: [], calSemanaIdx: 0,
+  rutaFecha: null,
+  dragCliente: null, dragQueue: null, moveCliente: null,
+  filtroSector: 'Todos', filtroCom: 'todas',
+  filtroComZona: 'todas', filtroComEstado: 'todos', filtroComOrden: 'total_desc'
+};
+
+const DATA_STATE_KEYS = [
+  'planLoaded','planFecha','planificacion',
+  'controlLoaded','controlFecha','controlDiario',
+  'sapLoaded','sapColumns','sapRawData',
+  'clientes','facturas','rutas','rutaStatus',
+  'queueSemana',
+  'solicitudesAlmacen','solicitudesLoaded','solicitudesFileName',
+  'clienteConfig','configClienteSel',
+  'calMeses','calMesIdx','calSemanas','calSemanaIdx',
+  'rutaFecha',
+  'filtroSector','filtroCom','filtroComZona','filtroComEstado','filtroComOrden'
+];
+
+// ===================== DATOS DEMO =====================
+const DEMO_DATA = [];
+
+// ===================== UTILIDADES =====================
+function formatMonto(n) {
+  if (!n && n !== 0) return 'RD$ 0';
+  return 'RD$ ' + Math.round(n).toLocaleString('es-DO');
+}
+
+function normalizarFecha(val) {
+  if (!val && val !== 0) return fechaToStr(new Date());
+  if (val instanceof Date && !isNaN(val)) {
+    return val.getDate().toString().padStart(2,'0') + '/' +
+           (val.getMonth()+1).toString().padStart(2,'0') + '/' +
+           val.getFullYear();
+  }
+  if (typeof val === 'number') {
+    const d = new Date(Math.round((val - 25569) * 86400000));
+    return d.getUTCDate().toString().padStart(2,'0') + '/' +
+           (d.getUTCMonth()+1).toString().padStart(2,'0') + '/' +
+           d.getUTCFullYear();
+  }
+  const s = String(val).trim();
+  if (/^\d{1,2}\/\d{1,2}(\/\d{4})?$/.test(s)) {
+    const p = s.split('/');
+    return p[0].padStart(2,'0') + '/' + p[1].padStart(2,'0') + '/' + (p[2] || '2026');
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const p = s.split('T')[0].split('-');
+    return p[2] + '/' + p[1] + '/' + p[0];
+  }
+  return s;
+}
+
+function fechaToDate(f) {
+  if (!f) return new Date();
+  const p = f.split('/');
+  return new Date(parseInt(p[2]||2026), parseInt(p[1]||1)-1, parseInt(p[0]||1));
+}
+
+function fechaLabel(f) {
+  if (!f) return '';
+  const d = fechaToDate(f);
+  const dias = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  return dias[d.getDay()] + ' ' + d.getDate();
+}
+
+function calcDist(lat1,lon1,lat2,lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+            Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+            Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function asignarCamionPorZona(zona) {
+  const z = (zona||'').toUpperCase();
+  if (['LA ROMANA','CAP CANA','EL SEIBO','HIGUEY','SAMANA'].some(x => z.includes(x))) return 'CAMION 2';
+  return 'CAMION 1';
+}
+
+// Suma días laborables (lunes a viernes) a una fecha
+function sumarDiasLaborables(fechaBase, n) {
+  const d = new Date(fechaBase.getTime());
+  let added = 0;
+  while (added < n) {
+    d.setDate(d.getDate() + 1);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) added++;
+  }
+  return d;
+}
+
+function fechaToStr(d) {
+  return String(d.getDate()).padStart(2,'0') + '/' +
+         String(d.getMonth()+1).padStart(2,'0') + '/' +
+         d.getFullYear();
+}
+
+function textoPlano(v) {
+  return String(v || '').trim();
+}
+
+function boolFromVal(v) {
+  const s = String(v || '').trim().toLowerCase();
+  return ['si','sí','true','1','x','yes'].includes(s);
+}
+
+function getClienteConfig(codigo) {
+  return APP.clienteConfig[codigo] || {
+    codigo,
+    nota: '',
+    camionPermitido: 'CUALQUIERA',
+    noMiercoles: false,
+    noUltimaSemana: false
+  };
+}
+
+function esUltimaSemanaDelMes(fechaStr) {
+  const d = fechaToDate(fechaStr);
+  const plus7 = new Date(d.getTime());
+  plus7.setDate(plus7.getDate() + 7);
+  return plus7.getMonth() !== d.getMonth();
+}
+
+function camionPermitidoPorConfig(cliente, camDefault) {
+  const cfg = getClienteConfig(cliente.codigo);
+  if (cfg.camionPermitido === 'CAMION 1' || cfg.camionPermitido === 'CAMION 2' || cfg.camionPermitido === 'ALMACEN') {
+    return cfg.camionPermitido;
+  }
+  return camDefault;
+}
+
+function clientePuedeFecha(cliente, fechaStr) {
+  const cfg = getClienteConfig(cliente.codigo);
+  const d = fechaToDate(fechaStr);
+  if (cfg.noMiercoles && d.getDay() === 3) return false;
+  if (cfg.noUltimaSemana && esUltimaSemanaDelMes(fechaStr)) return false;
+  return true;
+}
+
+function aplicarConfigACliente(cliente) {
+  const cfg = getClienteConfig(cliente.codigo);
+  cliente.configNota = cfg.nota || '';
+  if (cfg.camionPermitido && cfg.camionPermitido !== 'CUALQUIERA') cliente.camion = cfg.camionPermitido;
+  return cliente;
+}
+
+function clonarCliente(c) {
+  return {
+    id: c.id,
+    codigo: c.codigo,
+    nombre: c.nombre,
+    razonSocial: c.razonSocial || c.nombre,
+    pedido: c.pedido || '',
+    monto: c.monto || 0,
+    pendienteFacturar: c.pendienteFacturar || c.pf || 0,
+    totalPendiente: c.totalPendiente || ((c.monto || 0) + (c.pendienteFacturar || c.pf || 0)),
+    cantidadPedidos: c.cantidadPedidos || 1,
+    entregado: c.entregado || 0,
+    cumplimiento: c.cumplimiento || 0,
+    fecha: c.fecha,
+    camion: c.camion || 'CAMION 1',
+    zona: c.zona || inferirZona(c.nombre, c.codigo),
+    sector: c.sector || c.zona || inferirZona(c.nombre, c.codigo),
+    ubicacion: c.ubicacion || '',
+    lat: c.lat === 0 ? 0 : (c.lat || null),
+    lon: c.lon === 0 ? 0 : (c.lon || null),
+    mapeado: !!c.mapeado,
+    cumplida: !!c.cumplida,
+    nota: c.nota || '',
+    incidencia: c.incidencia || '',
+    configNota: c.configNota || '',
+    manualProgramado: !!c.manualProgramado,
+    origenQueue: !!c.origenQueue,
+    queueId: c.queueId || ''
+  };
+}
+
+function makeQueueId(c) {
+  return [
+    c.codigo || '',
+    c.solicitud || '',
+    c.pedido || '',
+    c.fechaControl || APP.controlFecha || '',
+    Math.round(c.monto || 0),
+    Math.round(c.pf || 0)
+  ].join('|');
+}
+
+function proximoLunesDesde(fechaStr) {
+  const d = fechaToDate(fechaStr);
+  const dow = d.getDay();
+  const daysUntilMonday = dow === 0 ? 1 : (8 - dow);
+  d.setDate(d.getDate() + daysUntilMonday);
+  return fechaToStr(d);
+}
+
+function fechaInicioPlanificacion(fechaReporte) {
+  const d = fechaToDate(fechaReporte);
+  const dow = d.getDay();
+  // Si se prepara el jueves/viernes o durante el fin de semana, planificar la semana siguiente.
+  if (dow === 4 || dow === 5 || dow === 6 || dow === 0) return proximoLunesDesde(fechaReporte);
+  return fechaReporte;
+}
+
+function generarFechasLaborablesDesde(fechaInicioStr, cantidad) {
+  const fechas = [];
+  const d = fechaToDate(fechaInicioStr);
+  while (fechas.length < cantidad) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) fechas.push(fechaToStr(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return fechas;
+}
+
+function fechasPlanMasFuturas() {
+  const actuales = [...new Set(APP.clientes.map(x => x.fecha))].sort((a,b)=>fechaToDate(a)-fechaToDate(b));
+  const base = actuales.length ? actuales[actuales.length - 1] : (APP.planFecha || fechaToStr(new Date()));
+  const start = fechaToDate(base);
+  start.setDate(start.getDate() + 1);
+  const futuras = generarFechasLaborablesDesde(fechaToStr(start), 15);
+  return [...new Set([...actuales, ...futuras])].sort((a,b)=>fechaToDate(a)-fechaToDate(b));
+}
+
+function lunesDeSemana(fechaStr) {
+  const d = fechaToDate(fechaStr);
+  const dow = d.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+function semanaLaborableDesde(lunes) {
+  const dias = [];
+  const d = new Date(lunes.getTime());
+  for (let i = 0; i < 5; i++) {
+    dias.push(fechaToStr(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return dias;
+}
+
+function construirSemanasCalendario() {
+  const fechasBase = fechasPlanMasFuturas();
+  const keys = new Set();
+  fechasBase.forEach(f => keys.add(fechaToStr(lunesDeSemana(f))));
+  const semanas = [...keys].sort((a,b)=>fechaToDate(a)-fechaToDate(b)).map(lunesStr => {
+    const lunes = fechaToDate(lunesStr);
+    const dias = semanaLaborableDesde(lunes);
+    return {
+      key: lunesStr,
+      nombre: fechaLabel(dias[0]) + ' ' + dias[0] + ' - ' + fechaLabel(dias[4]) + ' ' + dias[4],
+      mesNombre: new Intl.DateTimeFormat('es-DO', {month:'long', year:'numeric'}).format(fechaToDate(dias[0])),
+      dias
+    };
+  });
+  return semanas;
+}
+
+function preservarProgramadosManuales(clientesNuevos, fechaNuevoPlan) {
+  const protegidos = APP.clientes.filter(c => c.manualProgramado).map(clonarCliente);
+  if (protegidos.length === 0) return clientesNuevos;
+  let nextId = clientesNuevos.reduce((m,c)=>Math.max(m,c.id||0),0) + 1;
+
+  protegidos.forEach(manual => {
+    const fechaManual = fechaToDate(manual.fecha);
+    const fechaPlan = fechaToDate(fechaNuevoPlan);
+
+    if (manual.origenQueue) {
+      if (fechaManual >= fechaPlan) {
+        const yaExiste = clientesNuevos.some(c => c.queueId && c.queueId === manual.queueId);
+        if (!yaExiste) {
+          manual.id = nextId++;
+          clientesNuevos.push(manual);
+        }
+      }
+      return;
+    }
+
+    const nuevo = clientesNuevos.find(c => c.codigo === manual.codigo && (!manual.pedido || c.pedido === manual.pedido));
+    if (nuevo) {
+      nuevo.fecha = manual.fecha;
+      nuevo.camion = manual.camion;
+      nuevo.manualProgramado = true;
+      nuevo.origenQueue = manual.origenQueue;
+      nuevo.nota = manual.nota || nuevo.nota || '';
+      nuevo.incidencia = manual.incidencia || nuevo.incidencia || '';
+      nuevo.cumplida = manual.cumplida || false;
+    } else {
+      if (fechaManual >= fechaPlan) {
+        manual.id = nextId++;
+        clientesNuevos.push(manual);
+      }
+    }
+  });
+  return clientesNuevos;
+}
+
+// Distribuye clientes en N días laborables a partir de fechaInicio.
+// Agrupa por zona (para mantener rutas geográficas juntas) y balancea el monto total por día.
+function distribuirClientesEnSemana(clientes, fechaInicioStr, numDias) {
+  if (clientes.length === 0) return clientes;
+  numDias = numDias || 5;
+  const base = fechaToDate(fechaInicioStr);
+
+  // Generar lista de fechas (días laborables)
+  const fechas = [];
+  const primero = new Date(base.getTime());
+  // Si el día base cae en fin de semana, mover al siguiente lunes
+  while (primero.getDay() === 0 || primero.getDay() === 6) {
+    primero.setDate(primero.getDate() + 1);
+  }
+  fechas.push(fechaToStr(primero));
+  for (let i = 1; i < numDias; i++) {
+    fechas.push(fechaToStr(sumarDiasLaborables(primero, i)));
+  }
+
+  // Agrupar por zona y ordenar zonas por peso total (descendente)
+  const porZona = {};
+  clientes.forEach(c => {
+    const z = c.zona || 'SIN ZONA';
+    if (!porZona[z]) porZona[z] = [];
+    porZona[z].push(c);
+  });
+  const zonasOrden = Object.keys(porZona).sort((a,b) => {
+    const sa = porZona[a].reduce((s,c)=>s+c.totalPendiente,0);
+    const sb = porZona[b].reduce((s,c)=>s+c.totalPendiente,0);
+    return sb - sa;
+  });
+
+  // Carga acumulada por día para balancear (monto × camión)
+  const carga = {};
+  fechas.forEach(f => carga[f] = {'CAMION 1':0, 'CAMION 2':0});
+
+  // Asignar cada zona completa al día con menor carga en su camión preferido
+  zonasOrden.forEach(zona => {
+    // Ordenar clientes de la zona por monto descendente
+    const ordenados = porZona[zona].slice().sort((a,b)=>b.totalPendiente-a.totalPendiente);
+
+    ordenados.forEach(c => {
+      const cam = camionPermitidoPorConfig(c, asignarCamionPorZona(zona));
+      aplicarConfigACliente(c);
+      // Elegir el día con menor carga acumulada en este camión
+      let mejorFecha = fechas[0];
+      let mejorCarga = Infinity;
+      fechas.forEach(f => {
+        if (!clientePuedeFecha(c, f)) return;
+        if (!carga[f][cam]) carga[f][cam] = 0;
+        if (carga[f][cam] < mejorCarga) {
+          mejorCarga = carga[f][cam];
+          mejorFecha = f;
+        }
+      });
+      if (!clientePuedeFecha(c, mejorFecha)) {
+        mejorFecha = fechas.find(f => clientePuedeFecha(c, f)) || fechas[0];
+      }
+      c.fecha  = mejorFecha;
+      c.camion = cam;
+      if (!carga[mejorFecha][cam]) carga[mejorFecha][cam] = 0;
+      carga[mejorFecha][cam] += c.totalPendiente;
+    });
+  });
+
+  return clientes;
+}
+
+// ===================== NAVEGACIÓN =====================
+function cambiarVista(id, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+  if (btn) btn.classList.add('active');
+  // Inicializar vistas al activarlas
+  if (id === 'dashboard') actualizarDashboard();
+  if (id === 'calendario') renderCalendario();
+  if (id === 'rutas') renderRutas();
+  if (id === 'comercial') renderComercial();
+  if (id === 'configClientes') renderConfigClientes();
+  if (id === 'solicitudesAlmacen') renderSolicitudesAlmacen();
+  if (id === 'almacen') renderAlmacen();
+  if (id === 'reportes') { /* dejar que el usuario genere */ }
+}
+
+// ===================== IMPORTAR SAP =====================
+
+// Extrae fecha del nombre del archivo SAP (ej: "Exportac. 12.04.2026 15.01.21")
+function extraerFechaDeNombreArchivo(nombre) {
+  // Busca patron DD.MM.YYYY en el nombre de la hoja o del archivo
+  const m = (nombre||'').match(/(\d{2})\.(\d{2})\.(\d{4})/);
+  if (m) return m[1] + '/' + m[2] + '/' + m[3];
+  return null;
+}
+
+// Zona por nombre de cliente (heurística para RD)
+function inferirZona(nombre, codigo) {
+  const n = (nombre||'').toUpperCase();
+  if (['LA ROMANA','CASA DE CAMPO','HILTON LA ROMANA','HAMACA'].some(x => n.includes(x))) return 'LA ROMANA';
+  if (['CAP CANA','HYATT ZIVA','HYATT ZILARA','JUANILLO'].some(x => n.includes(x))) return 'CAP CANA';
+  if (['SAMANA','PORTILLO','CAYO LEVANTADO','EL CATEY'].some(x => n.includes(x))) return 'SAMANA';
+  if (['UVERO','SIRENIS','PRINCESS','CARIBE CLUB'].some(x => n.includes(x))) return 'UVERO ALTO';
+  if (['BARCELO','BARCELÓ','GRAND RESORT','RIU BAMBU','RIU NAIBOA'].some(x => n.includes(x))) return 'BAVARO';
+  if (['PUNTA CANA','MELIA PUNTA','EXCELLENCE DEL','NOW ONYX','BREATHLESS','DREAMS'].some(x => n.includes(x))) return 'PUNTA CANA';
+  if (['MELIA CARIBE','IBEROSTAR','PALLADIUM','RIU PALACE BAVARO','ROYALTON','HARD ROCK',
+       'MAJESTIC','CATALONIA','BAHIA','SECRETS','SUNSCAPE','GRAND BAHIA','HAVEN',
+       'CLUB MED','WYNDHAM','GRAND CANA','CORAL LEVEL','ZEL','PARADISUS'].some(x => n.includes(x))) return 'BAVARO';
+  return 'BAVARO'; // default
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parsea un archivo SAP y devuelve un Map<codigo, {codigo,nombre,monto,pf,...}>
+// ─────────────────────────────────────────────────────────────────────────────
+function parsearSAP(arrayBuffer, fileName) {
+  const data = new Uint8Array(arrayBuffer);
+  const wb   = XLSX.read(data, {type:'array', cellDates:true});
+  const sheetName = wb.SheetNames[0];
+  const ws   = wb.Sheets[sheetName];
+  const fechaDelReporte = extraerFechaDeNombreArchivo(sheetName)
+                       || extraerFechaDeNombreArchivo(fileName)
+                       || normalizarFecha(null);
+  const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+
+  const mapa = new Map();
+  const fechasDetectadas = [];
+  rows.forEach(row => {
+    const codigo = String(row['Cliente']||row['Codigo']||row['Código']||row['Code']||'').trim();
+    const nombre = String(row['Nombre Comercial']||row['Nombre']||row['Cliente Nombre']||'').trim();
+    if (!codigo || !nombre) return;
+    if (!codigo.match(/^[A-Z]{2,4}\d{3,}/)) return;
+
+    const monto = parseFloat(row['Importe confirmado no entregado']
+                           ||row['Importe Confirmado No Entregado']
+                           ||row['Confirmado No Entregado']||0)||0;
+    const pf    = parseFloat(row['Importe entregado no facturado']
+                           ||row['Importe Entregado No Facturado']
+                           ||row['Pendiente de Facturar']
+                           ||row['Pendiente Facturar']
+                           ||row['Pte Facturar']||0)||0;
+    const facturado = parseFloat(row['Importe facturado']||0)||0;
+    const pedidoNum = row['Pedido de cliente']||row['Pedido']||'';
+    const fechaRaw = row['Fecha'] || row['Fecha Entrega'] || row['Fecha de entrega'] || row['Fecha de envío planificada'] || row['Fecha de envio planificada'] || '';
+    if (fechaRaw || fechaRaw === 0) fechasDetectadas.push(normalizarFecha(fechaRaw));
+
+    if (mapa.has(codigo)) {
+      const c = mapa.get(codigo);
+      c.monto         += monto;
+      c.pf            += pf;
+      c.facturado     += facturado;
+      c.totalPendiente = c.monto + c.pf;
+      if (pedidoNum) c.pedidosSet.add(String(pedidoNum));
+    } else {
+      mapa.set(codigo, {
+        codigo, nombre,
+        monto, pf, facturado,
+        totalPendiente: monto + pf,
+        pedidosSet: pedidoNum ? new Set([String(pedidoNum)]) : new Set(),
+        zona: inferirZona(nombre, codigo)
+      });
+    }
+  });
+  const fechaBase = fechasDetectadas.length
+    ? fechasDetectadas.sort((a,b) => fechaToDate(a) - fechaToDate(b))[0]
+    : fechaDelReporte;
+  return {mapa, fecha: fechaBase, sheetName};
+}
+
+// Abre el input del control diario (con validación de plan cargado)
+function abrirControlDiario() {
+  if (!APP.planLoaded) {
+    document.getElementById('ctrlSinPlan').style.display = 'block';
+    return;
+  }
+  document.getElementById('ctrlSinPlan').style.display = 'none';
+  document.getElementById('ctrlFile').click();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// procesarArchivo — modo 'plan' (planificación semanal) o 'control' (diario)
+// ─────────────────────────────────────────────────────────────────────────────
+function procesarArchivo(file, modo) {
+  if (!file) return;
+  modo = modo || 'plan';
+
+  const esPlan    = modo === 'plan';
+  const uploadZone    = document.getElementById(esPlan ? 'uploadZone'     : 'ctrlUploadZone');
+  const loadingEl     = document.getElementById(esPlan ? 'sapLoading'     : 'ctrlLoading');
+  const progressEl    = document.getElementById(esPlan ? 'sapProgressBar' : 'ctrlProgressBar');
+  const msgEl         = document.getElementById(esPlan ? 'sapLoadingMsg'  : 'ctrlLoadingMsg');
+  const bannerEl      = document.getElementById(esPlan ? 'sapSuccessBanner':'ctrlSuccessBanner');
+  const successMsgEl  = document.getElementById(esPlan ? 'sapSuccessMsg'  : 'ctrlSuccessMsg');
+  const fileInput     = document.getElementById(esPlan ? 'sapFile'        : 'ctrlFile');
+
+  if (fileInput) fileInput.value = '';
+  if (!esPlan && !APP.planLoaded) {
+    document.getElementById('ctrlSinPlan').style.display = 'block';
+    return;
+  }
+
+  uploadZone.style.display  = 'none';
+  bannerEl.style.display    = 'none';
+  loadingEl.style.display   = 'block';
+  progressEl.style.width    = '0%';
+  msgEl.textContent         = 'Leyendo archivo...';
+
+  let progress = 0;
+  const iv = setInterval(() => {
+    progress = Math.min(progress+8, 80);
+    progressEl.style.width = progress+'%';
+  }, 100);
+
+  const reader = new FileReader();
+  reader.onerror = () => {
+    clearInterval(iv);
+    loadingEl.style.display  = 'none';
+    uploadZone.style.display = 'block';
+    alert('Error al leer el archivo. Intenta de nuevo.');
+  };
+
+  reader.onload = function(e) {
+    try {
+      msgEl.textContent = 'Procesando datos SAP...';
+      const {mapa, fecha} = parsearSAP(e.target.result, file.name);
+      const fechaPlan = esPlan ? fechaInicioPlanificacion(fecha) : fecha;
+      clearInterval(iv);
+      progressEl.style.width = '100%';
+
+      if (esPlan) {
+        // ── MODO PLAN: reconstruir semana completa ──────────────────────────
+        const clientes = [];
+        let idSeq = 1;
+        mapa.forEach(c => {
+          if (c.monto <= 0 && c.pf <= 0) return;
+          clientes.push({
+            id: idSeq++,
+            codigo: c.codigo, nombre: c.nombre, razonSocial: c.nombre,
+            pedido: [...c.pedidosSet].join(', '),
+            monto: c.monto, pendienteFacturar: c.pf,
+            totalPendiente: c.totalPendiente,
+            cantidadPedidos: c.pedidosSet.size||1,
+            entregado:0, cumplimiento:0,
+            fecha: fechaPlan, camion: asignarCamionPorZona(c.zona),
+            zona: c.zona, sector: c.zona,
+            ubicacion:'', lat:null, lon:null, mapeado:false,
+            cumplida:false, nota:'', incidencia:''
+          });
+        });
+
+        if (clientes.length === 0) {
+          loadingEl.style.display  = 'none';
+          uploadZone.style.display = 'block';
+          alert('No se encontraron clientes con saldo pendiente.\n\nVerifica que el archivo sea un reporte SAP válido.');
+          return;
+        }
+
+        distribuirClientesEnSemana(clientes, fechaPlan, 5);
+        preservarProgramadosManuales(clientes, fechaPlan);
+
+        // Guardar planificación original (snapshot inmutable de montos)
+        APP.planificacion = clientes.map(c => ({...c}));
+        APP.planFecha     = fechaPlan;
+        APP.planLoaded    = true;
+        // Reiniciar control diario si había uno previo (nueva semana)
+        APP.controlDiario  = [];
+        APP.controlFecha   = null;
+        APP.controlLoaded  = false;
+        APP.queueSemana    = [];
+
+        APP.clientes  = clientes;
+        APP.sapLoaded = true;
+
+        buildCalStructure();
+        construirRutas();
+        actualizarDashboard();
+
+        setTimeout(() => {
+          loadingEl.style.display = 'none';
+          const zt = document.getElementById('uploadZoneText');
+          if (zt) zt.textContent = '✅ Planificación cargada — arrastra para reemplazar';
+          uploadZone.style.display    = 'block';
+          uploadZone.style.borderColor= 'var(--secondary)';
+          uploadZone.style.background = '#F0FAF4';
+          successMsgEl.textContent    = file.name+' — '+clientes.length+' clientes · Semana '+fechaPlan;
+          bannerEl.style.display      = 'flex';
+          actualizarEstadoBanner();
+          const hi = document.getElementById('sapHeaderInfo');
+          hi.textContent   = 'Plan: '+clientes.length+' clientes · Semana '+fechaPlan;
+          hi.style.display = 'inline-block';
+          geocodificarEnBackground();
+          guardarEnSupabase().catch(e => console.warn('Error guardando plan:', e));
+        }, 400);
+
+      } else {
+        // ── MODO CONTROL DIARIO: guardar snapshot y calcular diferencial ───
+        const control = [];
+        mapa.forEach(c => {
+          control.push({
+            codigo: c.codigo, nombre: c.nombre,
+            monto: c.monto, pf: c.pf,
+            facturado: c.facturado,
+            totalPendiente: c.totalPendiente
+          });
+        });
+
+        APP.controlDiario  = control;
+        APP.controlFecha   = fecha;
+        APP.controlLoaded  = true;
+        construirQueueSemana();
+
+        // Marcar cumplidas automáticamente: si en el control el cliente
+        // ya no tiene "Importe confirmado no entregado" → se entregó
+        APP.clientes.forEach(c => {
+          const ctrl = control.find(x => x.codigo === c.codigo);
+          if (ctrl) {
+            // Si el confirmado bajó respecto al plan → hubo entrega
+            const planC = APP.planificacion.find(p => p.codigo === c.codigo);
+            const montoOriginal = planC ? planC.monto : c.monto;
+            if (ctrl.monto < montoOriginal * 0.05) {
+              // Prácticamente todo entregado
+              c.cumplida = true;
+            }
+          }
+        });
+
+        actualizarDashboard();
+        renderCalendario();
+
+        setTimeout(() => {
+          loadingEl.style.display = 'none';
+          const zt = document.getElementById('ctrlUploadZoneText');
+          if (zt) zt.textContent = '✅ Control cargado — arrastra para actualizar';
+          uploadZone.style.display    = 'block';
+          uploadZone.style.borderColor= 'var(--secondary)';
+          uploadZone.style.background = '#F0FAF4';
+          successMsgEl.textContent    = 'Cierre '+fecha+' — '+control.length+' clientes procesados';
+          bannerEl.style.display      = 'flex';
+          actualizarEstadoBanner();
+          const hi = document.getElementById('sapHeaderInfo');
+          hi.textContent   = 'Plan: '+APP.clientes.length+' · Control: '+fecha;
+          hi.style.display = 'inline-block';
+          guardarEnSupabase().catch(e => console.warn('Error guardando control:', e));
+        }, 400);
+      }
+
+    } catch(err) {
+      clearInterval(iv);
+      loadingEl.style.display  = 'none';
+      uploadZone.style.display = 'block';
+      console.error('Error SAP:', err);
+      alert('Error al procesar el archivo SAP:\n'+err.message+'\n\nAsegúrate de que el archivo no esté abierto en Excel.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Actualiza el banner de estado en la parte superior de Importar
+function actualizarEstadoBanner() {
+  const banner = document.getElementById('sapEstadoBanner');
+  if (!banner) return;
+  banner.style.display = (APP.planLoaded || APP.controlLoaded) ? 'block' : 'none';
+  const planTxt = document.getElementById('planEstadoTxt');
+  const ctrlTxt = document.getElementById('ctrlEstadoTxt');
+  if (planTxt) planTxt.textContent = APP.planLoaded
+    ? APP.planificacion.length+' clientes · '+APP.planFecha
+    : 'No cargada';
+  if (ctrlTxt) ctrlTxt.textContent = APP.controlLoaded
+    ? APP.controlDiario.length+' clientes · '+APP.controlFecha
+    : 'Sin control diario';
+}
+
+// ===================== DEMO =====================
+function iniciarConDemo() {
+  alert('Los datos demo fueron deshabilitados. Importa una planificación real para comenzar.');
+}
+
+// ===================== CALENDARIO ESTRUCTURA =====================
+function buildCalStructure() {
+  const monthN = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const allF = [...new Set(APP.clientes.map(c => c.fecha))].sort(
+    (a,b) => fechaToDate(a) - fechaToDate(b)
+  );
+  const mesMap = new Map();
+  allF.forEach(f => {
+    const d = fechaToDate(f);
+    const key = String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+    if (!mesMap.has(key)) mesMap.set(key, {key, nombre: monthN[d.getMonth()] + ' ' + d.getFullYear(), dias: []});
+    mesMap.get(key).dias.push(f);
+  });
+  APP.calMeses = [...mesMap.values()].map(mes => {
+    const semanas = [];
+    for (let i = 0; i < mes.dias.length; i += 5) {
+      semanas.push({dias: mes.dias.slice(i, i+5)});
+    }
+    return {...mes, semanas};
+  });
+  const prevKey = APP.calSemanas && APP.calSemanas[APP.calSemanaIdx] ? APP.calSemanas[APP.calSemanaIdx].key : null;
+  APP.calSemanas = construirSemanasCalendario();
+  if (prevKey) {
+    const found = APP.calSemanas.findIndex(s => s.key === prevKey);
+    APP.calSemanaIdx = found >= 0 ? found : 0;
+  } else {
+    APP.calSemanaIdx = 0;
+  }
+  APP.calMesIdx = APP.calSemanaIdx;
+  construirRutas();
+}
+
+// ===================== RUTAS =====================
+function construirRutas() {
+  APP.rutas = {};
+  APP.clientes.forEach(c => {
+    if (!APP.rutas[c.fecha]) {
+      APP.rutas[c.fecha] = {'CAMION 1':[], 'CAMION 2':[], 'ALMACEN':[]};
+    }
+    const cam = c.camion || 'CAMION 1';
+    if (!APP.rutas[c.fecha][cam]) APP.rutas[c.fecha][cam] = [];
+    APP.rutas[c.fecha][cam].push(c);
+  });
+}
+
+// ===================== QUEUE SEMANAL =====================
+function construirQueueSemana() {
+  const asignadosPrevios = new Map(APP.queueSemana
+    .filter(q => q.asignado)
+    .map(q => [q.queueId || makeQueueId(q), {asignado:q.asignado, fechaAsignada:q.fechaAsignada, camionAsignado:q.camionAsignado}]));
+  const codigosPlan = new Set(APP.planificacion.map(c => c.codigo));
+  APP.queueSemana = APP.controlDiario
+    .filter(c => (c.monto || 0) > 0 || (c.pf || 0) > 0)
+    .map(c => {
+      const plan = APP.planificacion.find(p => p.codigo === c.codigo);
+      const qid = makeQueueId({...c, fechaControl: APP.controlFecha || ''});
+      const previo = asignadosPrevios.get(qid) || {};
+      return {
+        queueId: qid,
+        codigo: c.codigo,
+        nombre: plan ? plan.nombre : c.nombre,
+        monto: c.monto || 0,
+        pf: c.pf || 0,
+        totalPendiente: c.totalPendiente || ((c.monto || 0) + (c.pf || 0)),
+        planificado: codigosPlan.has(c.codigo),
+        fechaControl: APP.controlFecha || '',
+        zona: plan ? plan.zona : inferirZona(c.nombre, c.codigo),
+        camion: plan ? plan.camion : asignarCamionPorZona(inferirZona(c.nombre, c.codigo)),
+        asignado: !!previo.asignado,
+        fechaAsignada: previo.fechaAsignada || '',
+        camionAsignado: previo.camionAsignado || ''
+      };
+    })
+    .sort((a,b) => Number(a.planificado) - Number(b.planificado) || b.totalPendiente - a.totalPendiente);
+}
+
+function esFechaEnSemanaDePlan(fechaStr) {
+  if (!APP.planFecha) return true;
+  const f = fechaToDate(fechaStr);
+  const inicio = fechaToDate(APP.planFecha);
+  const fin = new Date(inicio.getTime());
+  fin.setDate(fin.getDate() + 6);
+  return f >= inicio && f <= fin;
+}
+
+function renderQueueSemana() {
+  const section = document.getElementById('queueSemanaSection');
+  const cont = document.getElementById('queueSemanaContainer');
+  const resumen = document.getElementById('queueSemanaResumen');
+  if (!section || !cont || !resumen) return;
+
+  if (!APP.controlLoaded || APP.queueSemana.length === 0) {
+    section.style.display = 'none';
+    cont.innerHTML = '';
+    return;
+  }
+
+  const visibles = APP.queueSemana
+    .map((q, idx) => ({q, idx}))
+    .filter(item => !item.q.asignado);
+  const searchEl = document.getElementById('calSearch');
+  const busqueda = (searchEl ? searchEl.value : '').toLowerCase();
+  const filtrados = visibles.filter(item => {
+    const q = item.q;
+    return !busqueda
+      || (q.nombre || '').toLowerCase().includes(busqueda)
+      || (q.codigo || '').toLowerCase().includes(busqueda)
+      || (q.zona || '').toLowerCase().includes(busqueda);
+  });
+
+  section.style.display = 'block';
+  const nuevos = filtrados.filter(item => !item.q.planificado).length;
+  resumen.textContent = filtrados.length + ' en queue · ' + nuevos + ' nuevos';
+
+  if (filtrados.length === 0) {
+    const msg = busqueda ? 'No hay elementos en QUEUE para ese filtro.' : 'No quedan elementos del cierre pendientes para esta semana.';
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">📥</div><p>${msg}</p></div>`;
+    return;
+  }
+
+  cont.innerHTML = `<div class="queue-grid">${filtrados.map(({q, idx}) => {
+    const cls = q.planificado ? 'queue-card-plan' : 'queue-card-new';
+    const badge = q.asignado
+      ? `<span class="badge badge-c1">Asignado ${q.fechaAsignada}</span>`
+      : q.planificado
+      ? '<span class="badge badge-ok">Ya planificado</span>'
+      : '<span class="badge badge-warn">Nuevo en cierre</span>';
+    return `<div class="queue-card ${cls}" draggable="true"
+      ondragstart="onDragStartQueue(event,${idx})"
+      ondragend="APP.dragQueue=null;this.classList.remove('dragging')">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+        <div>
+          <div class="queue-card-title">${q.nombre}</div>
+          <div class="queue-card-meta">${q.codigo} · ${q.zona || 'Sin zona'} · ${q.camion}</div>
+        </div>
+        ${badge}
+      </div>
+      <div class="queue-card-meta" style="margin-top:8px;">
+        Conf. no entregado: <strong>${formatMonto(q.monto)}</strong><br>
+        Pte. facturar: <strong>${formatMonto(q.pf)}</strong><br>
+        Total: <strong>${formatMonto(q.totalPendiente)}</strong>
+      </div>
+      <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="abrirMoveQueueModal(${idx})">Asignar fecha/camión</button>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// ===================== PLAN VS. REAL =====================
+let _chartPvR = null;
+
+function renderPlanVsReal() {
+  const pvr = document.getElementById('dashPlanVsReal');
+  if (!pvr) return;
+
+  if (!APP.planLoaded || !APP.controlLoaded) {
+    pvr.style.display = 'none';
+    return;
+  }
+  pvr.style.display = 'block';
+
+  document.getElementById('pvr_fecha').textContent = APP.controlFecha || '—';
+
+  // ── Calcular diferencial por cliente ───────────────────────────────────────
+  // Plan: APP.planificacion[].monto (importe confirmado al inicio)
+  // Control: APP.controlDiario[].monto (importe confirmado al cierre del día)
+  // Ejecutado = plan.monto - control.monto  (lo que ya no está pendiente)
+  // Si control no tiene al cliente → se entregó todo (ejecutado = plan.monto)
+
+  let totalPlanMonto  = 0;
+  let totalEjecutado  = 0;
+  let entregados      = 0;
+  let pendientesCount = 0;
+
+  const filas = APP.planificacion.map(plan => {
+    const ctrl = APP.controlDiario.find(x => x.codigo === plan.codigo);
+    const montoCtrl     = ctrl ? ctrl.monto        : 0;
+    const pfCtrl        = ctrl ? ctrl.pf           : 0;
+    const facturadoCtrl = ctrl ? ctrl.facturado     : plan.monto;
+    const ejecutado     = Math.max(0, plan.monto - montoCtrl);
+    const pct           = plan.monto > 0 ? Math.round(ejecutado/plan.monto*100) : 0;
+    const estado        = pct >= 95 ? 'Entregado' : pct > 0 ? 'Parcial' : 'Pendiente';
+
+    totalPlanMonto += plan.monto;
+    totalEjecutado += ejecutado;
+    if (estado === 'Entregado') entregados++;
+    else pendientesCount++;
+
+    return { plan, ejecutado, montoCtrl, pct, estado };
+  });
+
+  const pctGeneral = totalPlanMonto > 0 ? Math.round(totalEjecutado/totalPlanMonto*100) : 0;
+
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  document.getElementById('pvr_clientesPlan').textContent = APP.planificacion.length;
+  document.getElementById('pvr_entregados').textContent   = entregados;
+  document.getElementById('pvr_pendientes').textContent   = pendientesCount;
+  document.getElementById('pvr_ejecutado').textContent    = formatMonto(totalEjecutado);
+  document.getElementById('pvr_planMonto').textContent    = formatMonto(totalPlanMonto);
+  document.getElementById('pvr_pct').textContent          = pctGeneral+'%';
+
+  // Barra general
+  document.getElementById('pvr_bar').style.width       = Math.min(pctGeneral,100)+'%';
+  document.getElementById('pvr_barLabel').textContent  = pctGeneral+'%';
+  document.getElementById('pvr_barEjecutado').textContent = 'Ejecutado: '+formatMonto(totalEjecutado);
+  document.getElementById('pvr_barTotal').textContent     = 'Total plan: '+formatMonto(totalPlanMonto);
+
+  // ── Gráfico por camión ────────────────────────────────────────────────────
+  const camiones = ['CAMION 1','CAMION 2'];
+  const camLabels = ['Camión 1','Camión 2'];
+  const planPorCam = camiones.map(cam =>
+    APP.planificacion.filter(c=>c.camion===cam).reduce((s,c)=>s+c.monto,0)
+  );
+  const realPorCam = camiones.map((cam,i) => {
+    const planCam = APP.planificacion.filter(c=>c.camion===cam);
+    return planCam.reduce((s,plan) => {
+      const ctrl = APP.controlDiario.find(x=>x.codigo===plan.codigo);
+      return s + Math.max(0, plan.monto - (ctrl?ctrl.monto:0));
+    }, 0);
+  });
+
+  const ctxPvR = document.getElementById('chartPvR');
+  if (ctxPvR) {
+    if (_chartPvR) { _chartPvR.destroy(); _chartPvR = null; }
+    _chartPvR = new Chart(ctxPvR, {
+      type: 'bar',
+      data: {
+        labels: camLabels,
+        datasets: [
+          { label:'Plan',     data: planPorCam, backgroundColor:'rgba(27,79,114,0.25)', borderColor:'rgba(27,79,114,0.8)', borderWidth:2, borderRadius:4 },
+          { label:'Ejecutado',data: realPorCam, backgroundColor:'rgba(29,106,58,0.8)',  borderRadius:4 }
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{position:'top',labels:{font:{size:11},boxWidth:12}} },
+        scales:{
+          x:{ grid:{display:false}, ticks:{font:{size:11}} },
+          y:{ grid:{color:'#F0F0F0'}, ticks:{font:{size:10},
+            callback: v => v>=1000000?'RD$'+(v/1000000).toFixed(1)+'M':v>=1000?'RD$'+(v/1000).toFixed(0)+'K':'RD$'+v
+          }}
+        }
+      }
+    });
+  }
+
+  // ── Tabla detalle ─────────────────────────────────────────────────────────
+  const tablaDiv = document.getElementById('pvr_tabla');
+  if (tablaDiv) {
+    const rowsHtml = filas.map(({plan, ejecutado, montoCtrl, pct, estado}) => {
+      const estadoColor = estado==='Entregado'?'badge-ok':estado==='Parcial'?'badge-warn':'badge-pend';
+      const estadoIcon  = estado==='Entregado'?'✅':estado==='Parcial'?'🔄':'⏳';
+      const camBadge    = plan.camion==='CAMION 1'?'badge-c1':plan.camion==='CAMION 2'?'badge-c2':'badge-almacen';
+      const camLabel    = plan.camion==='CAMION 1'?'C1':plan.camion==='CAMION 2'?'C2':'Alm';
+      const barPct      = Math.min(pct,100);
+      const barColor    = pct>=95?'var(--secondary)':pct>0?'var(--warning)':'#E2E6EA';
+      return `<tr>
+        <td>${plan.codigo}</td>
+        <td><strong>${plan.nombre}</strong></td>
+        <td><span class="badge ${camBadge}">${camLabel}</span></td>
+        <td style="text-align:right;">${formatMonto(plan.monto)}</td>
+        <td style="text-align:right;color:var(--secondary);font-weight:600;">${formatMonto(ejecutado)}</td>
+        <td style="text-align:right;color:var(--muted);">${formatMonto(montoCtrl)}</td>
+        <td style="min-width:100px;">
+          <div style="background:#F0F0F0;border-radius:4px;height:8px;overflow:hidden;">
+            <div style="width:${barPct}%;height:100%;background:${barColor};border-radius:4px;"></div>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${pct}%</div>
+        </td>
+        <td><span class="badge ${estadoColor}">${estadoIcon} ${estado}</span></td>
+      </tr>`;
+    }).join('');
+
+    tablaDiv.innerHTML = `<table class="data-table">
+      <thead><tr>
+        <th>Código</th><th>Cliente</th><th>Camión</th>
+        <th style="text-align:right;">Plan</th>
+        <th style="text-align:right;">Ejecutado</th>
+        <th style="text-align:right;">Pendiente ctrl.</th>
+        <th>Avance</th><th>Estado</th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+  }
+}
+
+function exportarPlanVsRealExcel() {
+  if (!APP.planLoaded || !APP.controlLoaded) return;
+  const data = APP.planificacion.map(plan => {
+    const ctrl = APP.controlDiario.find(x=>x.codigo===plan.codigo);
+    const ejecutado = Math.max(0, plan.monto - (ctrl?ctrl.monto:0));
+    const pct = plan.monto > 0 ? Math.round(ejecutado/plan.monto*100) : 0;
+    return {
+      'Código':          plan.codigo,
+      'Cliente':         plan.nombre,
+      'Camión':          plan.camion,
+      'Zona':            plan.zona,
+      'Fecha Planif.':   plan.fecha,
+      'Monto Plan':      plan.monto,
+      'Ejecutado':       ejecutado,
+      'Pendiente Ctrl.': ctrl?ctrl.monto:plan.monto,
+      '% Avance':        pct+'%',
+      'Estado':          pct>=95?'Entregado':pct>0?'Parcial':'Pendiente'
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'PlanVsReal');
+  XLSX.writeFile(wb, 'RouteControl_PlanVsReal_'+( APP.controlFecha||'').replace(/\//g,'-')+'.xlsx');
+}
+
+// ===================== DASHBOARD =====================
+let _chartDias = null;
+let _chartCam  = null;
+
+function actualizarDashboard() {
+  const cl = APP.clientes;
+
+  // ── KPIs principales ──────────────────────────────────
+  document.getElementById('dashClientes').textContent   = cl.length;
+  document.getElementById('dashConfirmado').textContent = formatMonto(cl.reduce((s,c)=>s+c.monto,0));
+  document.getElementById('dashPendiente').textContent  = formatMonto(cl.reduce((s,c)=>s+c.pendienteFacturar,0));
+  document.getElementById('dashTotal').textContent      = formatMonto(cl.reduce((s,c)=>s+c.totalPendiente,0));
+  document.getElementById('dashRutas').textContent      = cl.filter(c=>c.camion).length;
+
+  // ── KPIs secundarios ──────────────────────────────────
+  const cumplidas   = cl.filter(c=>c.cumplida).length;
+  const pendientes  = cl.filter(c=>!c.cumplida && !c.incidencia).length;
+  const incidencias = cl.filter(c=>c.incidencia).length;
+  const c1Count     = cl.filter(c=>c.camion==='CAMION 1').length;
+  const c2Count     = cl.filter(c=>c.camion==='CAMION 2').length;
+  const diasCount   = new Set(cl.map(c=>c.fecha)).size;
+  const pctCump     = cl.length > 0 ? Math.round(cumplidas/cl.length*100) : 0;
+
+  document.getElementById('dashCumplidas').textContent   = cumplidas;
+  document.getElementById('dashPendientes').textContent  = pendientes;
+  document.getElementById('dashIncidencias').textContent = incidencias;
+  document.getElementById('dashC1').textContent          = c1Count;
+  document.getElementById('dashC2').textContent          = c2Count;
+  document.getElementById('dashDias').textContent        = diasCount;
+  document.getElementById('dashCumplimiento').textContent= pctCump + '%';
+
+  // ── Gráfico 1: Carga por día ───────────────────────────
+  const fechas = [...new Set(cl.map(c=>c.fecha))].sort((a,b)=>fechaToDate(a)-fechaToDate(b));
+  const montoC1PorDia  = fechas.map(f => cl.filter(c=>c.fecha===f&&c.camion==='CAMION 1').reduce((s,c)=>s+c.totalPendiente,0));
+  const montoC2PorDia  = fechas.map(f => cl.filter(c=>c.fecha===f&&c.camion==='CAMION 2').reduce((s,c)=>s+c.totalPendiente,0));
+  const labelesDias    = fechas.map(f => { const d=fechaToDate(f); const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']; return dias[d.getDay()]+' '+d.getDate(); });
+
+  const ctxDias = document.getElementById('chartDias');
+  if (ctxDias) {
+    if (_chartDias) { _chartDias.destroy(); _chartDias = null; }
+    _chartDias = new Chart(ctxDias, {
+      type: 'bar',
+      data: {
+        labels: labelesDias,
+        datasets: [
+          { label: 'Camión 1', data: montoC1PorDia, backgroundColor: 'rgba(27,79,114,0.8)', borderRadius: 4 },
+          { label: 'Camión 2', data: montoC2PorDia, backgroundColor: 'rgba(29,106,58,0.8)',  borderRadius: 4 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position:'top', labels:{font:{size:11},boxWidth:12} } },
+        scales: {
+          x: { stacked: true, grid:{display:false}, ticks:{font:{size:11}} },
+          y: { stacked: true, grid:{color:'#F0F0F0'}, ticks:{
+            font:{size:10},
+            callback: v => v>=1000000 ? 'RD$'+(v/1000000).toFixed(1)+'M' : v>=1000 ? 'RD$'+(v/1000).toFixed(0)+'K' : 'RD$'+v
+          }}
+        }
+      }
+    });
+  }
+
+  // ── Gráfico 2: Donut por camión ───────────────────────
+  const almCount = cl.filter(c=>c.camion==='ALMACEN').length;
+  const ctxCam = document.getElementById('chartCamiones');
+  if (ctxCam) {
+    if (_chartCam) { _chartCam.destroy(); _chartCam = null; }
+    _chartCam = new Chart(ctxCam, {
+      type: 'doughnut',
+      data: {
+        labels: ['Camión 1','Camión 2','Almacén'],
+        datasets: [{
+          data: [c1Count, c2Count, almCount],
+          backgroundColor: ['rgba(27,79,114,0.85)','rgba(29,106,58,0.85)','rgba(183,119,13,0.85)'],
+          borderWidth: 2, borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: { position:'bottom', labels:{font:{size:11},boxWidth:12,padding:8} },
+          tooltip: { callbacks: { label: ctx => ' '+ctx.label+': '+ctx.raw+' clientes' } }
+        }
+      }
+    });
+  }
+
+  // ── Top 10 clientes (barras CSS) ─────────────────────
+  const topDiv = document.getElementById('dashTopClientes');
+  if (topDiv) {
+    const top10 = [...cl].sort((a,b)=>b.totalPendiente-a.totalPendiente).slice(0,10);
+    const max = top10[0] ? top10[0].totalPendiente : 1;
+    topDiv.innerHTML = top10.map(c => {
+      const pct = Math.round(c.totalPendiente/max*100);
+      const camColor = c.camion==='CAMION 1'?'var(--c1)':c.camion==='CAMION 2'?'var(--c2)':'var(--calmacen)';
+      return `<div class="prog-row">
+        <div class="prog-label" title="${c.nombre}">${c.nombre}</div>
+        <div class="prog-bar-bg">
+          <div class="prog-bar-fill" style="width:${pct}%;background:${camColor};"></div>
+        </div>
+        <div class="prog-val">${formatMonto(c.totalPendiente)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Filtros de sector ────────────────────────────────
+  const zonas = ['Todos', ...new Set(cl.map(c=>c.zona||'').filter(z=>z))];
+  const fDiv  = document.getElementById('dashSectorFiltros');
+  fDiv.innerHTML = zonas.map(z =>
+    `<button class="filter-btn ${APP.filtroSector===z?'active':''}"
+      onclick="APP.filtroSector='${z}';actualizarTablaClientes('${z}');
+               document.querySelectorAll('#dashSectorFiltros .filter-btn').forEach(b=>b.classList.remove('active'));
+               this.classList.add('active')">${z}</button>`
+  ).join('');
+
+  actualizarTablaClientes(APP.filtroSector || 'Todos');
+
+  // Plan vs. Real (solo visible cuando hay control diario cargado)
+  renderPlanVsReal();
+}
+
+function actualizarTablaClientes(sector) {
+  APP.filtroSector = sector;
+  const q = (document.getElementById('dashSearch').value||'').toLowerCase();
+  let lista = APP.clientes;
+  if (sector && sector !== 'Todos') lista = lista.filter(c => c.zona === sector);
+  if (q) lista = lista.filter(c => c.nombre.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q));
+
+  const cont = document.getElementById('dashContent');
+  if (lista.length === 0) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>No hay resultados.</p></div>';
+    return;
+  }
+
+  const rows = lista.map(c => {
+    const camBadge = c.camion === 'CAMION 1' ? 'badge-c1' : c.camion === 'CAMION 2' ? 'badge-c2' : 'badge-almacen';
+    const camLabel = c.camion === 'CAMION 1' ? 'Camión 1' : c.camion === 'CAMION 2' ? 'Camión 2' : 'Almacén';
+    let estadoBadge = '<span class="badge badge-pend">🔄 Pendiente</span>';
+    if (c.cumplida) estadoBadge = '<span class="badge badge-ok">✅ Cumplida</span>';
+    else if (c.incidencia) estadoBadge = '<span class="badge badge-warn">⚠️ Incidencia</span>';
+    return `<tr>
+      <td>${c.codigo}</td>
+      <td><strong>${c.nombre}</strong></td>
+      <td>${c.fecha}</td>
+      <td><span class="badge ${camBadge}">${camLabel}</span></td>
+      <td>${formatMonto(c.monto)}</td>
+      <td>${formatMonto(c.pendienteFacturar)}</td>
+      <td><strong>${formatMonto(c.totalPendiente)}</strong></td>
+      <td>${estadoBadge}</td>
+    </tr>`;
+  }).join('');
+
+  cont.innerHTML = `<table class="data-table">
+    <thead><tr>
+      <th>Código</th><th>Cliente</th><th>Fecha</th><th>Camión</th>
+      <th>Monto</th><th>Pte. Facturar</th><th>Total</th><th>Estado</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ===================== CALENDARIO =====================
+function navCalMes(delta) {
+  APP.calSemanaIdx = Math.max(0, Math.min(APP.calSemanas.length - 1, APP.calSemanaIdx + delta));
+  APP.calMesIdx = APP.calSemanaIdx;
+  renderCalendario();
+}
+
+function renderCalendario() {
+  const calContainer = document.getElementById('calContainer');
+  const calMesNav = document.getElementById('calMesNav');
+  const calMesLabel = document.getElementById('calMesActualLabel');
+
+  if (!APP.calSemanas || APP.calSemanas.length === 0) {
+    calContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">📅</div><p>Sin datos cargados.</p></div>';
+    calMesNav.innerHTML = '';
+    calMesLabel.textContent = '—';
+    renderQueueSemana();
+    return;
+  }
+
+  calMesNav.innerHTML = APP.calSemanas.map((s,i) =>
+    `<button class="filter-btn ${i===APP.calSemanaIdx?'active':''}" onclick="APP.calSemanaIdx=${i};APP.calMesIdx=${i};renderCalendario()">Semana ${i+1}</button>`
+  ).join('');
+
+  const semana = APP.calSemanas[APP.calSemanaIdx];
+  calMesLabel.textContent = semana ? semana.mesNombre.replace(/^\w/, c => c.toUpperCase()) : '—';
+
+  const q = (document.getElementById('calSearch').value||'').toLowerCase();
+
+  let html = '';
+  if (semana) {
+    html += `<div style="font-size:13px;color:var(--muted);font-weight:700;margin:0 0 8px 2px;">Semana visible: ${semana.nombre}</div>`;
+    html += `<div class="cal-semana">`;
+    semana.dias.forEach(fecha => {
+      const rutas = APP.rutas[fecha] || {'CAMION 1':[],'CAMION 2':[],'ALMACEN':[]};
+      html += `<div class="cal-dia-col">
+        <div class="cal-dia-header">${fechaLabel(fecha)}<br><small style="font-weight:400;opacity:0.8;">${fecha}</small></div>`;
+
+      ['CAMION 1','CAMION 2','ALMACEN'].forEach(cam => {
+        const chClass = cam==='CAMION 1'?'ch-c1':cam==='CAMION 2'?'ch-c2':'ch-alm';
+        const cardClass = cam==='CAMION 1'?'cal-card-c1':cam==='CAMION 2'?'cal-card-c2':'cal-card-alm';
+        const camLabel = cam==='CAMION 1'?'🚚 C1':cam==='CAMION 2'?'🚛 C2':'🏭 Alm';
+        const clientes = (rutas[cam]||[]).filter(c =>
+          !q || c.nombre.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q)
+        );
+        const total = clientes.reduce((s,c)=>s+c.totalPendiente,0);
+
+        html += `<div class="cal-carril"
+          ondragover="event.preventDefault();this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="onDropCal(event,'${fecha}','${cam}',this)">
+          <span class="cal-carril-header ${chClass}">${camLabel} ${clientes.length>0?'('+clientes.length+')':''}</span>`;
+
+        clientes.forEach((c, idx) => {
+          const realIdx = (rutas[cam]||[]).indexOf(c);
+          const estado = c.cumplida ? '✅' : c.incidencia ? '⚠️' : '🔄';
+          html += `<div class="cal-card ${cardClass}"
+            draggable="true"
+            ondragstart="onDragStartCal(event,'${fecha}','${cam}',${realIdx})"
+            ondragend="this.classList.remove('dragging')">
+            <div class="cal-card-name">${c.nombre}</div>
+            <div class="cal-card-monto">${formatMonto(c.totalPendiente)}</div>
+            <div class="cal-card-actions">
+              <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;"
+                onclick="abrirMoveModal('${fecha}','${cam}',${realIdx})">✏️ Mover</button>
+              <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;"
+                onclick="toggleCumplida('${fecha}','${cam}',${realIdx})">${c.cumplida?'↩️':'✅'}</button>
+              <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;"
+                onclick="abrirNotaModal('${fecha}','${cam}',${realIdx})">📝</button>
+              <span>${estado}</span>
+            </div>
+          </div>`;
+        });
+
+        html += `</div>`; // cal-carril
+      });
+
+      html += `</div>`; // cal-dia-col
+    });
+    html += `</div>`; // cal-semana
+  }
+
+  calContainer.innerHTML = html;
+  renderQueueSemana();
+}
+
+// ===================== SUPABASE CONFIG =====================
+// ===================== SUPABASE CONFIG =====================
+const SUPA_URL = 'https://vbyrlgaygjqnzjwjaczh.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZieXJsZ2F5Z2pxbnpqd2phY3poIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3MzIzMTMsImV4cCI6MjA5MjMwODMxM30.I33Y9Ffri_98ofywusSJyo8pxYU85LULaq3HRfm0GJA';
+const SB = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+// ===================== AUTH =====================
+async function iniciarSesion() {
+  const email = (document.getElementById('loginEmail').value || '').trim();
+  const pass  = document.getElementById('loginPass').value;
+  const btn   = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginError');
+  if (!email || !pass) { errEl.textContent = 'Completa todos los campos.'; return; }
+  btn.disabled = true; btn.textContent = 'Entrando...'; errEl.textContent = '';
+  const { data, error } = await SB.auth.signInWithPassword({ email, password: pass });
+  if (error) {
+    errEl.textContent = 'Correo o contraseña incorrectos.';
+    btn.disabled = false; btn.textContent = 'Entrar →'; return;
+  }
+  mostrarApp(data.user);
+  await cargarDesdeSupabase();
+}
+
+async function cerrarSesion() {
+  await SB.auth.signOut();
+  location.reload();
+}
+
+function mostrarApp(user) {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appHeader').style.display   = 'flex';
+  document.getElementById('mainLayout').style.display  = 'flex';
+  const ub = document.getElementById('userBadge');
+  const ue = document.getElementById('userEmail');
+  if (ub) ub.style.display = 'flex';
+  if (ue && user) ue.textContent = user.email;
+}
+
+// ===================== CONVERSIÓN DE FECHAS =====================
+function fechaStrToISO(fechaStr) {
+  if (!fechaStr) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) return fechaStr;
+  const p = String(fechaStr).split('/');
+  if (p.length < 3) return null;
+  return p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0');
+}
+
+function isoToFechaStr(isoStr) {
+  if (!isoStr) return '';
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(isoStr)) return isoStr;
+  const p = String(isoStr).split('T')[0].split('-');
+  if (p.length < 3) return isoStr;
+  return p[2] + '/' + p[1] + '/' + p[0];
+}
+
+// ===================== MAPEO DB → APP =====================
+function dbRowToCliente(row) {
+  return {
+    id: row.id,
+    codigo: row.codigo,
+    nombre: row.nombre || '',
+    razonSocial: row.razon_social || row.nombre || '',
+    pedido: row.pedido || '',
+    monto: parseFloat(row.monto) || 0,
+    pendienteFacturar: parseFloat(row.pendiente_facturar) || 0,
+    totalPendiente: parseFloat(row.total_pendiente) || 0,
+    cantidadPedidos: parseInt(row.cantidad_pedidos) || 1,
+    entregado: parseFloat(row.entregado) || 0,
+    cumplimiento: parseFloat(row.cumplimiento) || 0,
+    fecha: isoToFechaStr(row.fecha),
+    camion: row.camion || 'CAMION 1',
+    zona: row.zona || '',
+    sector: row.sector || '',
+    ubicacion: row.ubicacion || '',
+    lat: row.lat ? parseFloat(row.lat) : null,
+    lon: row.lon ? parseFloat(row.lon) : null,
+    mapeado: !!row.mapeado,
+    cumplida: !!row.cumplida,
+    nota: row.nota || '',
+    incidencia: row.incidencia || '',
+    configNota: row.config_nota || '',
+    manualProgramado: !!row.manual_programado,
+    origenQueue: !!row.origen_queue,
+    queueId: row.queue_id || ''
+  };
+}
+
+function dbRowToQueue(row) {
+  return {
+    queueId: row.queue_id,
+    codigo: row.codigo,
+    nombre: row.nombre || '',
+    pedido: row.pedido || '',
+    monto: parseFloat(row.monto) || 0,
+    pf: 0,
+    totalPendiente: parseFloat(row.monto) || 0,
+    zona: row.zona || '',
+    fechaAsignada: isoToFechaStr(row.fecha_asignada),
+    camionAsignado: row.camion_asignado || '',
+    asignado: !!row.asignado,
+    origen: row.origen || 'planificado'
+  };
+}
+
+function dbRowToSolicitud(row) {
+  return {
+    codigo: row.codigo,
+    cliente: row.nombre_destinatario || '',
+    solicitud: row.id_solicitud || '',
+    estadoComunicacion: row.estado_comunicacion || '',
+    estadoProceso: row.estado_procesamiento || '',
+    fechaLiberacion: isoToFechaStr(row.fecha_liberacion),
+    fechaFinalizada: isoToFechaStr(row.fecha_finalizada),
+    fechaEnvio: isoToFechaStr(row.fecha_envio_planificada),
+    ubicacion: row.ubicacion_procedencia || ''
+  };
+}
+
+// ===================== CARGAR DESDE SUPABASE =====================
+async function cargarDesdeSupabase() {
+  const { data: { user } } = await SB.auth.getUser();
+  if (!user) return;
+
+  const hi = document.getElementById('sapHeaderInfo');
+  if (hi) { hi.textContent = 'Cargando datos...'; hi.style.display = 'inline-block'; }
+
+  const [
+    { data: estado },
+    { data: planRows },
+    { data: ctrlRows },
+    { data: queueRows },
+    { data: solRows },
+    { data: cfgRows }
+  ] = await Promise.all([
+    SB.from('app_estado').select('*').eq('user_id', user.id).maybeSingle(),
+    SB.from('planificacion').select('*').eq('user_id', user.id).order('fecha'),
+    SB.from('control_diario').select('*').eq('user_id', user.id),
+    SB.from('queue_semana').select('*').eq('user_id', user.id),
+    SB.from('solicitudes_almacen').select('*').eq('user_id', user.id),
+    SB.from('cliente_config').select('*').eq('user_id', user.id)
+  ]);
+
+  if (estado) {
+    APP.planLoaded        = estado.plan_loaded || false;
+    APP.planFecha         = estado.plan_fecha  || null;
+    APP.controlLoaded     = estado.control_loaded || false;
+    APP.controlFecha      = estado.control_fecha  || null;
+    APP.solicitudesLoaded = estado.solicitudes_loaded || false;
+    APP.solicitudesFileName = estado.solicitudes_filename || '';
+  }
+
+  if (cfgRows && cfgRows.length > 0) {
+    APP.clienteConfig = {};
+    cfgRows.forEach(row => {
+      APP.clienteConfig[row.codigo] = {
+        codigo: row.codigo,
+        nota: row.notas || '',
+        camionPermitido: row.camion_permitido || 'CUALQUIERA',
+        noMiercoles: !!row.no_miercoles,
+        noUltimaSemana: !!row.no_ultima_semana
+      };
+    });
+  }
+
+  if (queueRows && queueRows.length > 0) {
+    APP.queueSemana = queueRows.map(dbRowToQueue);
+  }
+
+  if (solRows && solRows.length > 0) {
+    APP.solicitudesAlmacen = solRows.map(dbRowToSolicitud);
+  }
+
+  if (planRows && planRows.length > 0) {
+    APP.clientes     = planRows.map(dbRowToCliente);
+    APP.planificacion= APP.clientes.map(c => ({...c}));
+    APP.sapLoaded    = true;
+
+    if (ctrlRows && ctrlRows.length > 0) {
+      APP.controlDiario = ctrlRows.map(row => ({
+        codigo: row.codigo, nombre: row.nombre || '',
+        pedido: row.pedido || '',
+        monto: parseFloat(row.monto_confirmado) || 0,
+        montoEntregado: parseFloat(row.monto_entregado) || 0,
+        fecha: isoToFechaStr(row.fecha),
+        camion: row.camion || '', zona: row.zona || '',
+        cumplida: !!row.cumplida
+      }));
+    }
+
+    APP.dragCliente = null; APP.dragQueue = null; APP.moveCliente = null;
+    buildCalStructure();
+    construirRutas();
+    actualizarDashboard();
+    renderCalendario();
+    renderRutas();
+    renderAlmacen();
+    renderConfigClientes();
+    renderSolicitudesAlmacen();
+    actualizarEstadoBanner();
+    if (hi) {
+      hi.textContent   = 'Datos cargados · ' + APP.clientes.length + ' clientes';
+      hi.style.display = 'inline-block';
+    }
+  } else {
+    APP.planLoaded = false;
+    APP.controlLoaded = false;
+    APP.solicitudesLoaded = false;
+    APP.clientes = [];
+    APP.planificacion = [];
+    APP.controlDiario = [];
+    APP.queueSemana = [];
+    buildCalStructure();
+    construirRutas();
+    actualizarDashboard();
+    renderCalendario();
+    renderRutas();
+    renderAlmacen();
+    renderConfigClientes();
+    renderSolicitudesAlmacen();
+    if (hi) {
+      hi.textContent = 'Sin datos cargados';
+      hi.style.display = 'inline-block';
+    }
+  }
+}
+
+// ===================== AUTO-GUARDAR =====================
+let _autoSaveTimer = null;
+function scheduleAutoSave() {
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    guardarEnSupabase().catch(e => console.warn('AutoSave error:', e));
+  }, 3000);
+}
+
+// ===================== GUARDAR EN SUPABASE =====================
+async function guardarEnSupabase() {
+  const { data: { user } } = await SB.auth.getUser();
+  if (!user) return;
+
+  const btn = document.getElementById('saveStateBtn');
+  const origTxt = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Guardando...'; }
+
+  try {
+    const semanaKey = APP.planFecha
+      ? fechaStrToISO(APP.planFecha)
+      : new Date().toISOString().split('T')[0];
+
+    // 1. Planificación
+    await SB.from('planificacion').delete().eq('user_id', user.id);
+    if (APP.clientes.length > 0) {
+      const rows = APP.clientes.map(c => ({
+        user_id: user.id, semana_key: semanaKey,
+        codigo: c.codigo, nombre: c.nombre || '',
+        razon_social: c.razonSocial || c.nombre || '',
+        pedido: c.pedido || '',
+        monto: c.monto || 0,
+        pendiente_facturar: c.pendienteFacturar || 0,
+        total_pendiente: c.totalPendiente || 0,
+        cantidad_pedidos: c.cantidadPedidos || 1,
+        entregado: c.entregado || 0,
+        cumplimiento: c.cumplimiento || 0,
+        fecha: fechaStrToISO(c.fecha),
+        camion: c.camion || 'CAMION 1',
+        zona: c.zona || '', sector: c.sector || '',
+        ubicacion: c.ubicacion || '',
+        lat: c.lat || null, lon: c.lon || null,
+        mapeado: !!c.mapeado, cumplida: !!c.cumplida,
+        nota: c.nota || '', incidencia: c.incidencia || '',
+        config_nota: c.configNota || '',
+        manual_programado: !!c.manualProgramado,
+        origen_queue: !!c.origenQueue,
+        queue_id: c.queueId || ''
+      }));
+      for (let i = 0; i < rows.length; i += 100) {
+        await SB.from('planificacion').insert(rows.slice(i, i + 100));
+      }
+    }
+
+    // 2. Control diario
+    await SB.from('control_diario').delete().eq('user_id', user.id);
+    if (APP.controlDiario && APP.controlDiario.length > 0) {
+      const rows = APP.controlDiario.map(c => ({
+        user_id: user.id, semana_key: semanaKey,
+        codigo: c.codigo || '', nombre: c.nombre || '',
+        pedido: c.pedido || '',
+        monto_confirmado: c.monto || 0,
+        monto_entregado: c.montoEntregado || 0,
+        fecha: fechaStrToISO(c.fecha),
+        camion: c.camion || '', zona: c.zona || '',
+        cumplida: !!c.cumplida
+      }));
+      for (let i = 0; i < rows.length; i += 100) {
+        await SB.from('control_diario').insert(rows.slice(i, i + 100));
+      }
+    }
+
+    // 3. Queue semanal
+    await SB.from('queue_semana').delete().eq('user_id', user.id);
+    if (APP.queueSemana && APP.queueSemana.length > 0) {
+      const rows = APP.queueSemana.map(q => ({
+        user_id: user.id, semana_key: semanaKey,
+        queue_id: q.queueId || makeQueueId(q),
+        codigo: q.codigo || '', nombre: q.nombre || '',
+        pedido: q.pedido || '', monto: q.monto || 0,
+        zona: q.zona || '',
+        fecha_asignada: fechaStrToISO(q.fechaAsignada),
+        camion_asignado: q.camionAsignado || '',
+        asignado: !!q.asignado,
+        origen: q.origen || 'planificado'
+      }));
+      for (let i = 0; i < rows.length; i += 100) {
+        await SB.from('queue_semana').insert(rows.slice(i, i + 100));
+      }
+    }
+
+    // 4. Solicitudes almacén
+    await SB.from('solicitudes_almacen').delete().eq('user_id', user.id);
+    if (APP.solicitudesAlmacen && APP.solicitudesAlmacen.length > 0) {
+      const rows = APP.solicitudesAlmacen.map(s => ({
+        user_id: user.id,
+        estado_comunicacion: s.estadoComunicacion || '',
+        id_solicitud: s.solicitud || '',
+        estado_procesamiento: s.estadoProceso || '',
+        fecha_liberacion: fechaStrToISO(s.fechaLiberacion),
+        codigo: s.codigo || '',
+        nombre_destinatario: s.cliente || '',
+        fecha_finalizada: fechaStrToISO(s.fechaFinalizada),
+        fecha_envio_planificada: fechaStrToISO(s.fechaEnvio),
+        ubicacion_procedencia: s.ubicacion || ''
+      }));
+      for (let i = 0; i < rows.length; i += 100) {
+        await SB.from('solicitudes_almacen').insert(rows.slice(i, i + 100));
+      }
+    }
+
+    // 5. Config clientes (UPSERT)
+    const cfgEntries = Object.values(APP.clienteConfig);
+    if (cfgEntries.length > 0) {
+      await SB.from('cliente_config').delete().eq('user_id', user.id);
+      const rows = cfgEntries.map(cfg => ({
+        user_id: user.id,
+        codigo: cfg.codigo,
+        nombre: (APP.clientes.find(c => c.codigo === cfg.codigo) || {}).nombre || cfg.codigo,
+        camion_permitido: cfg.camionPermitido || 'CUALQUIERA',
+        no_miercoles: !!cfg.noMiercoles,
+        no_ultima_semana: !!cfg.noUltimaSemana,
+        notas: cfg.nota || ''
+      }));
+      await SB.from('cliente_config').insert(rows);
+    }
+
+    // 6. App estado
+    await SB.from('app_estado').upsert({
+      user_id: user.id,
+      plan_loaded: !!APP.planLoaded,
+      plan_fecha: APP.planFecha || '',
+      control_loaded: !!APP.controlLoaded,
+      control_fecha: APP.controlFecha || '',
+      solicitudes_loaded: !!APP.solicitudesLoaded,
+      solicitudes_filename: APP.solicitudesFileName || '',
+      semana_activa: semanaKey,
+      saved_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+
+    if (btn) { btn.textContent = '✅ Guardado'; }
+    setTimeout(() => { if (btn) { btn.textContent = origTxt; btn.disabled = false; } }, 2000);
+
+  } catch (err) {
+    console.error('Error guardando en Supabase:', err);
+    if (btn) { btn.textContent = '❌ Error — reintentando...'; }
+    setTimeout(() => { if (btn) { btn.textContent = origTxt; btn.disabled = false; } }, 3000);
+  }
+}
+
+function exportarCalendarioVisiblePDF() {
+  const el = document.getElementById('calExportArea');
+  if (!el || !APP.calSemanas || APP.calSemanas.length === 0) {
+    alert('No hay calendario visible para exportar.');
+    return;
+  }
+  const semana = APP.calSemanas[APP.calSemanaIdx];
+  const opt = {
+    margin: [8,8,8,8],
+    filename: 'RouteControl_Calendario_' + (semana ? semana.key.replace(/\//g,'-') : 'visible') + '.pdf',
+    image: {type:'jpeg',quality:0.95},
+    html2canvas: {scale:2,useCORS:true},
+    jsPDF: {unit:'mm',format:'a4',orientation:'landscape'}
+  };
+  html2pdf().set(opt).from(el).save();
+}
+
+function onDragStartCal(event, fecha, cam, idx) {
+  APP.dragCliente = {fecha, cam, idx};
+  APP.dragQueue = null;
+  event.dataTransfer.effectAllowed = 'move';
+  event.currentTarget.classList.add('dragging');
+}
+
+function onDragStartQueue(event, idx) {
+  APP.dragQueue = {idx};
+  APP.dragCliente = null;
+  event.dataTransfer.effectAllowed = 'move';
+  event.currentTarget.classList.add('dragging');
+}
+
+function onDropCal(event, fecha, cam, el) {
+  event.preventDefault();
+  el.classList.remove('drag-over');
+  if (APP.dragQueue) {
+    const {idx} = APP.dragQueue;
+    APP.dragQueue = null;
+    asignarQueueACalendario(idx, fecha, cam);
+    return;
+  }
+  if (!APP.dragCliente) return;
+  const {fecha:fOrig, cam:cOrig, idx} = APP.dragCliente;
+  APP.dragCliente = null;
+  if (fOrig === fecha && cOrig === cam) return;
+  moverCliente(fOrig, cOrig, idx, fecha, cam);
+}
+
+function asignarQueueACalendario(idx, fecha, cam) {
+  const q = APP.queueSemana[idx];
+  if (!q) return;
+  const qid = q.queueId || makeQueueId(q);
+  let c = APP.clientes.find(x => x.origenQueue && x.queueId === qid);
+  if (!c) {
+    c = {
+      id: APP.clientes.reduce((m,x)=>Math.max(m,x.id||0),0) + 1,
+      codigo: q.codigo,
+      nombre: q.nombre,
+      razonSocial: q.nombre,
+      pedido: 'QUEUE-' + (q.fechaControl || APP.controlFecha || '') + '-' + q.codigo,
+      monto: q.monto,
+      pendienteFacturar: q.pf,
+      totalPendiente: q.totalPendiente,
+      cantidadPedidos: 1,
+      entregado: 0,
+      cumplimiento: 0,
+      fecha,
+      camion: cam,
+      zona: q.zona,
+      sector: q.zona,
+      ubicacion: '',
+      lat: null,
+      lon: null,
+      mapeado: false,
+      cumplida: false,
+      nota: 'Asignado desde QUEUE',
+      incidencia: '',
+      manualProgramado: true,
+      origenQueue: true,
+      queueId: qid
+    };
+    aplicarConfigACliente(c);
+    APP.clientes.push(c);
+  }
+  c.fecha = fecha;
+  c.camion = cam;
+  c.manualProgramado = true;
+  c.origenQueue = true;
+  c.queueId = qid;
+  if (!c.nota) c.nota = 'Asignado desde QUEUE';
+  q.asignado = true;
+  q.fechaAsignada = fecha;
+  q.camionAsignado = cam;
+  buildCalStructure();
+  construirRutas();
+  const semanaKey = fechaToStr(lunesDeSemana(fecha));
+  const semanaIdx = APP.calSemanas.findIndex(s => s.key === semanaKey);
+  if (semanaIdx >= 0) {
+    APP.calSemanaIdx = semanaIdx;
+    APP.calMesIdx = semanaIdx;
+  }
+  actualizarDashboard();
+  renderCalendario();
+  renderRutas();
+  renderAlmacen();
+}
+
+// ===================== MOVER CLIENTE =====================
+function moverCliente(fecha, cam, idx, nf, nc) {
+  if (!APP.rutas[fecha] || !APP.rutas[fecha][cam]) return;
+  const c = APP.rutas[fecha][cam][idx];
+  if (!c) return;
+  APP.rutas[fecha][cam].splice(idx, 1);
+  if (!APP.rutas[nf]) APP.rutas[nf] = {'CAMION 1':[],'CAMION 2':[],'ALMACEN':[]};
+  if (!APP.rutas[nf][nc]) APP.rutas[nf][nc] = [];
+  APP.rutas[nf][nc].push(c);
+  c.fecha = nf;
+  c.camion = nc;
+  c.manualProgramado = true;
+  buildCalStructure();
+  construirRutas();
+  const semanaKey = fechaToStr(lunesDeSemana(nf));
+  const semanaIdx = APP.calSemanas.findIndex(s => s.key === semanaKey);
+  if (semanaIdx >= 0) {
+    APP.calSemanaIdx = semanaIdx;
+    APP.calMesIdx = semanaIdx;
+  }
+  renderCalendario();
+  renderRutas();
+  renderAlmacen();
+  scheduleAutoSave();
+}
+
+function abrirMoveModal(fecha, cam, idx) {
+  APP.moveCliente = {fecha, cam, idx};
+  APP.dragQueue = null;
+  const c = APP.rutas[fecha] && APP.rutas[fecha][cam] ? APP.rutas[fecha][cam][idx] : null;
+  if (!c) return;
+  document.getElementById('moveModalClienteNombre').textContent = c.nombre;
+
+  const fechas = fechasPlanMasFuturas();
+  const sel = document.getElementById('moveFecha');
+  sel.innerHTML = fechas.map(f => `<option value="${f}" ${f===fecha?'selected':''}>${f} (${fechaLabel(f)})</option>`).join('');
+  document.getElementById('moveCamion').value = cam;
+  document.getElementById('moveModal').classList.add('show');
+}
+
+function abrirMoveQueueModal(idx) {
+  const q = APP.queueSemana[idx];
+  if (!q) return;
+  APP.moveCliente = {queueIdx: idx};
+  APP.dragQueue = null;
+  document.getElementById('moveModalClienteNombre').textContent = q.nombre + ' · QUEUE';
+  const fechas = fechasPlanMasFuturas();
+  const sel = document.getElementById('moveFecha');
+  sel.innerHTML = fechas.map((f,i) => `<option value="${f}" ${i===0?'selected':''}>${f} (${fechaLabel(f)})</option>`).join('');
+  document.getElementById('moveCamion').value = q.camion || 'CAMION 1';
+  document.getElementById('moveModal').classList.add('show');
+}
+
+function cerrarMoveModal() {
+  document.getElementById('moveModal').classList.remove('show');
+  APP.moveCliente = null;
+  APP.dragQueue = null;
+}
+
+function confirmarMover() {
+  if (!APP.moveCliente) return;
+  if (APP.moveCliente.queueIdx !== undefined) {
+    const idx = APP.moveCliente.queueIdx;
+    const nf = document.getElementById('moveFecha').value;
+    const nc = document.getElementById('moveCamion').value;
+    cerrarMoveModal();
+    asignarQueueACalendario(idx, nf, nc);
+    return;
+  }
+  const {fecha, cam, idx} = APP.moveCliente;
+  const nf = document.getElementById('moveFecha').value;
+  const nc = document.getElementById('moveCamion').value;
+  cerrarMoveModal();
+  moverCliente(fecha, cam, idx, nf, nc);
+}
+
+function toggleCumplida(fecha, cam, idx) {
+  if (!APP.rutas[fecha] || !APP.rutas[fecha][cam]) return;
+  const c = APP.rutas[fecha][cam][idx];
+  if (!c) return;
+  c.cumplida = !c.cumplida;
+  renderCalendario();
+  renderRutas();
+  scheduleAutoSave();
+}
+
+function abrirNotaModal(fecha, cam, idx) {
+  APP.moveCliente = {fecha, cam, idx};
+  const c = APP.rutas[fecha] && APP.rutas[fecha][cam] ? APP.rutas[fecha][cam][idx] : null;
+  if (!c) return;
+  document.getElementById('notaModalNombre').textContent = c.nombre;
+  document.getElementById('notaInput').value = c.nota || '';
+  document.getElementById('incidenciaInput').value = c.incidencia || '';
+  document.getElementById('notaModal').classList.add('show');
+}
+
+function guardarNota() {
+  if (!APP.moveCliente) return;
+  const {fecha, cam, idx} = APP.moveCliente;
+  const c = APP.rutas[fecha] && APP.rutas[fecha][cam] ? APP.rutas[fecha][cam][idx] : null;
+  if (!c) return;
+  c.nota = document.getElementById('notaInput').value;
+  c.incidencia = document.getElementById('incidenciaInput').value;
+  document.getElementById('notaModal').classList.remove('show');
+  APP.moveCliente = null;
+  renderCalendario();
+  renderRutas();
+  scheduleAutoSave();
+}
+
+// ===================== RUTAS =====================
+function renderRutas() {
+  // Poblar select de días
+  const sel = document.getElementById('rutasDiaSelect');
+  const fechas = [...new Set(APP.clientes.map(c=>c.fecha))].sort((a,b)=>fechaToDate(a)-fechaToDate(b));
+  const prevVal = sel.value || APP.rutaFecha;
+  sel.innerHTML = '<option value="">-- Seleccionar fecha --</option>' +
+    fechas.map(f => `<option value="${f}" ${f===prevVal?'selected':''}>${f} — ${fechaLabel(f)}</option>`).join('');
+  if (!APP.rutaFecha && fechas.length > 0) {
+    APP.rutaFecha = fechas[0];
+    sel.value = APP.rutaFecha;
+  }
+
+  const cont = document.getElementById('rutasContainer');
+  if (!APP.rutaFecha || !APP.rutas[APP.rutaFecha]) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🚚</div><p>Selecciona una fecha para ver las rutas.</p></div>';
+    return;
+  }
+
+  const q = (document.getElementById('rutasSearch').value||'').toLowerCase();
+  const rutasDia = APP.rutas[APP.rutaFecha];
+
+  const cols = ['CAMION 1','CAMION 2','ALMACEN'];
+  const colColors = {
+    'CAMION 1': {hdr:'rh-c1', label:'🚚 Camión 1'},
+    'CAMION 2': {hdr:'rh-c2', label:'🚛 Camión 2'},
+    'ALMACEN':  {hdr:'rh-alm',label:'🏭 Almacén'}
+  };
+
+  let html = '<div class="rutas-grid">';
+  cols.forEach(cam => {
+    const lista = (rutasDia[cam]||[]).filter(c =>
+      !q || c.nombre.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q)
+    );
+    const totalMonto = lista.reduce((s,c)=>s+c.monto,0);
+    const totalPte   = lista.reduce((s,c)=>s+c.pendienteFacturar,0);
+    const cumplidas  = lista.filter(c=>c.cumplida).length;
+    const {hdr, label} = colColors[cam];
+
+    html += `<div class="ruta-col">
+      <div class="ruta-col-header ${hdr}">
+        <span>${label}</span>
+        <span style="font-size:12px;opacity:0.9;">${lista.length} clientes</span>
+      </div>
+      <div style="padding:10px 12px;background:#F8FAFC;border-bottom:1px solid var(--border);font-size:12px;">
+        <div><strong>Total:</strong> ${formatMonto(totalMonto + totalPte)}</div>
+        <div style="color:var(--muted);">Conf: ${formatMonto(totalMonto)} | Pte: ${formatMonto(totalPte)}</div>
+        <div style="color:var(--secondary);margin-top:2px;">✅ ${cumplidas}/${lista.length} cumplidas</div>
+      </div>
+      <div class="ruta-col-body">`;
+
+    if (lista.length === 0) {
+      html += '<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">Sin clientes asignados</div>';
+    } else {
+      lista.forEach((c, i) => {
+        const realIdx = (rutasDia[cam]||[]).indexOf(c);
+        const estado = c.cumplida ? '✅' : c.incidencia ? '⚠️' : '🔄';
+        html += `<div class="ruta-item" style="${c.cumplida?'opacity:0.65;':''}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div class="ruta-item-name">${i+1}. ${c.nombre}</div>
+              <div class="ruta-item-detail">${c.codigo} · ${c.zona}</div>
+              <div class="ruta-item-monto">${formatMonto(c.totalPendiente)}</div>
+              ${c.nota ? `<div style="font-size:11px;color:var(--muted);margin-top:2px;">📝 ${c.nota}</div>` : ''}
+              ${c.incidencia ? `<div class="inc-pill" style="margin-top:3px;">⚠️ ${c.incidencia}</div>` : ''}
+            </div>
+            <span style="font-size:18px;">${estado}</span>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+            <button class="btn btn-outline btn-sm" onclick="toggleCumplida('${APP.rutaFecha}','${cam}',${realIdx})">${c.cumplida?'↩️ Deshacer':'✅ Cumplida'}</button>
+            <button class="btn btn-outline btn-sm" onclick="abrirNotaModal('${APP.rutaFecha}','${cam}',${realIdx})">📝 Nota</button>
+            <button class="btn btn-outline btn-sm" onclick="abrirMoveModal('${APP.rutaFecha}','${cam}',${realIdx})">✏️ Mover</button>
+          </div>
+        </div>`;
+      });
+    }
+
+    html += `</div></div>`;
+  });
+  html += '</div>';
+  cont.innerHTML = html;
+}
+
+// ===================== REPORTES =====================
+function generarReporte() {
+  const output = document.getElementById('reporteOutput');
+  const loading = document.getElementById('reporteLoading');
+  loading.style.display = 'block';
+  output.innerHTML = '';
+
+  setTimeout(() => {
+    const q = (document.getElementById('repSearch').value||'').toLowerCase();
+    let lista = APP.clientes;
+    if (q) lista = lista.filter(c => c.nombre.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q));
+
+    if (lista.length === 0) {
+      loading.style.display = 'none';
+      output.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><p>Sin datos para reportar.</p></div>';
+      return;
+    }
+
+    const totalConf = lista.reduce((s,c)=>s+c.monto,0);
+    const totalPte  = lista.reduce((s,c)=>s+c.pendienteFacturar,0);
+    const totalAll  = lista.reduce((s,c)=>s+c.totalPendiente,0);
+    const cumplidas = lista.filter(c=>c.cumplida).length;
+    const pctCump   = lista.length > 0 ? Math.round(cumplidas/lista.length*100) : 0;
+    const incidencias = lista.filter(c=>c.incidencia);
+    const porCamion = {c1: lista.filter(c=>c.camion==='CAMION 1'), c2: lista.filter(c=>c.camion==='CAMION 2'), alm: lista.filter(c=>c.camion==='ALMACEN')};
+
+    const hoy = new Date().toLocaleDateString('es-DO', {day:'2-digit',month:'long',year:'numeric'});
+
+    const rows = lista.map((c,i) => {
+      const camLabel = c.camion==='CAMION 1'?'Camión 1':c.camion==='CAMION 2'?'Camión 2':'Almacén';
+      const est = c.cumplida?'✅ Cumplida':c.incidencia?'⚠️ Incidencia':'🔄 Pendiente';
+      return `<tr style="background:${i%2===0?'#fff':'#F8FAFC'};">
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;">${c.codigo}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;font-weight:600;">${c.nombre}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;">${c.fecha}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;">${camLabel}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;">${formatMonto(c.monto)}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;">${formatMonto(c.pendienteFacturar)}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;text-align:right;font-weight:700;">${formatMonto(c.totalPendiente)}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;font-size:12px;">${est}</td>
+      </tr>`;
+    }).join('');
+
+    const incRows = incidencias.map(c => `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${c.codigo}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${c.nombre}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;">${c.fecha}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:12px;color:#922B21;">${c.incidencia}</td>
+    </tr>`).join('');
+
+    output.innerHTML = `
+      <div style="font-family:-apple-system,sans-serif;max-width:100%;">
+        <div style="background:var(--primary);color:#fff;padding:20px 24px;border-radius:10px 10px 0 0;margin:-20px -20px 20px;">
+          <h2 style="font-size:18px;margin-bottom:4px;">📈 Reporte de Entregas — RouteControl</h2>
+          <p style="font-size:13px;opacity:0.85;">Generado el ${hoy} · ${lista.length} clientes</p>
+        </div>
+
+        <div class="report-section">
+          <div class="report-h2">Resumen Ejecutivo</div>
+          <div class="report-kpi-grid">
+            <div class="report-kpi"><div class="report-kpi-v">${lista.length}</div><div class="report-kpi-l">Total Clientes</div></div>
+            <div class="report-kpi"><div class="report-kpi-v">${formatMonto(totalConf)}</div><div class="report-kpi-l">Conf. No Entregado</div></div>
+            <div class="report-kpi"><div class="report-kpi-v">${formatMonto(totalPte)}</div><div class="report-kpi-l">Pte. de Facturar</div></div>
+            <div class="report-kpi"><div class="report-kpi-v">${formatMonto(totalAll)}</div><div class="report-kpi-l">Total Pendiente</div></div>
+            <div class="report-kpi"><div class="report-kpi-v">${pctCump}%</div><div class="report-kpi-l">% Cumplimiento</div></div>
+            <div class="report-kpi"><div class="report-kpi-v">${cumplidas}/${lista.length}</div><div class="report-kpi-l">Entregas Cumplidas</div></div>
+          </div>
+        </div>
+
+        <div class="report-section">
+          <div class="report-h2">Distribución por Ruta</div>
+          <div class="report-kpi-grid">
+            <div class="report-kpi" style="border-left:3px solid var(--c1);">
+              <div class="report-kpi-v" style="color:var(--c1);">${porCamion.c1.length}</div>
+              <div class="report-kpi-l">Camión 1</div>
+              <div style="font-size:11px;color:var(--muted);">${formatMonto(porCamion.c1.reduce((s,c)=>s+c.totalPendiente,0))}</div>
+            </div>
+            <div class="report-kpi" style="border-left:3px solid var(--c2);">
+              <div class="report-kpi-v" style="color:var(--c2);">${porCamion.c2.length}</div>
+              <div class="report-kpi-l">Camión 2</div>
+              <div style="font-size:11px;color:var(--muted);">${formatMonto(porCamion.c2.reduce((s,c)=>s+c.totalPendiente,0))}</div>
+            </div>
+            <div class="report-kpi" style="border-left:3px solid var(--calmacen);">
+              <div class="report-kpi-v" style="color:var(--calmacen);">${porCamion.alm.length}</div>
+              <div class="report-kpi-l">Almacén</div>
+              <div style="font-size:11px;color:var(--muted);">${formatMonto(porCamion.alm.reduce((s,c)=>s+c.totalPendiente,0))}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="report-section">
+          <div class="report-h2">Detalle de Clientes</div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:var(--primary);color:#fff;">
+                  <th style="padding:8px 10px;text-align:left;font-size:12px;">Código</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:12px;">Cliente</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:12px;">Fecha</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:12px;">Camión</th>
+                  <th style="padding:8px 10px;text-align:right;font-size:12px;">Conf.No Entr.</th>
+                  <th style="padding:8px 10px;text-align:right;font-size:12px;">Pte.Facturar</th>
+                  <th style="padding:8px 10px;text-align:right;font-size:12px;">Total</th>
+                  <th style="padding:8px 10px;text-align:left;font-size:12px;">Estado</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+
+        ${incidencias.length > 0 ? `
+        <div class="report-section">
+          <div class="report-h2" style="color:var(--danger);border-color:var(--danger);">⚠️ Incidencias del Período</div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead>
+                <tr style="background:var(--danger);color:#fff;">
+                  <th style="padding:8px 10px;font-size:12px;">Código</th>
+                  <th style="padding:8px 10px;font-size:12px;">Cliente</th>
+                  <th style="padding:8px 10px;font-size:12px;">Fecha</th>
+                  <th style="padding:8px 10px;font-size:12px;">Incidencia</th>
+                </tr>
+              </thead>
+              <tbody>${incRows}</tbody>
+            </table>
+          </div>
+        </div>` : ''}
+      </div>`;
+
+    loading.style.display = 'none';
+  }, 400);
+}
+
+function descargarPDF() {
+  const el = document.getElementById('reporteOutput');
+  if (!el || el.innerHTML.includes('empty-state')) {
+    generarReporte();
+    setTimeout(() => descargarPDF(), 600);
+    return;
+  }
+  const opt = {
+    margin: [10,10,10,10],
+    filename: 'RouteControl_Reporte.pdf',
+    image: {type:'jpeg',quality:0.95},
+    html2canvas: {scale:2,useCORS:true},
+    jsPDF: {unit:'mm',format:'a4',orientation:'portrait'}
+  };
+  html2pdf().set(opt).from(el).save();
+}
+
+function exportarReporteExcel() {
+  const q = (document.getElementById('repSearch').value||'').toLowerCase();
+  let lista = APP.clientes;
+  if (q) lista = lista.filter(c => c.nombre.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q));
+  const data = lista.map(c => ({
+    'Código': c.codigo,
+    'Cliente': c.nombre,
+    'Razón Social': c.razonSocial,
+    'Fecha': c.fecha,
+    'Camión': c.camion,
+    'Zona': c.zona,
+    'Conf. No Entregado': c.monto,
+    'Pte. de Facturar': c.pendienteFacturar,
+    'Total Pendiente': c.totalPendiente,
+    'Cumplida': c.cumplida ? 'Sí' : 'No',
+    'Nota': c.nota || '',
+    'Incidencia': c.incidencia || ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
+  XLSX.writeFile(wb, 'RouteControl_Reporte.xlsx');
+}
+
+// ===================== COMERCIAL =====================
+
+// Estado de orden de la tabla comercial
+const COM_SORT = { campo: '', dir: 'asc' };
+
+// Definición de columnas (campo, label, tipo, ancho)
+const COM_COLS = [
+  { campo:'codigo',            label:'Código',            tipo:'texto',   align:'left'  },
+  { campo:'nombre',            label:'Cliente',           tipo:'texto',   align:'left'  },
+  { campo:'zona',              label:'Zona',              tipo:'texto',   align:'left'  },
+  { campo:'fecha',             label:'Fecha',             tipo:'fecha',   align:'left'  },
+  { campo:'camion',            label:'Camión',            tipo:'camion',  align:'left'  },
+  { campo:'monto',             label:'Conf. No Entr.',    tipo:'numero',  align:'right' },
+  { campo:'pendienteFacturar', label:'Pte. Facturar',     tipo:'numero',  align:'right' },
+  { campo:'totalPendiente',    label:'Total',             tipo:'numero',  align:'right' },
+  { campo:'estado',            label:'Estado',            tipo:'estado',  align:'center'}
+];
+
+function filtrarCom(tipo) {
+  APP.filtroCom = tipo;
+  document.querySelectorAll('[id^="cf_"]').forEach(b => b.classList.remove('active'));
+  const el = document.getElementById('cf_'+tipo);
+  if (el) el.classList.add('active');
+  renderComercial();
+}
+
+function limpiarFiltrosCom() {
+  // Limpiar inputs de columna
+  COM_COLS.forEach(col => {
+    const el = document.getElementById('cfcol_'+col.campo);
+    if (el) el.value = '';
+  });
+  // Limpiar acceso rápido
+  filtrarCom('todas');
+}
+
+function sortComercial(campo) {
+  if (COM_SORT.campo === campo) {
+    COM_SORT.dir = COM_SORT.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    COM_SORT.campo = campo;
+    COM_SORT.dir = campo === 'monto' || campo === 'pendienteFacturar' || campo === 'totalPendiente'
+      ? 'desc' : 'asc';
+  }
+  renderComercial();
+}
+
+function renderComercial() {
+  let lista = [...APP.clientes];
+
+  // ── 1. Filtro rápido (período / camión) ─────────────────────────────────
+  const fechas = [...new Set(lista.map(c=>c.fecha))].sort((a,b)=>fechaToDate(a)-fechaToDate(b));
+  const sem1F = fechas.slice(0,5), sem2F = fechas.slice(5,10), sem3F = fechas.slice(10);
+  if      (APP.filtroCom==='sem1') lista = lista.filter(c=>sem1F.includes(c.fecha));
+  else if (APP.filtroCom==='sem2') lista = lista.filter(c=>sem2F.includes(c.fecha));
+  else if (APP.filtroCom==='sem3') lista = lista.filter(c=>sem3F.includes(c.fecha));
+  else if (APP.filtroCom==='c1')   lista = lista.filter(c=>c.camion==='CAMION 1');
+  else if (APP.filtroCom==='c2')   lista = lista.filter(c=>c.camion==='CAMION 2');
+
+  // ── 2. Filtros por columna (leídos directo del DOM) ───────────────────
+  COM_COLS.forEach(col => {
+    const el = document.getElementById('cfcol_'+col.campo);
+    if (!el) return;
+    const val = el.value.trim().toLowerCase();
+    if (!val) return;
+
+    if (col.tipo === 'texto' || col.tipo === 'fecha') {
+      lista = lista.filter(c => String(c[col.campo]||'').toLowerCase().includes(val));
+    } else if (col.tipo === 'camion') {
+      const map = {'c1':'CAMION 1','c2':'CAMION 2','alm':'ALMACEN'};
+      lista = lista.filter(c => c.camion === (map[val] || val.toUpperCase()));
+    } else if (col.tipo === 'numero') {
+      // Acepta ">=1000", "<=5000", ">500", "<200" o solo un número como mínimo
+      const numVal = parseFloat(val.replace(/[^0-9.]/g,''));
+      if (!isNaN(numVal)) {
+        if (val.startsWith('>='))      lista = lista.filter(c => (c[col.campo]||0) >= numVal);
+        else if (val.startsWith('<=')) lista = lista.filter(c => (c[col.campo]||0) <= numVal);
+        else if (val.startsWith('>'))  lista = lista.filter(c => (c[col.campo]||0) >  numVal);
+        else if (val.startsWith('<'))  lista = lista.filter(c => (c[col.campo]||0) <  numVal);
+        else                           lista = lista.filter(c => (c[col.campo]||0) >= numVal);
+      }
+    } else if (col.tipo === 'estado') {
+      lista = lista.filter(c => {
+        const est = c.cumplida ? 'cumplida' : c.incidencia ? 'incidencia' : 'pendiente';
+        return est.includes(val);
+      });
+    }
+  });
+
+  // ── 3. Ordenar ────────────────────────────────────────────────────────
+  if (COM_SORT.campo) {
+    lista.sort((a,b) => {
+      let va = a[COM_SORT.campo], vb = b[COM_SORT.campo];
+      if (COM_SORT.campo === 'estado') {
+        va = a.cumplida?'cumplida':a.incidencia?'incidencia':'pendiente';
+        vb = b.cumplida?'cumplida':b.incidencia?'incidencia':'pendiente';
+      }
+      if (COM_SORT.campo === 'fecha') {
+        va = fechaToDate(va); vb = fechaToDate(vb);
+      }
+      if (typeof va === 'number' && typeof vb === 'number') {
+        return COM_SORT.dir==='asc' ? va-vb : vb-va;
+      }
+      return COM_SORT.dir==='asc'
+        ? String(va||'').localeCompare(String(vb||''), 'es')
+        : String(vb||'').localeCompare(String(va||''), 'es');
+    });
+  }
+
+  // ── 4. KPIs (sobre la lista filtrada) ────────────────────────────────
+  document.getElementById('ck1').textContent = lista.length;
+  document.getElementById('ck2').textContent = formatMonto(lista.reduce((s,c)=>s+c.monto,0));
+  document.getElementById('ck3').textContent = formatMonto(lista.reduce((s,c)=>s+c.pendienteFacturar,0));
+  document.getElementById('ck4').textContent = formatMonto(lista.reduce((s,c)=>s+c.totalPendiente,0));
+
+  // ── 5. Renderizar cabeceras (solo primera vez o tras cambio de sort) ──
+  const headerRow = document.getElementById('comHeaderRow');
+  const filterRow = document.getElementById('comFilterRow');
+
+  if (headerRow) {
+    headerRow.innerHTML = COM_COLS.map(col => {
+      const isActive = COM_SORT.campo === col.campo;
+      const sortClass = isActive ? (COM_SORT.dir==='asc' ? 'sort-asc' : 'sort-desc') : '';
+      const align = col.align === 'right' ? 'text-align:right;' : col.align === 'center' ? 'text-align:center;' : '';
+      return `<th class="com-th ${sortClass}" style="${align}" onclick="sortComercial('${col.campo}')">
+        ${col.label}<span class="sort-icon"></span>
+      </th>`;
+    }).join('');
+  }
+
+  if (filterRow) {
+    filterRow.innerHTML = COM_COLS.map(col => {
+      if (col.tipo === 'camion') {
+        return `<td class="com-filter-cell">
+          <select class="com-filter-select" id="cfcol_${col.campo}" onchange="renderComercial()">
+            <option value="">Todos</option>
+            <option value="c1">🚚 C1</option>
+            <option value="c2">🚛 C2</option>
+            <option value="alm">🏭 Alm</option>
+          </select></td>`;
+      }
+      if (col.tipo === 'estado') {
+        return `<td class="com-filter-cell" style="text-align:center;">
+          <select class="com-filter-select" id="cfcol_${col.campo}" onchange="renderComercial()">
+            <option value="">Todos</option>
+            <option value="pendiente">🔄 Pendiente</option>
+            <option value="cumplida">✅ Cumplida</option>
+            <option value="incidencia">⚠️ Incidencia</option>
+          </select></td>`;
+      }
+      const placeholder = col.tipo==='numero' ? 'ej: >=500000' : '🔍';
+      return `<td class="com-filter-cell">
+        <input class="com-filter-input" id="cfcol_${col.campo}"
+               placeholder="${placeholder}" oninput="renderComercial()">
+      </td>`;
+    }).join('');
+
+    // Restaurar valores previos de los selects (para que no se borren al re-render)
+    COM_COLS.forEach(col => {
+      const el = document.getElementById('cfcol_'+col.campo);
+      if (el && el._savedVal) el.value = el._savedVal;
+    });
+  }
+
+  // ── 6. Guardar valores de selects antes de re-render (persistencia) ──
+  COM_COLS.forEach(col => {
+    const el = document.getElementById('cfcol_'+col.campo);
+    if (el) el.addEventListener('change', () => { el._savedVal = el.value; }, {once:false});
+  });
+
+  // ── 7. Filas de la tabla ─────────────────────────────────────────────
+  const tbody = document.getElementById('comContent');
+  if (!tbody) return;
+
+  if (lista.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${COM_COLS.length}" style="text-align:center;padding:40px;color:var(--muted);">
+      Sin resultados. <button class="btn btn-outline btn-sm" onclick="limpiarFiltrosCom()" style="margin-left:8px;">Limpiar filtros</button>
+    </td></tr>`;
+    const pie = document.getElementById('comPieLabel');
+    if (pie) pie.textContent = '';
+    return;
+  }
+
+  tbody.innerHTML = lista.map(c => {
+    const camBadge = c.camion==='CAMION 1'?'badge-c1':c.camion==='CAMION 2'?'badge-c2':'badge-almacen';
+    const camLabel = c.camion==='CAMION 1'?'C1':c.camion==='CAMION 2'?'C2':'Alm';
+    const estadoBadge = c.cumplida ? '<span class="badge badge-ok">✅ Cumplida</span>'
+                      : c.incidencia ? '<span class="badge badge-warn">⚠️ Incidencia</span>'
+                      : '<span class="badge badge-pend">🔄 Pendiente</span>';
+    return `<tr>
+      <td style="font-size:12px;color:var(--muted);">${c.codigo}</td>
+      <td><strong>${c.nombre}</strong></td>
+      <td style="font-size:12px;">${c.zona||'—'}</td>
+      <td style="font-size:12px;">${c.fecha}</td>
+      <td><span class="badge ${camBadge}">${camLabel}</span></td>
+      <td style="text-align:right;">${formatMonto(c.monto)}</td>
+      <td style="text-align:right;">${formatMonto(c.pendienteFacturar)}</td>
+      <td style="text-align:right;"><strong>${formatMonto(c.totalPendiente)}</strong></td>
+      <td style="text-align:center;">${estadoBadge}</td>
+    </tr>`;
+  }).join('');
+
+  const pie = document.getElementById('comPieLabel');
+  if (pie) pie.textContent = `Mostrando ${lista.length} de ${APP.clientes.length} clientes`;
+}
+
+function exportarComercialExcel() {
+  // Exporta la lista filtrada actualmente visible en la tabla
+  const filas = document.querySelectorAll('#comContent tr');
+  const codigosVisibles = new Set();
+  filas.forEach(tr => {
+    const td = tr.querySelector('td');
+    if (td) codigosVisibles.add(td.textContent.trim());
+  });
+  const lista = codigosVisibles.size > 0
+    ? APP.clientes.filter(c => codigosVisibles.has(c.codigo))
+    : APP.clientes;
+
+  const data = lista.map(c => ({
+    'Código': c.codigo,
+    'Cliente': c.nombre,
+    'Zona': c.zona,
+    'Fecha': c.fecha,
+    'Camión': c.camion,
+    'Conf. No Entregado': c.monto,
+    'Pte. de Facturar': c.pendienteFacturar,
+    'Total Pendiente': c.totalPendiente,
+    'Estado': c.cumplida ? 'Cumplida' : c.incidencia ? 'Incidencia' : 'Pendiente'
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Comercial');
+  // Estilo header
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let C = range.s.c; C <= range.e.c; C++) {
+    const addr = XLSX.utils.encode_cell({r:0,c:C});
+    if (!ws[addr]) continue;
+    ws[addr].s = {fill:{fgColor:{rgb:'1B4F72'}},font:{color:{rgb:'FFFFFF'},bold:true}};
+  }
+  XLSX.writeFile(wb, 'RouteControl_Comercial.xlsx');
+}
+
+// ===================== CONFIGURACIÓN CLIENTES =====================
+function clienteTieneConfig(codigo) {
+  const cfg = APP.clienteConfig[codigo];
+  return !!(cfg && (cfg.nota || cfg.camionPermitido !== 'CUALQUIERA' || cfg.noMiercoles || cfg.noUltimaSemana));
+}
+
+function renderConfigClientes() {
+  const list = document.getElementById('configClientList');
+  const resumen = document.getElementById('configResumen');
+  if (!list) return;
+
+  const searchEl = document.getElementById('configSearch');
+  const q = (searchEl ? searchEl.value : '').toLowerCase();
+  const base = APP.clientes.length ? APP.clientes : APP.planificacion;
+  const unicos = [];
+  const vistos = new Set();
+  base.forEach(c => {
+    if (vistos.has(c.codigo)) return;
+    vistos.add(c.codigo);
+    if (q && !c.codigo.toLowerCase().includes(q) && !c.nombre.toLowerCase().includes(q)) return;
+    unicos.push(c);
+  });
+
+  if (resumen) {
+    const n = Object.keys(APP.clienteConfig).filter(clienteTieneConfig).length;
+    resumen.textContent = n + ' configurados';
+  }
+
+  if (unicos.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><p>Sin clientes para configurar.</p></div>';
+    return;
+  }
+
+  const codigosVisibles = new Set(unicos.map(c => c.codigo));
+  if (!APP.configClienteSel || !codigosVisibles.has(APP.configClienteSel)) APP.configClienteSel = unicos[0].codigo;
+  list.innerHTML = unicos.map(c => {
+    const cfgMark = clienteTieneConfig(c.codigo) ? '<span class="badge badge-ok" style="float:right;">Reglas</span>' : '';
+    return `<button class="config-client-item ${APP.configClienteSel===c.codigo?'active':''}" onclick="seleccionarConfigCliente('${c.codigo}')">
+      <strong>${c.nombre}</strong>${cfgMark}<br>
+      <span style="font-size:11px;color:var(--muted);">${c.codigo} · ${c.zona || 'Sin zona'}</span>
+    </button>`;
+  }).join('');
+  renderConfigEditor();
+}
+
+function seleccionarConfigCliente(codigo) {
+  APP.configClienteSel = codigo;
+  renderConfigClientes();
+}
+
+function renderConfigEditor() {
+  const editor = document.getElementById('configEditor');
+  if (!editor) return;
+  const cliente = APP.clientes.find(c => c.codigo === APP.configClienteSel)
+               || APP.planificacion.find(c => c.codigo === APP.configClienteSel);
+  if (!cliente) {
+    editor.innerHTML = '<div class="empty-state"><div class="empty-icon">👈</div><p>Selecciona un cliente.</p></div>';
+    return;
+  }
+  const cfg = getClienteConfig(cliente.codigo);
+  editor.innerHTML = `
+    <div class="card-title" style="margin-bottom:4px;">${cliente.nombre}</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">${cliente.codigo} · ${cliente.zona || 'Sin zona'}</div>
+
+    <div class="form-row">
+      <label>Camión permitido</label>
+      <select id="cfgCamion" class="form-control">
+        <option value="CUALQUIERA" ${cfg.camionPermitido==='CUALQUIERA'?'selected':''}>Cualquier camión</option>
+        <option value="CAMION 1" ${cfg.camionPermitido==='CAMION 1'?'selected':''}>Solo Camión 1</option>
+        <option value="CAMION 2" ${cfg.camionPermitido==='CAMION 2'?'selected':''}>Solo Camión 2</option>
+        <option value="ALMACEN" ${cfg.camionPermitido==='ALMACEN'?'selected':''}>Solo Almacén</option>
+      </select>
+    </div>
+
+    <label class="check-row"><input type="checkbox" id="cfgNoMiercoles" ${cfg.noMiercoles?'checked':''}> No recibe los miércoles</label>
+    <label class="check-row"><input type="checkbox" id="cfgNoUltimaSemana" ${cfg.noUltimaSemana?'checked':''}> No recibe la última semana del mes</label>
+
+    <div class="form-row">
+      <label>Notas particulares</label>
+      <textarea id="cfgNota" class="form-control" style="min-height:110px;resize:vertical;" placeholder="Ej: llamar antes de llegar, acceso por muelle norte...">${cfg.nota || ''}</textarea>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary" onclick="guardarConfigCliente()">💾 Guardar reglas</button>
+      <button class="btn btn-outline" onclick="limpiarConfigCliente()">Limpiar reglas</button>
+    </div>
+  `;
+}
+
+function guardarConfigCliente() {
+  const codigo = APP.configClienteSel;
+  if (!codigo) return;
+  APP.clienteConfig[codigo] = {
+    codigo,
+    nota: document.getElementById('cfgNota').value.trim(),
+    camionPermitido: document.getElementById('cfgCamion').value,
+    noMiercoles: document.getElementById('cfgNoMiercoles').checked,
+    noUltimaSemana: document.getElementById('cfgNoUltimaSemana').checked
+  };
+  APP.clientes.filter(c => c.codigo === codigo).forEach(c => aplicarConfigACliente(c));
+  construirRutas();
+  actualizarDashboard();
+  renderConfigClientes();
+  scheduleAutoSave();
+}
+
+function limpiarConfigCliente() {
+  if (!APP.configClienteSel) return;
+  delete APP.clienteConfig[APP.configClienteSel];
+  APP.clientes.filter(c => c.codigo === APP.configClienteSel).forEach(c => {
+    c.configNota = '';
+  });
+  renderConfigClientes();
+}
+
+function recalcularPlanConConfig() {
+  if (!APP.planLoaded || APP.clientes.length === 0) {
+    alert('Carga una planificación antes de recalcular.');
+    return;
+  }
+  distribuirClientesEnSemana(APP.clientes, APP.planFecha || APP.clientes[0].fecha, 5);
+  APP.planificacion = APP.clientes.map(c => ({...c}));
+  if (APP.controlLoaded) construirQueueSemana();
+  buildCalStructure();
+  construirRutas();
+  actualizarDashboard();
+  renderCalendario();
+  renderRutas();
+  renderAlmacen();
+}
+
+function exportarConfigClientes() {
+  const rows = Object.values(APP.clienteConfig).filter(cfg =>
+    cfg.nota || cfg.camionPermitido !== 'CUALQUIERA' || cfg.noMiercoles || cfg.noUltimaSemana
+  ).map(cfg => {
+    const c = APP.clientes.find(x => x.codigo === cfg.codigo) || APP.planificacion.find(x => x.codigo === cfg.codigo) || {};
+    return {
+      'Código': cfg.codigo,
+      'Cliente': c.nombre || '',
+      'Camión permitido': cfg.camionPermitido || 'CUALQUIERA',
+      'No recibe miércoles': cfg.noMiercoles ? 'Sí' : 'No',
+      'No recibe última semana': cfg.noUltimaSemana ? 'Sí' : 'No',
+      'Notas': cfg.nota || ''
+    };
+  });
+  if (rows.length === 0) {
+    alert('No hay configuración de clientes para exportar.');
+    return;
+  }
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ConfigClientes');
+  XLSX.writeFile(wb, 'RouteControl_Config_Clientes.xlsx');
+}
+
+function importarConfigClientes(file) {
+  if (!file) return;
+  const input = document.getElementById('configFile');
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      let rows = [];
+      if (file.name.toLowerCase().endsWith('.json')) {
+        const parsed = JSON.parse(e.target.result);
+        rows = Array.isArray(parsed) ? parsed : Object.values(parsed);
+      } else {
+        const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      }
+      rows.forEach(row => {
+        const codigo = textoPlano(row['Código'] || row['Codigo'] || row.codigo);
+        if (!codigo) return;
+        APP.clienteConfig[codigo] = {
+          codigo,
+          nota: textoPlano(row['Notas'] || row['Nota'] || row.nota),
+          camionPermitido: textoPlano(row['Camión permitido'] || row['Camion permitido'] || row.camionPermitido || 'CUALQUIERA').toUpperCase(),
+          noMiercoles: boolFromVal(row['No recibe miércoles'] || row['No recibe miercoles'] || row.noMiercoles),
+          noUltimaSemana: boolFromVal(row['No recibe última semana'] || row['No recibe ultima semana'] || row.noUltimaSemana)
+        };
+        if (!['CUALQUIERA','CAMION 1','CAMION 2','ALMACEN'].includes(APP.clienteConfig[codigo].camionPermitido)) {
+          APP.clienteConfig[codigo].camionPermitido = 'CUALQUIERA';
+        }
+      });
+      renderConfigClientes();
+      if (APP.planLoaded) recalcularPlanConConfig();
+      alert('Configuración importada: '+rows.length+' filas procesadas.');
+    } catch(err) {
+      console.error('Error config:', err);
+      alert('No se pudo importar la configuración: '+err.message);
+    } finally {
+      if (input) input.value = '';
+    }
+  };
+  if (file.name.toLowerCase().endsWith('.json')) reader.readAsText(file);
+  else reader.readAsArrayBuffer(file);
+}
+
+// ===================== SOLICITUDES A ALMACÉN =====================
+function normalizarFechaAlmacen(v) {
+  if (!v && v !== 0) return '';
+  const f = normalizarFecha(v);
+  return f || '';
+}
+
+function parsearSolicitudesRows(rows) {
+  return rows.map(row => {
+    const codigo = textoPlano(row['ID de destinatario de mercancías']
+      || row['ID de destinatario de mercancias']
+      || row['ID destinatario']
+      || row['Código']
+      || row['Codigo']
+      || row.codigo);
+    const solicitud = textoPlano(row['ID de solicitud de logística por medio de terceros']
+      || row['ID de solicitud de logistica por medio de terceros']
+      || row['ID de solicitud']
+      || row.solicitud);
+    if (!codigo || !solicitud) return null;
+    return {
+      codigo,
+      solicitud,
+      cliente: textoPlano(row['Nombre de destinatario de mercancías']
+        || row['Nombre de destinatario de mercancias']
+        || row['Cliente']
+        || row.cliente),
+      estadoComunicacion: textoPlano(row['Estado de comunicación'] || row['Estado de comunicacion'] || row.estadoComunicacion),
+      estadoProceso: textoPlano(row['Estado de procesamiento'] || row.estadoProceso),
+      fechaLiberacion: normalizarFechaAlmacen(row['Fecha de liberación'] || row['Fecha de liberacion'] || row.fechaLiberacion),
+      fechaFinalizada: normalizarFechaAlmacen(row['Fecha finalizada'] || row.fechaFinalizada),
+      fechaEnvio: normalizarFechaAlmacen(row['Fecha de envío planificada'] || row['Fecha de envio planificada'] || row.fechaEnvio),
+      ubicacion: textoPlano(row['Ubicación de procedencia'] || row['Ubicacion de procedencia'] || row.ubicacion)
+    };
+  }).filter(Boolean);
+}
+
+function procesarSolicitudesAlmacen(file) {
+  if (!file) return;
+  const input = document.getElementById('solicitudesFile');
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:'', range:4});
+      APP.solicitudesAlmacen = parsearSolicitudesRows(rows);
+      APP.solicitudesLoaded = true;
+      APP.solicitudesFileName = file.name;
+      const resumen = document.getElementById('solicitudesResumen');
+      if (resumen) resumen.textContent = APP.solicitudesAlmacen.length + ' solicitudes';
+      renderSolicitudesAlmacen();
+      renderAlmacen();
+      alert('Solicitudes cargadas: '+APP.solicitudesAlmacen.length);
+      guardarEnSupabase().catch(e => console.warn('Error guardando solicitudes:', e));
+    } catch(err) {
+      console.error('Error solicitudes:', err);
+      alert('No se pudo procesar el archivo de solicitudes: '+err.message);
+    } finally {
+      if (input) input.value = '';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function solicitudesPorCodigo(codigo) {
+  return APP.solicitudesAlmacen.filter(s => s.codigo === codigo);
+}
+
+function renderSolicitudesAlmacen() {
+  const cont = document.getElementById('solicitudesContainer');
+  const resumen = document.getElementById('solicitudesResumen');
+  if (!cont) return;
+  if (resumen) resumen.textContent = APP.solicitudesLoaded
+    ? APP.solicitudesAlmacen.length + ' solicitudes'
+    : 'Sin archivo';
+
+  if (!APP.solicitudesLoaded || APP.solicitudesAlmacen.length === 0) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📦</div><p>Carga el archivo de solicitudes para verlas agrupadas por cliente.</p></div>';
+    return;
+  }
+
+  const solSearchEl = document.getElementById('solSearch');
+  const q = (solSearchEl ? solSearchEl.value : '').toLowerCase();
+  const porCliente = {};
+  APP.solicitudesAlmacen.forEach(s => {
+    if (q && !s.codigo.toLowerCase().includes(q) && !s.cliente.toLowerCase().includes(q) && !s.solicitud.toLowerCase().includes(q)) return;
+    if (!porCliente[s.codigo]) porCliente[s.codigo] = [];
+    porCliente[s.codigo].push(s);
+  });
+
+  const codigos = Object.keys(porCliente).sort();
+  if (codigos.length === 0) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>Sin resultados.</p></div>';
+    return;
+  }
+
+  cont.innerHTML = codigos.map(codigo => {
+    const clientePlan = APP.clientes.find(c => c.codigo === codigo) || {};
+    const solicitudes = porCliente[codigo];
+    const nombre = clientePlan.nombre || solicitudes[0].cliente || 'Cliente sin nombre';
+    return `<div class="card" style="border-left:4px solid var(--primary);">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px;">
+        <div>
+          <div class="card-title" style="margin-bottom:2px;">${codigo} · ${nombre}</div>
+          <div style="font-size:12px;color:var(--muted);">${clientePlan.zona || 'Sin zona'} · ${solicitudes.length} solicitudes</div>
+        </div>
+        <span class="badge badge-c1">${solicitudes.length}</span>
+      </div>
+      ${solicitudes.map(renderSolicitudCard).join('')}
+    </div>`;
+  }).join('');
+}
+
+function renderSolicitudCard(s) {
+  const estadoClass = s.estadoComunicacion === 'Error' ? 'badge-warn' : 'badge-ok';
+  return `<div class="sol-card">
+    <div class="sol-card-head">
+      <span>Solicitud ${s.solicitud}</span>
+      <span class="badge ${estadoClass}">${s.estadoComunicacion || 'Sin estado'}</span>
+    </div>
+    <div class="sol-card-meta">
+      Proceso: <strong>${s.estadoProceso || '—'}</strong><br>
+      Liberación: ${s.fechaLiberacion || '—'} · Envío planificado: ${s.fechaEnvio || '—'} · Finalizada: ${s.fechaFinalizada || '—'}<br>
+      Procedencia: ${s.ubicacion || '—'}
+    </div>
+  </div>`;
+}
+
+function exportarSolicitudesAlmacenExcel() {
+  if (!APP.solicitudesAlmacen.length) {
+    alert('No hay solicitudes para exportar.');
+    return;
+  }
+  const data = APP.solicitudesAlmacen.map(s => ({
+    'Código destinatario': s.codigo,
+    'Cliente': s.cliente,
+    'ID solicitud': s.solicitud,
+    'Estado comunicación': s.estadoComunicacion,
+    'Estado procesamiento': s.estadoProceso,
+    'Fecha liberación': s.fechaLiberacion,
+    'Fecha finalizada': s.fechaFinalizada,
+    'Fecha envío planificada': s.fechaEnvio,
+    'Ubicación procedencia': s.ubicacion
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Solicitudes');
+  XLSX.writeFile(wb, 'RouteControl_Solicitudes_Almacen.xlsx');
+}
+
+// ===================== ALMACÉN =====================
+function renderAlmacen() {
+  const q = (document.getElementById('almSearch').value||'').toLowerCase();
+  const lista = APP.clientes.filter(c=>
+    !q || c.nombre.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q)
+  );
+
+  const pedidos = lista.reduce((s,c)=>s+c.cantidadPedidos,0);
+  const c1 = lista.filter(c=>c.camion==='CAMION 1').length;
+  const c2 = lista.filter(c=>c.camion==='CAMION 2').length;
+  document.getElementById('ak1').textContent = pedidos;
+  document.getElementById('ak2').textContent = c1;
+  document.getElementById('ak3').textContent = c2;
+
+  const fechas = [...new Set(APP.clientes.map(c=>c.fecha))].sort((a,b)=>fechaToDate(a)-fechaToDate(b));
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const proxFecha = fechas.find(f => fechaToDate(f) >= hoy) || fechas[0];
+  if (proxFecha) {
+    document.getElementById('ak4').textContent = fechaLabel(proxFecha);
+    document.getElementById('ak4b').textContent = proxFecha;
+  }
+
+  const cont = document.getElementById('almContainer');
+  if (lista.length === 0) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🏭</div><p>Sin resultados.</p></div>';
+    return;
+  }
+
+  const grupoPorFecha = {};
+  lista.forEach(c => {
+    if (!grupoPorFecha[c.fecha]) grupoPorFecha[c.fecha] = {};
+    if (!grupoPorFecha[c.fecha][c.camion]) grupoPorFecha[c.fecha][c.camion] = [];
+    grupoPorFecha[c.fecha][c.camion].push(c);
+  });
+
+  const fechasOrden = Object.keys(grupoPorFecha).sort((a,b)=>fechaToDate(a)-fechaToDate(b));
+  let html = '';
+  fechasOrden.forEach(f => {
+    html += `<div style="margin-bottom:20px;">
+      <div style="background:var(--primary);color:#fff;padding:8px 14px;border-radius:8px;font-weight:700;font-size:14px;margin-bottom:8px;">
+        📅 ${f} — ${fechaLabel(f)}
+      </div>`;
+    const cams = grupoPorFecha[f];
+    ['CAMION 1','CAMION 2','ALMACEN'].forEach(cam => {
+      if (!cams[cam] || cams[cam].length === 0) return;
+      const camColor = cam==='CAMION 1'?'var(--c1)':cam==='CAMION 2'?'var(--c2)':'var(--calmacen)';
+      const camLabel = cam==='CAMION 1'?'🚚 Camión 1':cam==='CAMION 2'?'🚛 Camión 2':'🏭 Almacén';
+      const totalCam = cams[cam].reduce((s,c)=>s+c.totalPendiente,0);
+      html += `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px;background:#fff;">
+        <div style="background:${camColor};color:#fff;padding:8px 12px;font-weight:600;font-size:13px;display:flex;justify-content:space-between;">
+          <span>${camLabel}</span><span>${cams[cam].length} clientes · ${formatMonto(totalCam)}</span>
+        </div>
+        <div style="padding:10px;">`;
+      cams[cam].forEach(c => {
+        const est = c.cumplida?'✅ Cumplida':c.incidencia?'⚠️ Incidencia':'🔄 Pendiente';
+        const solicitudes = solicitudesPorCodigo(c.codigo);
+        html += `<div class="ruta-item" style="background:#fff;">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+            <div>
+              <div class="ruta-item-name">${c.codigo} · ${c.nombre}</div>
+              <div class="ruta-item-detail">${c.zona||'—'} · ${c.cantidadPedidos} pedidos · ${formatMonto(c.totalPendiente)}</div>
+              ${c.configNota ? `<div style="font-size:11px;color:var(--warning);margin-top:2px;">⚙️ ${c.configNota}</div>` : ''}
+            </div>
+            <div style="text-align:right;">
+              <span class="badge badge-pend">${est}</span><br>
+              <span class="solicitud-pill">${solicitudes.length} solicitudes</span>
+            </div>
+          </div>
+          ${solicitudes.length
+            ? solicitudes.map(renderSolicitudCard).join('')
+            : '<div class="sol-card"><div class="sol-card-meta">Sin solicitudes cargadas para este destinatario.</div></div>'}
+        </div>`;
+      });
+      html += `</div></div>`;
+    });
+    html += `</div>`;
+  });
+  cont.innerHTML = html;
+}
+
+function exportarAlmacenExcel() {
+  const wb = XLSX.utils.book_new();
+  const fechas = [...new Set(APP.clientes.map(c=>c.fecha))].sort((a,b)=>fechaToDate(a)-fechaToDate(b));
+
+  fechas.forEach(f => {
+    const cams = APP.rutas[f] || {};
+    ['CAMION 1','CAMION 2','ALMACEN'].forEach(cam => {
+      const lista = cams[cam]||[];
+      if (lista.length === 0) return;
+      const data = lista.map(c => ({
+        'Código': c.codigo,
+        'Cliente': c.nombre,
+        'Zona': c.zona,
+        'Pedidos': c.cantidadPedidos,
+        'Conf. No Entregado': c.monto,
+        'Pte. de Facturar': c.pendienteFacturar,
+        'Total Pendiente': c.totalPendiente,
+        'Cumplida': c.cumplida?'Sí':'No',
+        'Incidencia': c.incidencia||''
+      }));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const sheetName = (f.replace(/\//g,'-') + '_' + (cam==='CAMION 1'?'C1':cam==='CAMION 2'?'C2':'ALM')).slice(0,31);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+  });
+
+  if (wb.SheetNames.length === 0) {
+    alert('No hay datos para exportar.');
+    return;
+  }
+  XLSX.writeFile(wb, 'RouteControl_Almacen.xlsx');
+}
+
+// ===================== EXPORTAR EXCEL RUTAS =====================
+function exportarExcelRutas() {
+  if (!APP.rutaFecha || !APP.rutas[APP.rutaFecha]) {
+    alert('Selecciona una fecha para exportar.');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  const cams = APP.rutas[APP.rutaFecha];
+  ['CAMION 1','CAMION 2','ALMACEN'].forEach(cam => {
+    const lista = cams[cam]||[];
+    if (lista.length === 0) return;
+    const data = lista.map((c,i) => ({
+      '#': i+1,
+      'Código': c.codigo,
+      'Cliente': c.nombre,
+      'Zona': c.zona,
+      'Pedido': c.pedido,
+      'Conf. No Entregado': c.monto,
+      'Pte. de Facturar': c.pendienteFacturar,
+      'Total Pendiente': c.totalPendiente,
+      'Cumplida': c.cumplida?'Sí':'No',
+      'Nota': c.nota||'',
+      'Incidencia': c.incidencia||''
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const sheetName = cam==='CAMION 1'?'Camion1':cam==='CAMION 2'?'Camion2':'Almacen';
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+  if (wb.SheetNames.length === 0) { alert('No hay datos en las rutas del día.'); return; }
+  XLSX.writeFile(wb, 'RouteControl_Rutas_' + APP.rutaFecha.replace(/\//g,'-') + '.xlsx');
+}
+
+// ===================== GEOCODIFICACIÓN =====================
+async function geocodificarCliente(cliente) {
+  try {
+    const query = encodeURIComponent(cliente.nombre + ', Punta Cana, República Dominicana');
+    const url = `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`;
+    const r = await fetch(url, {headers:{'User-Agent':'RouteControl/1.0'}});
+    const data = await r.json();
+    if (data.length > 0) {
+      cliente.lat = parseFloat(data[0].lat);
+      cliente.lon = parseFloat(data[0].lon);
+      cliente.mapeado = true;
+    }
+  } catch(e) {
+    // silencioso
+  }
+}
+
+async function geocodificarEnBackground() {
+  const noMapeados = APP.clientes.filter(c => !c.mapeado);
+  for (let i = 0; i < noMapeados.length; i += 3) {
+    const lote = noMapeados.slice(i, i+3);
+    await Promise.all(lote.map(c => geocodificarCliente(c)));
+    if (i + 3 < noMapeados.length) {
+      await new Promise(r => setTimeout(r, 1100));
+    }
+  }
+}
+
+// ===================== INIT =====================
+window.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('nav-importar').classList.add('active');
+
+  // Verificar si ya hay sesión activa (token en localStorage del SDK)
+  const { data: { session } } = await SB.auth.getSession();
+  if (session && session.user) {
+    mostrarApp(session.user);
+    await cargarDesdeSupabase();
+  }
+  // Si no hay sesión, la pantalla de login ya está visible
+});
+</script>
+<script src="./tms-v2.js"></script>
+</body>
+</html>
