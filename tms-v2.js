@@ -1711,6 +1711,7 @@
     }
     const solTxt = document.getElementById('solEstadoTxt');
     if (solTxt) solTxt.textContent = APP.solicitudesLoaded ? `${APP.solicitudesAlmacen.length} solicitudes · ${APP.solicitudesFileName || 'archivo actual'}` : 'Sin archivo';
+    updateImportExcelTableStatus();
   };
 
   function parseWarehouseRows(rows) {
@@ -3021,12 +3022,108 @@
     if (planStatus) planStatus.textContent = APP.importFiles.solicitudesPlan || 'Sin archivo de planificación';
     if (ctrlStatus) ctrlStatus.textContent = APP.importFiles.solicitudesControl || 'Sin archivo de control';
     const newCount = document.getElementById('solNewRequestsCount');
-    if (newCount) {
-      const controlKeys = new Set((APP.solicitudesControlAlmacen || []).map(item => [item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente || '', item.articulo].join('|')));
-      const planKeys = new Set((APP.solicitudesPlanAlmacen || []).map(item => [item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente || '', item.articulo].join('|')));
-      const source = controlKeys.size ? controlKeys : planKeys;
-      const base = controlKeys.size ? planKeys : new Set();
-      newCount.textContent = [...source].filter(key => !base.has(key)).length;
+    if (newCount) newCount.textContent = getSolicitudesNewCount();
+    updateImportExcelTableStatus();
+  }
+
+
+  function getSolicitudesNewCount() {
+    const controlKeys = new Set((APP.solicitudesControlAlmacen || []).map(item => [item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente || '', item.articulo].join('|')));
+    const planKeys = new Set((APP.solicitudesPlanAlmacen || []).map(item => [item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente || '', item.articulo].join('|')));
+    const source = controlKeys.size ? controlKeys : planKeys;
+    const base = controlKeys.size ? planKeys : new Set();
+    return [...source].filter(key => !base.has(key)).length;
+  }
+
+  function statusBadgeHtml(status, tone) {
+    return `<span class="import-table-badge ${tone || ''}">${status}</span>`;
+  }
+
+  function initImportExcelTable() {
+    const importView = document.getElementById('importar');
+    if (!importView || document.getElementById('importExcelTableCard')) return;
+    importView.classList.add('import-table-mode');
+    const title = importView.querySelector('.view-title');
+    const tableCard = document.createElement('div');
+    tableCard.id = 'importExcelTableCard';
+    tableCard.className = 'card import-excel-card';
+    tableCard.innerHTML = `
+      <div class="import-excel-header">
+        <div>
+          <div class="card-title">Carga de archivos SAP</div>
+          <div class="import-excel-subtitle">Sube o reemplaza los archivos base del TMS desde una tabla sencilla.</div>
+        </div>
+        <div class="import-excel-meta">XLSX / XML</div>
+      </div>
+      <div class="import-excel-wrap">
+        <table class="import-excel-table">
+          <thead>
+            <tr>
+              <th>Archivo requerido</th>
+              <th>Uso en el TMS</th>
+              <th>Estado actual</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Programación mensual</strong><span>Pedidos de cliente / planificación comercial</span></td>
+              <td>Define calendario, rutas iniciales y montos pedidos.</td>
+              <td id="importTablePlanStatus">No cargada</td>
+              <td><button class="btn btn-primary btn-sm" onclick="document.getElementById('sapFile').click()">Subir</button></td>
+            </tr>
+            <tr>
+              <td><strong>Control diario</strong><span>Cierre del día</span></td>
+              <td>Actualiza cantidades facturadas, pendientes y avance real.</td>
+              <td id="importTableCtrlStatus">No cargado</td>
+              <td><button class="btn btn-success btn-sm" onclick="abrirControlDiario()">Subir</button></td>
+            </tr>
+            <tr>
+              <td><strong>Solicitudes a almacén</strong><span>Pendientes de preparación / control almacén</span></td>
+              <td>Concilia pedidos cliente contra solicitudes realizadas al almacén.</td>
+              <td id="importTableSolStatus">Sin archivo</td>
+              <td>
+                <div class="import-table-actions">
+                  <button class="btn btn-warning btn-sm" onclick="document.getElementById('solicitudesPlanFileImport').click()">Plan</button>
+                  <button class="btn btn-outline btn-sm" onclick="document.getElementById('solicitudesControlFileImport').click()">Control</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="import-excel-foot">
+        <span id="importTableNewCount">0 nuevas solicitudes</span>
+        <span id="importTableLastFile">Esperando archivos de carga</span>
+      </div>`;
+    if (title && title.nextSibling) importView.insertBefore(tableCard, title.nextSibling);
+    else importView.prepend(tableCard);
+    updateImportExcelTableStatus();
+  }
+
+  function updateImportExcelTableStatus() {
+    const planStatus = document.getElementById('importTablePlanStatus');
+    const ctrlStatus = document.getElementById('importTableCtrlStatus');
+    const solStatus = document.getElementById('importTableSolStatus');
+    const newCount = document.getElementById('importTableNewCount');
+    const lastFile = document.getElementById('importTableLastFile');
+    if (!planStatus || !ctrlStatus || !solStatus) return;
+
+    planStatus.innerHTML = APP.planLoaded
+      ? `${statusBadgeHtml('Cargada', 'ok')}<span>${new Set(APP.planLineItems.map(item => item.clienteId)).size} clientes · ${APP.planLineItems.length} líneas · ${APP.importFiles.plan || APP.planFecha}</span>`
+      : `${statusBadgeHtml('Pendiente', 'wait')}<span>No cargada</span>`;
+    ctrlStatus.innerHTML = APP.controlLoaded
+      ? `${statusBadgeHtml('Cargado', 'ok')}<span>${new Set(APP.controlLineItems.map(item => item.clienteId)).size} clientes · ${APP.controlLineItems.length} líneas · ${APP.importFiles.control || APP.controlFecha}</span>`
+      : `${statusBadgeHtml('Opcional', 'info')}<span>Sin control diario</span>`;
+    solStatus.innerHTML = APP.solicitudesLoaded
+      ? `${statusBadgeHtml('Cargadas', 'ok')}<span>${APP.solicitudesAlmacen.length} solicitudes · ${APP.solicitudesFileName || 'archivo actual'}</span>`
+      : `${statusBadgeHtml('Pendiente', 'wait')}<span>Sin archivo</span>`;
+
+    const count = getSolicitudesNewCount();
+    if (newCount) newCount.textContent = `${count} nuevas solicitudes detectadas`;
+    if (lastFile) {
+      const file = APP.importFiles.solicitudesControl || APP.importFiles.solicitudesPlan || APP.importFiles.control || APP.importFiles.plan || '';
+      lastFile.textContent = file ? `Último archivo: ${file}` : 'Esperando archivos de carga';
     }
   }
 
@@ -3151,26 +3248,36 @@
       .badge-primary { background: var(--primary); color: #fff; }
       .badge-outline { background: #fff; color: var(--muted); border: 1px solid var(--border); }
       .import-view-shell { align-content:start; }
-      .import-view-shell > .card { display:inline-block; width:calc(50% - 10px); vertical-align:top; margin-right:12px; min-height:260px; }
-      .import-view-shell > .view-title, .import-view-shell > #sapEstadoBanner { display:block; width:100%; }
-      @media (max-width: 900px) { .import-view-shell > .card { width:100%; margin-right:0; } }
-      .import-status-banner > div { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important; }
-      .import-status-card {
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-        min-height: 88px;
+      .import-table-mode > #sapEstadoBanner,
+      .import-table-mode > .card:not(#importExcelTableCard) { display:none !important; }
+      .import-table-mode > #importExcelTableCard { display:block !important; width:100%; }
+      .import-excel-card { border:1px solid var(--border) !important; box-shadow:none; padding:0; overflow:hidden; }
+      .import-excel-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid var(--border); background:#fff; }
+      .import-excel-subtitle { font-size:12px; color:var(--muted); margin-top:2px; }
+      .import-excel-meta { font-size:11px; font-weight:800; color:var(--primary); border:1px solid var(--border); border-radius:999px; padding:5px 10px; background:#F8FAFC; white-space:nowrap; }
+      .import-excel-wrap { overflow-x:auto; }
+      .import-excel-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:12px; }
+      .import-excel-table th { text-align:left; background:#F8FAFC; color:#334155; font-size:10px; letter-spacing:0; text-transform:uppercase; padding:9px 10px; border-bottom:1px solid var(--border); }
+      .import-excel-table th:nth-child(1), .import-excel-table td:nth-child(1) { width:28%; }
+      .import-excel-table th:nth-child(2), .import-excel-table td:nth-child(2) { width:28%; }
+      .import-excel-table th:nth-child(3), .import-excel-table td:nth-child(3) { width:28%; }
+      .import-excel-table th:nth-child(4), .import-excel-table td:nth-child(4) { width:16%; }
+      .import-excel-table td { padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; color:var(--text); overflow-wrap:anywhere; }
+      .import-excel-table tr:last-child td { border-bottom:none; }
+      .import-excel-table td:first-child strong { display:block; font-size:12px; color:var(--primary); margin-bottom:3px; }
+      .import-excel-table td:first-child span,
+      .import-excel-table td[id^=importTable] span:not(.import-table-badge) { display:block; color:var(--muted); font-size:11px; line-height:1.3; }
+      .import-table-badge { display:inline-flex; align-items:center; border-radius:999px; padding:3px 7px; font-size:10px; font-weight:800; margin-bottom:5px; border:1px solid var(--border); color:var(--muted); background:#fff; }
+      .import-table-badge.ok { color:#166534; background:#F0FDF4; border-color:#BBF7D0; }
+      .import-table-badge.wait { color:#92400E; background:#FFFBEB; border-color:#FDE68A; }
+      .import-table-badge.info { color:#1D4ED8; background:#EFF6FF; border-color:#BFDBFE; }
+      .import-table-actions { display:flex; gap:5px; flex-wrap:wrap; }
+      .import-table-actions .btn, .import-excel-table td:nth-child(4) .btn { width:100%; justify-content:center; padding:6px 8px; font-size:11px; }
+      .import-excel-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 16px; background:#F8FAFC; border-top:1px solid var(--border); font-size:12px; color:var(--muted); flex-wrap:wrap; }
+      .import-excel-foot span:first-child { color:#C2410C; font-weight:800; }
+      @media (max-width: 900px) {
+        .import-excel-header { align-items:flex-start; flex-direction:column; }
       }
-      .import-card-shell {
-        border-left-width: 0 !important;
-        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
-      }
-      .upload-zone-premium {
-        border-radius: 16px;
-        border-width: 1px;
-        background:
-          linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,247,250,0.92));
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
-      }
-      .upload-zone-premium .upload-sub { max-width: 420px; margin: 6px auto 0; line-height: 1.45; }
       .calendar-toolbar { flex-wrap: wrap; gap: 10px; }
       .calendar-topbar {
         display:flex;
@@ -3230,6 +3337,7 @@
     initUiLabels();
     enhanceImportUi();
     initImportSolicitudesCard();
+    initImportExcelTable();
     initCalendarActions();
     initCommercialMount();
     initReportFilters();
