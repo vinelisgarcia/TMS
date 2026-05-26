@@ -1455,25 +1455,59 @@
     moverCliente(moveState.fecha, moveState.cam, moveState.idx, nuevaFecha, nuevoCamion);
   };
 
-  window.exportarCalendarioVisiblePDF = function exportarCalendarioVisiblePDFV2() {
+  window.exportarCalendarioVisiblePDF = async function exportarCalendarioVisiblePDFV2() {
     const el = document.getElementById('calExportArea');
     if (!el || !el.innerHTML.trim()) {
       alert('No hay calendario visible para exportar.');
       return;
     }
-    if (typeof html2pdf === 'undefined') {
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (typeof html2canvas === 'undefined' || !JsPDF) {
       alert('La librería de PDF no está disponible en este momento.');
       return;
     }
     const month = APP.calMeses && APP.calMeses[APP.calMesIdx];
-    const opt = {
-      margin: [8, 8, 8, 8],
-      filename: 'RouteControl_Calendario_' + (month ? month.key : 'visible') + '.pdf',
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    };
-    html2pdf().set(opt).from(el).save();
+    const filename = 'RouteControl_Calendario_' + (month ? month.key : 'visible') + '.pdf';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'calendar-pdf-stage';
+    const clone = el.cloneNode(true);
+    clone.classList.add('calendar-pdf-export');
+    clone.querySelectorAll('.cal-card-topline, .cal-card-actions, .calendar-selection-bar, button, input').forEach(node => node.remove());
+    wrapper.innerHTML = `
+      <div class="calendar-pdf-title">
+        <strong>Calendario de Entregas</strong>
+        <span>${month ? month.label : 'Vista actual'}</span>
+      </div>
+    `;
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+    try {
+      const canvas = await html2canvas(wrapper, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        windowWidth: wrapper.scrollWidth,
+        windowHeight: wrapper.scrollHeight
+      });
+      const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 5;
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2;
+      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
+      const imgW = canvas.width * ratio;
+      const imgH = canvas.height * ratio;
+      const x = (pageW - imgW) / 2;
+      const y = (pageH - imgH) / 2;
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, imgW, imgH);
+      pdf.save(filename);
+    } catch (error) {
+      console.error('Error exportando calendario:', error);
+      alert('No se pudo exportar el calendario: ' + error.message);
+    } finally {
+      wrapper.remove();
+    }
   };
 
   window.abrirNotaModal = function abrirNotaModalV2(fecha, camion, idx) {
@@ -3295,6 +3329,50 @@
       .cal-month-section .cal-semana { margin:0; padding:0; gap:0; }
       .cal-month-section .cal-dia-col { border-right:1px solid var(--border); padding:0 6px 10px; }
       .cal-month-section .cal-dia-col:last-child { border-right:none; }
+      .calendar-pdf-stage {
+        position:fixed;
+        left:-10000px;
+        top:0;
+        width:1800px;
+        background:#fff;
+        color:#111827;
+        padding:18px;
+        z-index:-1;
+      }
+      .calendar-pdf-title {
+        display:flex;
+        align-items:flex-end;
+        justify-content:space-between;
+        gap:16px;
+        margin-bottom:10px;
+        color:#1B4F72;
+        font-size:24px;
+      }
+      .calendar-pdf-title span { color:#475569; font-size:16px; font-weight:700; }
+      .calendar-pdf-export .calendar-topbar { margin-bottom:6px; }
+      .calendar-pdf-export .calendar-topbar > div:first-child { font-size:11px !important; }
+      .calendar-pdf-export .cal-month-section { margin-bottom:8px; border-radius:6px; break-inside:avoid; }
+      .calendar-pdf-export .cal-week-title { font-size:13px; padding:7px 10px; }
+      .calendar-pdf-export .cal-dia-header { font-size:11px; padding:6px 4px; }
+      .calendar-pdf-export .cal-dia-header small { font-size:9px; }
+      .calendar-pdf-export .cal-dia-col { padding:0 4px 6px; }
+      .calendar-pdf-export .cal-carril { margin-top:5px; }
+      .calendar-pdf-export .cal-carril-header { font-size:9px; padding:3px 5px; }
+      .calendar-pdf-export .cal-card {
+        padding:5px;
+        margin-top:4px;
+        border-radius:5px;
+        box-shadow:none;
+        min-height:0;
+      }
+      .calendar-pdf-export .cal-card-name { font-size:9px; line-height:1.15; }
+      .calendar-pdf-export .queue-card-meta,
+      .calendar-pdf-export .cal-card-monto { font-size:8px; line-height:1.2; }
+      .calendar-pdf-export .cal-card-topline,
+      .calendar-pdf-export .cal-card-actions,
+      .calendar-pdf-export .calendar-selection-bar,
+      .calendar-pdf-export button,
+      .calendar-pdf-export input { display:none !important; }
       .cal-card-topline {
         display:flex;
         align-items:center;
