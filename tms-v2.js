@@ -2015,95 +2015,270 @@
     }).join('');
   };
 
+  function getCommercialLineAmount(item) {
+    return num(item.montoPlanificado || item.montoPendienteSinStock || item.totalPendiente || 0);
+  }
+
+  function getCommercialPlannedQty(item) {
+    const pending = num(item.cantidadPendiente);
+    const requested = num(item.cantidadSolicitada);
+    if (pending > 0) return pending;
+    return requested;
+  }
+
+  function getCommercialDateRange() {
+    const dates = APP.lineItems.map(item => item.fechaPlanificada).filter(Boolean).sort((a, b) => fechaToDate(a) - fechaToDate(b));
+    return { first: dates[0] || '', last: dates[dates.length - 1] || '' };
+  }
+
+  function isoToFechaInput(value) {
+    if (!value) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    const d = fechaToDate(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0, 10);
+  }
+
+  function commercialFilterDateToDate(value) {
+    if (!value) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const parts = value.split('-').map(Number);
+      return new Date(parts[0], parts[1] - 1, parts[2]);
+    }
+    return fechaToDate(value);
+  }
+
+  function commercialRowsFromItems(items) {
+    return items.map(item => ({
+      fecha: item.fechaPlanificada || '',
+      cliente: item.clienteNombre || '',
+      codigoCliente: item.clienteId || '',
+      ruta: item.rutaNombre || item.zona || '',
+      camion: getTruckLabel(item.camionAsignado || ''),
+      pedido: item.pedidoCliente || '',
+      referencia: item.articulo || '',
+      descripcion: item.descripcionArticulo || '',
+      cantidadPedida: num(item.cantidadSolicitada),
+      cantidadPlanificada: getCommercialPlannedQty(item),
+      cantidadFacturada: num(item.cantidadFacturada),
+      monto: getCommercialLineAmount(item),
+      estado: deriveItemStatus(item)
+    }));
+  }
+
+  function getCommercialFilteredItems() {
+    const clientFilter = text((document.getElementById('cfComCliente') || {}).value).toLowerCase();
+    const quickDate = text((document.getElementById('cfcol_fecha') || {}).value);
+    const dateStart = text((document.getElementById('cfComFechaInicio') || {}).value);
+    const dateEnd = text((document.getElementById('cfComFechaFin') || {}).value);
+    const routeFilter = text((document.getElementById('cfComRuta') || {}).value).toLowerCase();
+    const stateFilter = text((document.getElementById('cfComEstado') || {}).value).toLowerCase();
+    return APP.lineItems.filter(item => {
+      const itemDate = fechaToDate(item.fechaPlanificada || '');
+      const startDate = commercialFilterDateToDate(dateStart);
+      const endDate = commercialFilterDateToDate(dateEnd);
+      if (clientFilter && ![item.clienteNombre, item.clienteId, item.pedidoCliente, item.articulo, item.descripcionArticulo].some(value => text(value).toLowerCase().includes(clientFilter))) return false;
+      if (quickDate && !text(item.fechaPlanificada).includes(quickDate)) return false;
+      if (startDate && itemDate < startDate) return false;
+      if (endDate && itemDate > endDate) return false;
+      if (routeFilter && !text(item.rutaNombre || item.zona || item.camionAsignado).toLowerCase().includes(routeFilter)) return false;
+      if (stateFilter && !text(deriveItemStatus(item)).toLowerCase().includes(stateFilter)) return false;
+      return true;
+    }).sort((a, b) => fechaToDate(a.fechaPlanificada) - fechaToDate(b.fechaPlanificada) || text(a.clienteNombre).localeCompare(text(b.clienteNombre)) || text(a.pedidoCliente).localeCompare(text(b.pedidoCliente)));
+  }
+
+  function setCommercialFilterDates(start, end) {
+    const startEl = document.getElementById('cfComFechaInicio');
+    const endEl = document.getElementById('cfComFechaFin');
+    if (startEl) startEl.value = isoToFechaInput(start);
+    if (endEl) endEl.value = isoToFechaInput(end || start);
+    renderComercial();
+  }
+
+  window.filtrarCom = function filtrarComV2(mode) {
+    document.querySelectorAll('#comercial .filter-btn').forEach(btn => btn.classList.remove('active'));
+    const active = document.getElementById('cf_' + mode);
+    if (active) active.classList.add('active');
+    const range = getCommercialDateRange();
+    const dates = [...new Set(APP.lineItems.map(item => item.fechaPlanificada).filter(Boolean))].sort((a, b) => fechaToDate(a) - fechaToDate(b));
+    const routeEl = document.getElementById('cfComRuta');
+    if (routeEl && !['c1', 'c2'].includes(mode)) routeEl.value = '';
+    if (mode === 'todas') setCommercialFilterDates('', '');
+    if (mode === 'sem1') setCommercialFilterDates(dates[0] || range.first, dates[Math.min(4, dates.length - 1)] || range.last);
+    if (mode === 'sem2') setCommercialFilterDates(dates[5] || range.first, dates[Math.min(9, dates.length - 1)] || range.last);
+    if (mode === 'sem3') setCommercialFilterDates(dates[10] || range.first, dates[Math.min(14, dates.length - 1)] || range.last);
+    if (mode === 'c1' || mode === 'c2') {
+      if (routeEl) routeEl.value = mode === 'c1' ? 'CAMION 1' : 'CAMION 2';
+      renderComercial();
+    }
+  };
+
+  window.limpiarFiltrosCom = function limpiarFiltrosComV2() {
+    ['cfComCliente', 'cfComFechaInicio', 'cfComFechaFin', 'cfComRuta', 'cfComEstado', 'cfcol_fecha'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.querySelectorAll('#comercial .filter-btn').forEach(btn => btn.classList.remove('active'));
+    const all = document.getElementById('cf_todas');
+    if (all) all.classList.add('active');
+    renderComercial();
+  };
+
   window.renderComercial = function renderComercialV2() {
     const mount = document.getElementById('comercialV2Mount');
     if (!mount) return;
-    const clientFilter = text((document.getElementById('cfcol_nombre') || {}).value).toLowerCase();
-    const dateFilter = text((document.getElementById('cfcol_fecha') || {}).value).toLowerCase();
-    const zoneFilter = text((document.getElementById('cfcol_zona') || {}).value).toLowerCase();
-    const stateFilter = text((document.getElementById('cfcol_estado') || {}).value).toLowerCase();
+    const items = getCommercialFilteredItems();
+    const rows = commercialRowsFromItems(items);
+    const totalMonto = rows.reduce((sum, row) => sum + row.monto, 0);
+    const totalPlanificada = rows.reduce((sum, row) => sum + row.cantidadPlanificada, 0);
+    const totalFacturada = rows.reduce((sum, row) => sum + row.cantidadFacturada, 0);
+    const pedidos = new Set(rows.map(row => row.pedido).filter(Boolean));
 
-    let items = [...APP.lineItems];
-    if (clientFilter) items = items.filter(item => text(item.clienteNombre).toLowerCase().includes(clientFilter) || text(item.clienteId).toLowerCase().includes(clientFilter));
-    if (dateFilter) items = items.filter(item => text(item.fechaPlanificada).toLowerCase().includes(dateFilter));
-    if (zoneFilter) items = items.filter(item => text(item.rutaNombre || item.zona).toLowerCase().includes(zoneFilter));
-    if (stateFilter) items = items.filter(item => text(deriveItemStatus(item)).toLowerCase().includes(stateFilter));
+    const ck1 = document.getElementById('ck1');
+    const ck2 = document.getElementById('ck2');
+    const ck3 = document.getElementById('ck3');
+    const ck4 = document.getElementById('ck4');
+    if (ck1) ck1.textContent = new Set(rows.map(row => row.codigoCliente)).size;
+    if (ck2) ck2.textContent = pedidos.size;
+    if (ck3) ck3.textContent = totalPlanificada;
+    if (ck4) ck4.textContent = formatMonto(totalMonto);
 
-    const summary = calcProgressSummary(items);
-    document.getElementById('ck1').textContent = new Set(items.map(item => item.clienteId)).size;
-    document.getElementById('ck2').textContent = summary.requested;
-    document.getElementById('ck3').textContent = summary.pending;
-    document.getElementById('ck4').textContent = summary.invoiced;
-
-    if (!items.length) {
-      mount.innerHTML = '<div class="empty-state"><div class="empty-icon">👔</div><p>No hay datos comerciales para los filtros aplicados.</p></div>';
+    if (!rows.length) {
+      mount.innerHTML = '<div class="empty-state"><div class="empty-icon">👔</div><p>No hay entregas comerciales para los filtros aplicados.</p></div>';
       return;
     }
 
     const byDate = {};
-    items.forEach(item => {
-      const date = item.fechaPlanificada || 'Sin fecha';
-      if (!byDate[date]) byDate[date] = {};
-      if (!byDate[date][item.clienteId]) byDate[date][item.clienteId] = [];
-      byDate[date][item.clienteId].push(item);
+    rows.forEach(row => {
+      const date = row.fecha || 'Sin fecha';
+      if (!byDate[date]) byDate[date] = [];
+      byDate[date].push(row);
     });
 
     mount.innerHTML = `
-      <div class="card" style="margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-          <div>
-            <div class="card-title" style="margin-bottom:4px;">Progreso de entrega</div>
-            <div style="font-size:12px;color:var(--muted);">Entregado: ${summary.pct}% — ${summary.invoiced} de ${summary.requested} unidades facturadas / solicitadas</div>
-          </div>
-          <span class="badge badge-ok">${summary.pct}%</span>
-        </div>
-        <div style="margin-top:10px;background:#e5e7eb;border-radius:999px;height:12px;overflow:hidden;">
-          <div style="height:100%;width:${Math.min(summary.pct, 100)}%;background:linear-gradient(90deg,var(--secondary),#22c55e);"></div>
-        </div>
-      </div>
-      ${Object.keys(byDate).sort((a, b) => fechaToDate(a) - fechaToDate(b)).map(date => {
-        const clients = byDate[date];
-        return `<div class="card" style="margin-bottom:14px;">
-          <div class="card-title">📅 ${date} · ${fechaLabel(date)}</div>
-          ${Object.keys(clients).sort().map(code => {
-            const clientItems = clients[code];
-            const clientSummary = calcProgressSummary(clientItems);
-            const routeName = clientItems[0].rutaNombre || clientItems[0].zona || 'Sin ruta';
-            const byOrder = {};
-            clientItems.forEach(item => {
-              const orderKey = item.pedidoCliente || item.baseKey;
-              if (!byOrder[orderKey]) byOrder[orderKey] = [];
-              byOrder[orderKey].push(item);
-            });
-            return `<details style="margin-bottom:12px;" open>
-              <summary style="cursor:pointer;font-weight:700;color:var(--primary);">${clientItems[0].clienteNombre} · ${code} · ${routeName} · ${clientSummary.pct}%</summary>
-              <div style="margin-top:8px;">
-                ${Object.keys(byOrder).map(orderKey => {
-                  const orderItems = byOrder[orderKey];
-                  return `<div class="card" style="padding:14px;margin-bottom:10px;">
-                    <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px;">
-                      <div><strong>Pedido ${orderKey}</strong></div>
-                      <span class="badge ${orderItems.every(item => deriveItemStatus(item) === 'entregado') ? 'badge-ok' : orderItems.some(item => deriveItemStatus(item) === 'parcial') ? 'badge-warn' : 'badge-pend'}">${orderItems.every(item => deriveItemStatus(item) === 'entregado') ? 'Entregado' : orderItems.some(item => deriveItemStatus(item) === 'parcial') ? 'Parcial' : 'Pendiente'}</span>
-                    </div>
-                    <div class="table-wrap"><table class="data-table">
-                      <thead><tr><th>Artículo</th><th>Descripción</th><th>Solicitada</th><th>Facturada</th><th>Pendiente</th><th>Estado</th></tr></thead>
-                      <tbody>${orderItems.map(item => `<tr>
-                        <td>${item.articulo || '—'}</td>
-                        <td>${item.descripcionArticulo || '—'}</td>
-                        <td>${item.cantidadSolicitada}</td>
-                        <td>${item.cantidadFacturada}</td>
-                        <td>${item.cantidadPendiente}</td>
-                        <td>${deriveItemStatus(item)}</td>
+      <div id="comercialExportArea" class="commercial-calendar">
+        ${Object.keys(byDate).sort((a, b) => fechaToDate(a) - fechaToDate(b)).map(date => {
+          const dayRows = byDate[date];
+          const dayMonto = dayRows.reduce((sum, row) => sum + row.monto, 0);
+          const dayPedidos = new Set(dayRows.map(row => row.pedido).filter(Boolean)).size;
+          const byClient = {};
+          dayRows.forEach(row => {
+            const key = row.codigoCliente + '|' + row.cliente;
+            if (!byClient[key]) byClient[key] = [];
+            byClient[key].push(row);
+          });
+          return `<section class="commercial-day">
+            <div class="commercial-day-head">
+              <div><strong>${fechaLabel(date)}</strong><span>${date}</span></div>
+              <div>${Object.keys(byClient).length} clientes · ${dayPedidos} pedidos · ${formatMonto(dayMonto)}</div>
+            </div>
+            <div class="commercial-client-grid">
+              ${Object.keys(byClient).sort().map(key => {
+                const clientRows = byClient[key];
+                const clientMonto = clientRows.reduce((sum, row) => sum + row.monto, 0);
+                const clientPedidos = new Set(clientRows.map(row => row.pedido).filter(Boolean)).size;
+                return `<article class="commercial-client-card">
+                  <div class="commercial-client-head">
+                    <div><strong>${clientRows[0].cliente}</strong><span>${clientRows[0].codigoCliente} · ${clientRows[0].ruta || 'Sin ruta'} · ${clientRows[0].camion || 'Sin camión'}</span></div>
+                    <div>${clientPedidos} pedidos<br>${formatMonto(clientMonto)}</div>
+                  </div>
+                  <div class="commercial-table-wrap">
+                    <table class="commercial-detail-table">
+                      <thead><tr><th>Pedido</th><th>Ref.</th><th>Descripción</th><th>Pedida</th><th>Plan.</th><th>Fact.</th><th>Monto</th></tr></thead>
+                      <tbody>${clientRows.map(row => `<tr>
+                        <td>${row.pedido || '—'}</td>
+                        <td>${row.referencia || '—'}</td>
+                        <td>${row.descripcion || '—'}</td>
+                        <td>${row.cantidadPedida}</td>
+                        <td>${row.cantidadPlanificada}</td>
+                        <td>${row.cantidadFacturada}</td>
+                        <td>${formatMonto(row.monto)}</td>
                       </tr>`).join('')}</tbody>
-                    </table></div>
-                  </div>`;
-                }).join('')}
-              </div>
-            </details>`;
-          }).join('')}
-        </div>`;
-      }).join('')}
+                    </table>
+                  </div>
+                </article>`;
+              }).join('')}
+            </div>
+          </section>`;
+        }).join('')}
+      </div>
     `;
+  };
+
+  window.exportarComercialExcel = function exportarComercialExcelV2() {
+    const data = commercialRowsFromItems(getCommercialFilteredItems()).map(row => ({
+      'Fecha entrega': row.fecha,
+      'Cliente': row.cliente,
+      'Código cliente': row.codigoCliente,
+      'Ruta': row.ruta,
+      'Camión': row.camion,
+      'Pedido': row.pedido,
+      'Referencia': row.referencia,
+      'Descripción': row.descripcion,
+      'Cantidad pedida': row.cantidadPedida,
+      'Cantidad planificada entrega': row.cantidadPlanificada,
+      'Cantidad facturada': row.cantidadFacturada,
+      'Monto': row.monto,
+      'Estado': row.estado
+    }));
+    if (!data.length) {
+      alert('No hay datos comerciales para exportar.');
+      return;
+    }
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [
+      { wch: 14 }, { wch: 28 }, { wch: 14 }, { wch: 18 }, { wch: 12 }, { wch: 12 },
+      { wch: 14 }, { wch: 42 }, { wch: 14 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 12 }
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Vista Comercial');
+    XLSX.writeFile(wb, 'TMS_Vista_Comercial.xlsx');
+  };
+
+  window.exportarComercialPDF = async function exportarComercialPDFV2() {
+    const area = document.getElementById('comercialExportArea');
+    if (!area || !area.innerHTML.trim()) {
+      alert('No hay vista comercial para exportar.');
+      return;
+    }
+    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (typeof html2canvas === 'undefined' || !JsPDF) {
+      alert('La librería de PDF no está disponible en este momento.');
+      return;
+    }
+    const wrapper = document.createElement('div');
+    wrapper.className = 'commercial-pdf-stage';
+    wrapper.innerHTML = `<div class="commercial-pdf-title"><strong>Vista Comercial</strong><span>${new Date().toLocaleDateString('es-DO')}</span></div>`;
+    const clone = area.cloneNode(true);
+    clone.classList.add('commercial-pdf-export');
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+    try {
+      const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: wrapper.scrollWidth, windowHeight: wrapper.scrollHeight });
+      const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const imgW = pageW - margin * 2;
+      const imgH = canvas.height * imgW / canvas.width;
+      const pageImgH = pageH - margin * 2;
+      let remaining = imgH;
+      let position = margin;
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, position, imgW, imgH);
+      remaining -= pageImgH;
+      while (remaining > 0) {
+        pdf.addPage('a4', 'portrait');
+        position = margin - (imgH - remaining);
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, position, imgW, imgH);
+        remaining -= pageImgH;
+      }
+      pdf.save('TMS_Vista_Comercial.pdf');
+    } catch (error) {
+      console.error('Error exportando vista comercial:', error);
+      alert('No se pudo exportar la vista comercial: ' + error.message);
+    } finally {
+      wrapper.remove();
+    }
   };
 
   function parseReceptionDays(raw) {
@@ -2580,27 +2755,6 @@
     XLSX.utils.book_append_sheet(wb, wsRoutes, 'Rutas');
     XLSX.utils.book_append_sheet(wb, wsWarehouse, 'Almacen');
     XLSX.writeFile(wb, 'TMS_Reportes.xlsx');
-  };
-
-  window.exportarComercialExcel = function exportarComercialExcelV2() {
-    const data = APP.lineItems.map(item => ({
-      'Cliente': item.clienteNombre,
-      'Código cliente': item.clienteId,
-      'Fecha': item.fechaPlanificada,
-      'Ruta': item.rutaNombre,
-      'Pedido': item.pedidoCliente,
-      'Línea': item.lineaPedidoCliente,
-      'Artículo': item.articulo,
-      'Descripción': item.descripcionArticulo,
-      'Cant. solicitada': item.cantidadSolicitada,
-      'Cant. facturada': item.cantidadFacturada,
-      'Cant. pendiente': item.cantidadPendiente,
-      'Estado': deriveItemStatus(item)
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Comercial');
-    XLSX.writeFile(wb, 'TMS_Comercial.xlsx');
   };
 
   window.exportarSolicitudesAlmacenExcel = function exportarSolicitudesAlmacenExcelV2() {
@@ -3187,23 +3341,54 @@
   }
 
   function initCommercialMount() {
+    const view = document.getElementById('comercial');
     const card = document.querySelector('#comercial .card');
-    if (!card || document.getElementById('comercialV2Mount')) return;
-    const legacyTable = document.getElementById('comTable');
-    if (legacyTable) legacyTable.closest('.table-wrap').style.display = 'none';
-    const filterBar = document.createElement('div');
-    filterBar.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:8px;';
-    filterBar.innerHTML = `
-      <input id="cfcol_nombre" class="search-input" placeholder="Cliente / código" oninput="renderComercial()">
-      <input id="cfcol_fecha" class="search-input" placeholder="Fecha DD/MM/AAAA" oninput="renderComercial()">
-      <input id="cfcol_zona" class="search-input" placeholder="Ruta / zona" oninput="renderComercial()">
-      <input id="cfcol_estado" class="search-input" placeholder="Estado: entregado, parcial..." oninput="renderComercial()">
+    if (!view || !card || document.getElementById('comercialV2Mount')) return;
+    const kpis = view.querySelectorAll('.kpi-label');
+    if (kpis[0]) kpis[0].textContent = 'Clientes';
+    if (kpis[1]) kpis[1].textContent = 'Pedidos';
+    if (kpis[2]) kpis[2].textContent = 'Cant. planificada';
+    if (kpis[3]) kpis[3].textContent = 'Monto';
+
+    const routeOptions = [...new Set([
+      ...APP.lineItems.map(item => item.rutaNombre || item.zona),
+      ...APP.lineItems.map(item => item.camionAsignado)
+    ].filter(Boolean))].sort();
+    card.innerHTML = `
+      <div class="commercial-toolbar">
+        <div class="commercial-quick">
+          <span>Acceso rápido:</span>
+          <button id="cf_todas" class="filter-btn active" onclick="filtrarCom('todas')">Todas</button>
+          <button id="cf_sem1" class="filter-btn" onclick="filtrarCom('sem1')">Semana 1</button>
+          <button id="cf_sem2" class="filter-btn" onclick="filtrarCom('sem2')">Semana 2</button>
+          <button id="cf_sem3" class="filter-btn" onclick="filtrarCom('sem3')">Semana 3</button>
+          <button id="cf_c1" class="filter-btn" onclick="filtrarCom('c1')">C1</button>
+          <button id="cf_c2" class="filter-btn" onclick="filtrarCom('c2')">C2</button>
+        </div>
+        <div class="commercial-actions">
+          <button class="btn btn-outline btn-sm" onclick="limpiarFiltrosCom()">Limpiar</button>
+          <button class="btn btn-outline btn-sm" onclick="exportarComercialPDF()">PDF vertical</button>
+          <button class="btn btn-success btn-sm" onclick="exportarComercialExcel()">Excel XLSX</button>
+        </div>
+      </div>
+      <div class="commercial-filter-grid">
+        <input id="cfComCliente" class="search-input" placeholder="Cliente, pedido o referencia" oninput="renderComercial()">
+        <input id="cfComFechaInicio" class="search-input" type="date" onchange="renderComercial()">
+        <input id="cfComFechaFin" class="search-input" type="date" onchange="renderComercial()">
+        <select id="cfComRuta" class="search-input" onchange="renderComercial()">
+          <option value="">Todas las rutas/camiones</option>
+          ${routeOptions.map(route => `<option value="${route}">${route}</option>`).join('')}
+        </select>
+        <select id="cfComEstado" class="search-input" onchange="renderComercial()">
+          <option value="">Todos los estados</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="parcial">Parcial</option>
+          <option value="entregado">Entregado</option>
+        </select>
+      </div>
+      <input id="cfcol_fecha" type="hidden">
+      <div id="comercialV2Mount" style="margin-top:12px;"></div>
     `;
-    card.appendChild(filterBar);
-    const mount = document.createElement('div');
-    mount.id = 'comercialV2Mount';
-    mount.style.marginTop = '12px';
-    card.appendChild(mount);
   }
 
   function initReportFilters() {
@@ -3391,6 +3576,102 @@
       .cal-card-selected {
         background: linear-gradient(180deg, #fff, #eef4fb);
         box-shadow: 0 0 0 2px rgba(27,79,114,0.16);
+      }
+      .commercial-toolbar {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-bottom:12px;
+      }
+      .commercial-quick,
+      .commercial-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+      .commercial-quick span { font-size:11px; font-weight:700; color:var(--muted); }
+      .commercial-filter-grid {
+        display:grid;
+        grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(140px, 1fr));
+        gap:8px;
+        margin-bottom:12px;
+      }
+      .commercial-calendar { display:flex; flex-direction:column; gap:14px; }
+      .commercial-day {
+        border:1px solid var(--border);
+        border-radius:10px;
+        overflow:hidden;
+        background:#fff;
+      }
+      .commercial-day-head {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        padding:10px 12px;
+        background:var(--primary);
+        color:#fff;
+        font-size:13px;
+        font-weight:700;
+      }
+      .commercial-day-head span { display:block; font-size:11px; font-weight:500; opacity:.86; margin-top:2px; }
+      .commercial-client-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:10px; padding:10px; }
+      .commercial-client-card { border:1px solid var(--border); border-radius:8px; background:#fff; overflow:hidden; }
+      .commercial-client-head {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:10px;
+        padding:10px 12px;
+        background:#F8FAFC;
+        border-bottom:1px solid var(--border);
+        font-size:12px;
+      }
+      .commercial-client-head strong { color:var(--primary); font-size:13px; }
+      .commercial-client-head span { display:block; color:var(--muted); font-size:11px; margin-top:2px; }
+      .commercial-client-head > div:last-child { text-align:right; font-weight:800; color:var(--text); white-space:nowrap; }
+      .commercial-table-wrap { overflow:auto; }
+      .commercial-detail-table { width:100%; border-collapse:collapse; font-size:11px; min-width:760px; }
+      .commercial-detail-table th { background:#F8FAFC; color:#334155; text-align:left; padding:7px 8px; border-bottom:1px solid var(--border); font-size:10px; text-transform:uppercase; }
+      .commercial-detail-table td { padding:7px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+      .commercial-detail-table tr:last-child td { border-bottom:none; }
+      .commercial-detail-table th:nth-child(3),
+      .commercial-detail-table td:nth-child(3) { min-width:260px; }
+      .commercial-pdf-stage {
+        position:fixed;
+        left:-10000px;
+        top:0;
+        width:900px;
+        background:#fff;
+        color:#111827;
+        padding:20px;
+        z-index:-1;
+      }
+      .commercial-pdf-title {
+        display:flex;
+        align-items:flex-end;
+        justify-content:space-between;
+        gap:16px;
+        margin-bottom:12px;
+        color:#1B4F72;
+        font-size:22px;
+      }
+      .commercial-pdf-title span { color:#475569; font-size:12px; font-weight:700; }
+      .commercial-pdf-export .commercial-day { margin-bottom:12px; break-inside:avoid; }
+      .commercial-pdf-export .commercial-client-grid { display:block; padding:8px; }
+      .commercial-pdf-export .commercial-client-card { margin-bottom:8px; break-inside:avoid; }
+      .commercial-pdf-export .commercial-detail-table { min-width:0; font-size:8px; }
+      .commercial-pdf-export .commercial-detail-table th,
+      .commercial-pdf-export .commercial-detail-table td { padding:4px; }
+      .commercial-pdf-export .commercial-detail-table th:nth-child(3),
+      .commercial-pdf-export .commercial-detail-table td:nth-child(3) { min-width:180px; }
+      @media (max-width: 980px) {
+        .commercial-filter-grid { grid-template-columns:1fr 1fr; }
+        .commercial-client-grid { grid-template-columns:1fr; }
+      }
+      @media (max-width: 620px) {
+        .commercial-filter-grid { grid-template-columns:1fr; }
+        .commercial-day-head,
+        .commercial-client-head { align-items:flex-start; flex-direction:column; }
+        .commercial-client-head > div:last-child { text-align:left; }
       }
       .routes-view-shell #rutasContainer::before {
         content: 'Exporta la fecha activa a Excel con un resumen por carril y el detalle por ruta.';
