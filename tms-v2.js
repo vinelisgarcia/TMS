@@ -1495,15 +1495,66 @@
     throw new Error('La librería de PDF no se pudo cargar. Revisa la conexión e intenta de nuevo.');
   }
 
+  async function ensurePdfTools() {
+    if (typeof window.html2canvas === 'undefined') {
+      const canvasSources = [
+        'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+        'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'
+      ];
+      for (const src of canvasSources) {
+        try {
+          await loadScriptOnce(src);
+          if (typeof window.html2canvas !== 'undefined') break;
+        } catch (error) {
+          console.warn('No se pudo cargar html2canvas desde', src, error);
+        }
+      }
+    }
+    let JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if (!JsPDF) {
+      const pdfSources = [
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+      ];
+      for (const src of pdfSources) {
+        try {
+          await loadScriptOnce(src);
+          JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+          if (JsPDF) break;
+        } catch (error) {
+          console.warn('No se pudo cargar jsPDF desde', src, error);
+        }
+      }
+    }
+    if (typeof window.html2canvas === 'undefined' || !JsPDF) {
+      throw new Error('La librería de PDF no se pudo cargar. Revisa la conexión e intenta de nuevo.');
+    }
+    return { html2canvas: window.html2canvas, JsPDF };
+  }
+
+  function canvasHasVisibleContent(canvas) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx || !canvas.width || !canvas.height) return false;
+    const stepX = Math.max(1, Math.floor(canvas.width / 80));
+    const stepY = Math.max(1, Math.floor(canvas.height / 80));
+    for (let y = 0; y < canvas.height; y += stepY) {
+      for (let x = 0; x < canvas.width; x += stepX) {
+        const data = ctx.getImageData(x, y, 1, 1).data;
+        if (data[3] > 0 && (data[0] < 245 || data[1] < 245 || data[2] < 245)) return true;
+      }
+    }
+    return false;
+  }
+
   window.exportarCalendarioVisiblePDF = async function exportarCalendarioVisiblePDFV2() {
     const el = document.getElementById('calExportArea');
     if (!el || !el.innerHTML.trim()) {
       alert('No hay calendario visible para exportar.');
       return;
     }
-    let pdfLib;
+    let pdfTools;
     try {
-      pdfLib = await ensureHtml2Pdf();
+      pdfTools = await ensurePdfTools();
     } catch (error) {
       console.error('Error cargando PDF:', error);
       alert(error.message || 'La librería de PDF no está disponible en este momento.');
@@ -1524,22 +1575,44 @@
     `;
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
-    const opt = {
-      margin: [4, 4, 4, 4],
-      filename,
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (!wrapper.scrollWidth || !wrapper.scrollHeight || !wrapper.textContent.trim()) {
+      wrapper.remove();
+      alert('No se pudo preparar el contenido del calendario para PDF.');
+      return;
+    }
+    try {
+      const canvas = await pdfTools.html2canvas(wrapper, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
+        width: wrapper.scrollWidth,
+        height: wrapper.scrollHeight,
         windowWidth: wrapper.scrollWidth,
-        windowHeight: wrapper.scrollHeight
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-    };
-    try {
-      await pdfLib().set(opt).from(wrapper).save();
+        windowHeight: wrapper.scrollHeight,
+        scrollX: 0,
+        scrollY: 0
+      });
+      if (!canvasHasVisibleContent(canvas)) {
+        throw new Error('La captura del calendario salió vacía.');
+      }
+      const pdf = new pdfTools.JsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 4;
+      const maxW = pageW - margin * 2;
+      const maxH = pageH - margin * 2;
+      const ratio = canvas.width / canvas.height;
+      let imgW = maxW;
+      let imgH = imgW / ratio;
+      if (imgH > maxH) {
+        imgH = maxH;
+        imgW = imgH * ratio;
+      }
+      const x = (pageW - imgW) / 2;
+      const y = (pageH - imgH) / 2;
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, imgW, imgH);
+      pdf.save(filename);
     } catch (error) {
       console.error('Error exportando calendario:', error);
       alert('No se pudo exportar el calendario: ' + error.message);
@@ -3554,13 +3627,15 @@
       .cal-month-section .cal-dia-col:last-child { border-right:none; }
       .calendar-pdf-stage {
         position:fixed;
-        left:-10000px;
+        left:0;
         top:0;
         width:1800px;
+        max-width:none;
         background:#fff;
         color:#111827;
         padding:18px;
-        z-index:-1;
+        z-index:2147483647;
+        pointer-events:none;
       }
       .calendar-pdf-title {
         display:flex;
