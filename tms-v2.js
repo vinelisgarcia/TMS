@@ -979,7 +979,37 @@
     return routes;
   }
 
+  function getCalendarMonthKey(fechaStr) {
+    const d = fechaToDate(fechaStr);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function getCalendarMonthLabel(fechaStr) {
+    const d = fechaToDate(fechaStr);
+    return new Intl.DateTimeFormat('es-DO', { month: 'long', year: 'numeric' })
+      .format(d)
+      .replace(/^\w/, char => char.toUpperCase());
+  }
+
+  function buildCalendarMonths(semanas) {
+    const map = new Map();
+    semanas.forEach((semana, index) => {
+      const key = getCalendarMonthKey(semana.dias[0] || semana.key);
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          label: getCalendarMonthLabel(semana.dias[0] || semana.key),
+          semanas: [],
+          firstSemanaIdx: index
+        });
+      }
+      map.get(key).semanas.push({ ...semana, absoluteIndex: index });
+    });
+    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
+  }
+
   window.buildCalStructure = function buildCalStructureV2() {
+    const prevMonthKey = APP.calMeses && APP.calMeses[APP.calMesIdx] ? APP.calMeses[APP.calMesIdx].key : null;
     const fechas = [...new Set(APP.lineItems.map(item => item.fechaPlanificada).filter(Boolean))].sort((a, b) => fechaToDate(a) - fechaToDate(b));
     APP.calSemanas = construirSemanasCalendario().filter(semana => semana.dias.some(fecha => fechas.includes(fecha)));
     if (!APP.calSemanas.length && fechas.length) {
@@ -987,12 +1017,19 @@
       APP.calSemanas = [{
         key: fechaToStr(inicio),
         nombre: fechas[0] + ' - ' + (fechas[fechas.length - 1] || fechas[0]),
-        mesNombre: new Intl.DateTimeFormat('es-DO', { month: 'long', year: 'numeric' }).format(fechaToDate(fechas[0])),
+        mesNombre: getCalendarMonthLabel(fechas[0]),
         dias: fechas
       }];
     }
-    if (APP.calSemanaIdx >= APP.calSemanas.length) APP.calSemanaIdx = Math.max(APP.calSemanas.length - 1, 0);
-    APP.calMesIdx = APP.calSemanaIdx;
+    APP.calMeses = buildCalendarMonths(APP.calSemanas || []);
+    if (APP.calMeses.length) {
+      const preservedIdx = prevMonthKey ? APP.calMeses.findIndex(month => month.key === prevMonthKey) : -1;
+      APP.calMesIdx = preservedIdx >= 0 ? preservedIdx : Math.min(APP.calMesIdx || 0, APP.calMeses.length - 1);
+      APP.calSemanaIdx = APP.calMeses[APP.calMesIdx].firstSemanaIdx || 0;
+    } else {
+      APP.calMesIdx = 0;
+      APP.calSemanaIdx = 0;
+    }
   };
 
   window.construirRutas = function construirRutasV2() {
@@ -1117,95 +1154,110 @@
     const calMesLabel = document.getElementById('calMesActualLabel');
     if (!calContainer || !calMesNav || !calMesLabel) return;
 
-    if (!APP.calSemanas || !APP.calSemanas.length) {
-      calContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">📅</div><p>Importa una planificación semanal para comenzar.</p></div>';
+    if (!APP.calMeses || !APP.calMeses.length) APP.calMeses = buildCalendarMonths(APP.calSemanas || []);
+    if (!APP.calSemanas || !APP.calSemanas.length || !APP.calMeses.length) {
+      calContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">📅</div><p>Importa una planificación para comenzar.</p></div>';
       calMesNav.innerHTML = '';
       calMesLabel.textContent = '—';
       window.renderQueueSemana();
       return;
     }
 
-    calMesNav.innerHTML = APP.calSemanas.map((semana, index) =>
-      `<button class="filter-btn ${index === APP.calSemanaIdx ? 'active' : ''}" onclick="APP.calSemanaIdx=${index};APP.calMesIdx=${index};renderCalendario()">Semana ${index + 1}</button>`
+    if (APP.calMesIdx >= APP.calMeses.length) APP.calMesIdx = Math.max(APP.calMeses.length - 1, 0);
+    const currentMonth = APP.calMeses[APP.calMesIdx];
+    APP.calSemanaIdx = currentMonth.firstSemanaIdx || 0;
+    calMesLabel.textContent = currentMonth.label;
+    calMesNav.innerHTML = '<span class="calendar-month-label">Mes:</span>' + APP.calMeses.map((month, index) =>
+      `<button class="filter-btn month-filter ${index === APP.calMesIdx ? 'active' : ''}" onclick="APP.calMesIdx=${index};renderCalendario()">${month.label}</button>`
     ).join('');
 
-    const semana = APP.calSemanas[APP.calSemanaIdx];
-    calMesLabel.textContent = semana.mesNombre.replace(/^\w/, char => char.toUpperCase());
     const search = text((document.getElementById('calSearch') || {}).value).toLowerCase();
     const selectedCount = (APP.selectedCalendarGroups || []).length;
     const html = [`
       <div class="calendar-topbar">
-        <div style="font-size:13px;color:var(--muted);font-weight:700;">Semana visible: ${semana.nombre}</div>
+        <div style="font-size:13px;color:var(--muted);font-weight:700;">Mes visible: ${currentMonth.label}</div>
         <div class="calendar-selection-bar">
           <span id="calSelectionSummary" class="badge badge-warn">${selectedCount} seleccionados</span>
           <button id="moveSelectedBtn" class="btn btn-outline btn-sm" onclick="abrirMoveSelectedModal()" ${selectedCount ? '' : 'disabled'}>Mover seleccionados</button>
           <button id="clearSelectedBtn" class="btn btn-outline btn-sm" onclick="limpiarSeleccionCalendario()" ${selectedCount ? '' : 'disabled'}>Limpiar</button>
         </div>
       </div>
-      <div class="cal-semana">
     `];
-    semana.dias.forEach(fecha => {
-      const isHol = isHoliday(fecha);
-      const dayRoutes = APP.rutas[fecha] || {};
-      html.push(`<div class="cal-dia-col">
-        <div class="cal-dia-header" style="${isHol ? 'background:#fde8e8;color:var(--danger);' : ''}">
-          ${fechaLabel(fecha)}<br><small style="font-weight:400;opacity:0.8;">${fecha}${isHol ? ' · Feriado RD' : ''}</small>
-        </div>`);
 
-      getTruckOptions().forEach(camion => {
-        const truckClass = camion === 'CAMION 1' ? 'ch-c1' : camion === 'CAMION 2' ? 'ch-c2' : camion === 'CAMION 3' ? 'ch-alm' : 'ch-alm';
-        const cardClass = camion === 'CAMION 1' ? 'cal-card-c1' : camion === 'CAMION 2' ? 'cal-card-c2' : 'cal-card-alm';
-        const groups = (dayRoutes[camion] || []).filter(group => {
-          if (!search) return true;
-          return [group.nombre, group.codigo, group.pedidoCliente, group.zona]
-            .some(value => text(value).toLowerCase().includes(search));
-        });
-        html.push(`<div class="cal-carril"
-          ondragover="event.preventDefault();this.classList.add('drag-over')"
-          ondragleave="this.classList.remove('drag-over')"
-          ondrop="onDropCal(event,'${fecha}','${camion}',this)">
-          <span class="cal-carril-header ${truckClass}">${getTruckLabel(camion)} ${groups.length ? '(' + groups.length + ')' : ''}</span>`);
-
-        groups.forEach((group, index) => {
-          const realIdx = (dayRoutes[camion] || []).indexOf(group);
-          const status = group.cumplida ? '✅' : group.cantidadFacturada > 0 ? '🟡' : '🔄';
-          const selected = isGroupSelected(group);
-          const alertHtml = group.alertas.length
-            ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
-            : '';
-          html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true"
-            ondragstart="onDragStartCal(event,'${fecha}','${camion}',${realIdx})"
-            ondragend="this.classList.remove('dragging')"
-            style="${group.alertas.length ? 'border:1px solid #ef4444;' : ''}">
-            <div class="cal-card-topline">
-              <label class="cal-card-check">
-                <input type="checkbox" ${selected ? 'checked' : ''} onclick="toggleSeleccionCalendario('${fecha}','${camion}',${realIdx}, event)">
-                <span>Selec.</span>
-              </label>
-              <span class="badge ${selected ? 'badge-primary' : 'badge-outline'}">${selected ? 'Lote' : 'Individual'}</span>
-            </div>
-            <div class="cal-card-name">${group.nombre}</div>
-            <div class="queue-card-meta">${group.codigo} · ${group.cantidadPedidos || 1} pedidos: ${group.pedidoCliente}</div>
-            <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · ${formatMonto(group.totalPendiente)}</div>
-            ${alertHtml}
-            <div class="cal-card-actions">
-              <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirMoveModal('${fecha}','${camion}',${realIdx})">✏️ Mover</button>
-              <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="toggleCumplida('${fecha}','${camion}',${realIdx})">${group.cumplida ? '↩️' : '✅'}</button>
-              <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirNotaModal('${fecha}','${camion}',${realIdx})">📝</button>
-              <span>${status}</span>
-            </div>
+    currentMonth.semanas.forEach((semana, weekIndex) => {
+      html.push(`<section class="cal-month-section">
+        <div class="cal-week-title">Semana ${weekIndex + 1} — ${semana.nombre}</div>
+        <div class="cal-semana">`);
+      semana.dias.forEach(fecha => {
+        const isHol = isHoliday(fecha);
+        const dayRoutes = APP.rutas[fecha] || {};
+        html.push(`<div class="cal-dia-col">
+          <div class="cal-dia-header" style="${isHol ? 'background:#fde8e8;color:var(--danger);' : ''}">
+            ${fechaLabel(fecha)}<br><small style="font-weight:400;opacity:0.8;">${fecha}${isHol ? ' · Feriado RD' : ''}</small>
           </div>`);
-        });
 
-        if (!groups.length) html.push('<div style="font-size:11px;color:var(--muted);padding:8px 0;">Sin pedidos asignados.</div>');
+        getTruckOptions().forEach(camion => {
+          const truckClass = camion === 'CAMION 1' ? 'ch-c1' : camion === 'CAMION 2' ? 'ch-c2' : camion === 'CAMION 3' ? 'ch-alm' : 'ch-alm';
+          const cardClass = camion === 'CAMION 1' ? 'cal-card-c1' : camion === 'CAMION 2' ? 'cal-card-c2' : 'cal-card-alm';
+          const groups = (dayRoutes[camion] || []).filter(group => {
+            if (!search) return true;
+            return [group.nombre, group.codigo, group.pedidoCliente, group.zona]
+              .some(value => text(value).toLowerCase().includes(search));
+          });
+          html.push(`<div class="cal-carril"
+            ondragover="event.preventDefault();this.classList.add('drag-over')"
+            ondragleave="this.classList.remove('drag-over')"
+            ondrop="onDropCal(event,'${fecha}','${camion}',this)">
+            <span class="cal-carril-header ${truckClass}">${getTruckLabel(camion)} ${groups.length ? '(' + groups.length + ')' : ''}</span>`);
+
+          groups.forEach(group => {
+            const realIdx = (dayRoutes[camion] || []).indexOf(group);
+            const status = group.cumplida ? '✅' : group.cantidadFacturada > 0 ? '🟡' : '🔄';
+            const selected = isGroupSelected(group);
+            const alertHtml = group.alertas.length
+              ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
+              : '';
+            html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true"
+              ondragstart="onDragStartCal(event,'${fecha}','${camion}',${realIdx})"
+              ondragend="this.classList.remove('dragging')"
+              style="${group.alertas.length ? 'border:1px solid #ef4444;' : ''}">
+              <div class="cal-card-topline">
+                <label class="cal-card-check">
+                  <input type="checkbox" ${selected ? 'checked' : ''} onclick="toggleSeleccionCalendario('${fecha}','${camion}',${realIdx}, event)">
+                  <span>Selec.</span>
+                </label>
+                <span class="badge ${selected ? 'badge-primary' : 'badge-outline'}">${selected ? 'Lote' : 'Individual'}</span>
+              </div>
+              <div class="cal-card-name">${group.nombre}</div>
+              <div class="queue-card-meta">${group.codigo} · ${group.cantidadPedidos || 1} pedidos: ${group.pedidoCliente}</div>
+              <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · ${formatMonto(group.totalPendiente)}</div>
+              ${alertHtml}
+              <div class="cal-card-actions">
+                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirMoveModal('${fecha}','${camion}',${realIdx})">✏️ Mover</button>
+                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="toggleCumplida('${fecha}','${camion}',${realIdx})">${group.cumplida ? '↩️' : '✅'}</button>
+                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirNotaModal('${fecha}','${camion}',${realIdx})">📝</button>
+                <span>${status}</span>
+              </div>
+            </div>`);
+          });
+
+          if (!groups.length) html.push('<div style="font-size:11px;color:var(--muted);padding:8px 0;">Sin pedidos asignados.</div>');
+          html.push('</div>');
+        });
         html.push('</div>');
       });
-      html.push('</div>');
+      html.push('</div></section>');
     });
-    html.push('</div>');
+
     calContainer.innerHTML = html.join('');
     syncCalendarToolbarState();
     window.renderQueueSemana();
+  };
+
+  window.navCalMes = function navCalMesV2(delta) {
+    if (!APP.calMeses || !APP.calMeses.length) return;
+    APP.calMesIdx = Math.max(0, Math.min(APP.calMeses.length - 1, (APP.calMesIdx || 0) + delta));
+    renderCalendario();
   };
 
   window.renderRutas = function renderRutasV2() {
@@ -1413,10 +1465,10 @@
       alert('La librería de PDF no está disponible en este momento.');
       return;
     }
-    const semana = APP.calSemanas && APP.calSemanas[APP.calSemanaIdx];
+    const month = APP.calMeses && APP.calMeses[APP.calMesIdx];
     const opt = {
       margin: [8, 8, 8, 8],
-      filename: 'RouteControl_Calendario_' + (semana ? semana.key.replace(/\//g, '-') : 'visible') + '.pdf',
+      filename: 'RouteControl_Calendario_' + (month ? month.key : 'visible') + '.pdf',
       image: { type: 'jpeg', quality: 0.95 },
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
@@ -3129,6 +3181,13 @@
         flex-wrap:wrap;
       }
       .calendar-selection-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+      .calendar-month-label { font-size:13px; font-weight:700; color:var(--muted); margin-right:4px; align-self:center; }
+      .month-filter { border-radius:12px; padding:8px 16px; font-size:13px; }
+      .cal-month-section { margin-bottom:18px; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fff; }
+      .cal-week-title { background:var(--primary); color:#fff; font-size:16px; font-weight:800; padding:12px 16px; }
+      .cal-month-section .cal-semana { margin:0; padding:0; gap:0; }
+      .cal-month-section .cal-dia-col { border-right:1px solid var(--border); padding:0 6px 10px; }
+      .cal-month-section .cal-dia-col:last-child { border-right:none; }
       .cal-card-topline {
         display:flex;
         align-items:center;
