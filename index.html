@@ -779,9 +779,6 @@ body {
     <button class="nav-btn" id="nav-rutas" onclick="cambiarVista('rutas',this)">
       <span class="nav-icon">🚚</span><span class="nav-label">Rutas</span>
     </button>
-    <button class="nav-btn" id="nav-reportes" onclick="cambiarVista('reportes',this)">
-      <span class="nav-icon">📈</span><span class="nav-label">Reportes</span>
-    </button>
     <button class="nav-btn" id="nav-comercial" onclick="cambiarVista('comercial',this)">
       <span class="nav-icon">👔</span><span class="nav-label">Vista Comercial</span>
     </button>
@@ -842,7 +839,7 @@ body {
           <div class="upload-text" id="uploadZoneText" style="font-size:15px;">Arrastra el SAP de planificación aquí</div>
           <div class="upload-sub">Reporte SAP del lunes — establece la semana completa</div>
           <div style="margin-top:14px;display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
-            <input type="file" id="sapFile" accept=".xlsx,.xls" style="display:none"
+            <input type="file" id="sapFile" accept=".xlsx,.xls,.xml" style="display:none"
                    onchange="procesarArchivo(this.files[0],'plan')">
             <button class="btn btn-primary" onclick="event.stopPropagation();document.getElementById('sapFile').click()">
               📂 Seleccionar archivo
@@ -892,7 +889,7 @@ body {
           <div class="upload-text" id="ctrlUploadZoneText" style="font-size:15px;">Arrastra el SAP de cierre del día aquí</div>
           <div class="upload-sub">Mismo formato SAP — genera el comparativo Plan vs. Real</div>
           <div style="margin-top:14px;">
-            <input type="file" id="ctrlFile" accept=".xlsx,.xls" style="display:none"
+            <input type="file" id="ctrlFile" accept=".xlsx,.xls,.xml" style="display:none"
                    onchange="procesarArchivo(this.files[0],'control')">
             <button class="btn btn-success" onclick="event.stopPropagation();abrirControlDiario()">
               📂 Seleccionar cierre del día
@@ -1027,6 +1024,29 @@ body {
         <div id="dashTopClientes"></div>
       </div>
 
+      <div class="card" id="dashReportPanel">
+        <div class="view-toolbar" style="justify-content:space-between;">
+          <div>
+            <div class="card-title" style="margin-bottom:2px;">📈 Reporte operativo</div>
+            <div style="font-size:12px;color:var(--muted);">Genera el resumen de entregas desde el dashboard.</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <input type="text" id="repSearch" class="search-input" placeholder="🔍 Filtrar por cliente..." oninput="generarReporte()" style="max-width:220px;">
+            <button class="btn btn-primary" onclick="generarReporte()">📈 Generar</button>
+            <button class="btn btn-outline" onclick="descargarPDF()">📄 PDF</button>
+            <button class="btn btn-success" onclick="exportarReporteExcel()">📊 Excel</button>
+          </div>
+        </div>
+        <div id="reporteLoading" style="display:none;text-align:center;padding:40px;">
+          <div class="spinner"></div>
+          <p style="margin-top:12px;color:var(--muted);">Generando reporte...</p>
+        </div>
+        <div id="reporteOutput">
+          <div class="empty-state"><div class="empty-icon">📈</div><p>Haz clic en "Generar" para comenzar.</p></div>
+        </div>
+      </div>
+
+
       <!-- PLAN VS. REAL -->
       <div id="dashPlanVsReal" style="display:none;margin-bottom:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
@@ -1095,7 +1115,7 @@ body {
       </div>
 
       <!-- TABLA CLIENTES -->
-      <div class="card">
+      <div class="card" id="dashClientesCard" style="display:none;">
         <div class="view-toolbar">
           <span class="card-title" style="margin-bottom:0;">📋 Todos los Clientes</span>
           <input type="text" id="dashSearch" class="search-input" placeholder="🔍 Buscar cliente..." oninput="actualizarTablaClientes(APP.filtroSector||'Todos')" style="max-width:220px;">
@@ -1161,29 +1181,6 @@ body {
 
       <div id="rutasContainer">
         <div class="empty-state"><div class="empty-icon">🚚</div><p>Selecciona una fecha para ver las rutas.</p></div>
-      </div>
-    </div>
-
-    <!-- ========== VISTA 5: REPORTES ========== -->
-    <div id="reportes" class="view">
-      <div class="view-title">📈 Reportes</div>
-
-      <div class="card" style="padding:14px 16px;">
-        <div class="view-toolbar">
-          <input type="text" id="repSearch" class="search-input" placeholder="🔍 Filtrar por cliente..." oninput="generarReporte()" style="max-width:220px;">
-          <button class="btn btn-primary" onclick="generarReporte()">📈 Generar Reporte</button>
-          <button class="btn btn-outline" onclick="descargarPDF()">📄 Descargar PDF</button>
-          <button class="btn btn-success" onclick="exportarReporteExcel()">📊 Exportar Excel</button>
-        </div>
-      </div>
-
-      <div id="reporteLoading" style="display:none;text-align:center;padding:40px;">
-        <div class="spinner"></div>
-        <p style="margin-top:12px;color:var(--muted);">Generando reporte...</p>
-      </div>
-
-      <div id="reporteOutput">
-        <div class="empty-state"><div class="empty-icon">📈</div><p>Haz clic en "Generar Reporte" para comenzar.</p></div>
       </div>
     </div>
 
@@ -1263,7 +1260,7 @@ body {
       <div class="card" style="padding:14px 16px;">
         <div class="view-toolbar">
           <input type="text" id="configSearch" class="search-input" placeholder="🔍 Buscar cliente..." oninput="renderConfigClientes()" style="max-width:240px;">
-          <input type="file" id="configFile" accept=".xlsx,.xls,.json" style="display:none" onchange="importarConfigClientes(this.files[0])">
+          <input type="file" id="configFile" accept=".xlsx,.xls,.xml,.json" style="display:none" onchange="importarConfigClientes(this.files[0])">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('configFile').click()">📂 Importar configuración</button>
           <button class="btn btn-success btn-sm" onclick="exportarConfigClientes()">⬇️ Exportar configuración</button>
           <button class="btn btn-primary btn-sm" onclick="recalcularPlanConConfig()">↻ Recalcular planificación</button>
@@ -4231,6 +4228,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Si no hay sesión, la pantalla de login ya está visible
 });
 </script>
+<script src="./DATA.js"></script>
 <script src="./tms-v2.js"></script>
 </body>
 </html>

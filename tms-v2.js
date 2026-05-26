@@ -7,8 +7,8 @@
   const CURRENT_YEAR = new Date().getFullYear();
   const RD_HOLIDAYS = {
     2026: [
-      '01/01/2026','06/01/2026','21/01/2026','26/01/2026','27/02/2026',
-      '03/04/2026','04/04/2026','01/05/2026','04/06/2026','16/08/2026',
+      '01/01/2026','05/01/2026','21/01/2026','26/01/2026','27/02/2026',
+      '03/04/2026','04/05/2026','04/06/2026','16/08/2026',
       '24/09/2026','09/11/2026','25/12/2026'
     ]
   };
@@ -30,6 +30,7 @@
     camionExtraEnabled: !!APP.camionExtraEnabled,
     feriadosRD: APP.feriadosRD || (RD_HOLIDAYS[CURRENT_YEAR] || []),
     importFiles: APP.importFiles || { plan: '', control: '', solicitudesPlan: '', solicitudesControl: '' },
+    selectedCalendarGroups: APP.selectedCalendarGroups || [],
     appVersion: 'v2'
   });
 
@@ -128,8 +129,100 @@
       item.fechaPlanificada || '',
       item.camionAsignado || '',
       item.rutaNombre || item.zona || '',
-      buildBaseItemKey(item)
+      text(item.clienteId || item.codigo),
+      text(item.clienteNombre || item.nombre)
     ].join('|');
+  }
+
+  function buildSapMatchKey(item) {
+    return [
+      text(item.pedidoCliente),
+      text(item.lineaPedidoCliente),
+      text(item.articulo),
+      text(item.clienteId || item.codigo)
+    ].map(normKey).join('|');
+  }
+
+  function uniqueTexts(values) {
+    return [...new Set((values || []).map(text).filter(Boolean))];
+  }
+
+  function getGroupSelectionKey(group) {
+    if (!group || !Array.isArray(group.items)) return '';
+    return group.items
+      .map(item => item.baseKey)
+      .filter(Boolean)
+      .sort()
+      .join('||');
+  }
+
+  function isGroupSelected(group) {
+    const key = getGroupSelectionKey(group);
+    return !!key && APP.selectedCalendarGroups.includes(key);
+  }
+
+  function clearCalendarSelection() {
+    APP.selectedCalendarGroups = [];
+    const summary = document.getElementById('calSelectionSummary');
+    if (summary) summary.textContent = '0 seleccionados';
+  }
+
+  function toggleCalendarSelection(group, forceSelected) {
+    const key = getGroupSelectionKey(group);
+    if (!key) return;
+    const current = new Set(APP.selectedCalendarGroups || []);
+    const shouldSelect = typeof forceSelected === 'boolean' ? forceSelected : !current.has(key);
+    if (shouldSelect) current.add(key);
+    else current.delete(key);
+    APP.selectedCalendarGroups = [...current];
+  }
+
+  function getSelectedGroups() {
+    const keys = new Set(APP.selectedCalendarGroups || []);
+    if (!keys.size) return [];
+    const matches = [];
+    Object.keys(APP.rutas || {}).forEach(fecha => {
+      Object.keys(APP.rutas[fecha] || {}).forEach(camion => {
+        (APP.rutas[fecha][camion] || []).forEach(group => {
+          if (keys.has(getGroupSelectionKey(group))) matches.push({ fecha, camion, group });
+        });
+      });
+    });
+    return matches;
+  }
+
+  function getPlanningWindowDates(referenceDate) {
+    const plannedDates = APP.lineItems
+      .map(item => item.fechaPlanificada)
+      .filter(Boolean)
+      .sort((a, b) => fechaToDate(a) - fechaToDate(b));
+    const fallback = referenceDate || APP.planFecha || fechaToStr(new Date());
+    const minDate = plannedDates[0] || fallback;
+    const maxDate = plannedDates[plannedDates.length - 1] || fallback;
+    const start = fechaToDate(minDate);
+    const end = fechaToDate(maxDate);
+    start.setDate(start.getDate() - 21);
+    end.setDate(end.getDate() + 42);
+    const out = [];
+    const cursor = new Date(start.getTime());
+    while (cursor <= end) {
+      const current = fechaToStr(cursor);
+      if (!isNonWorkingDay(current)) out.push(current);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    if (!out.includes(fallback) && !isNonWorkingDay(fallback)) out.push(fallback);
+    return [...new Set(out)].sort((a, b) => fechaToDate(a) - fechaToDate(b));
+  }
+
+  function buildMoveDateOptions(referenceItem, currentDate) {
+    const routeName = referenceItem && (referenceItem.rutaNombre || referenceItem.zona);
+    const dates = getPlanningWindowDates(currentDate);
+    const allowedDates = dates.filter(date => {
+      if (!referenceItem) return true;
+      const routeOk = !routeName || routeAllowsDate(routeName, date);
+      return routeOk && clienteAllowsDate(referenceItem, date);
+    });
+    return allowedDates.length ? allowedDates : dates;
   }
 
   function buildClientConfigDefault(codigo, nombre) {
@@ -351,6 +444,7 @@
       cliente: row.cliente_nombre || '',
       solicitud: row.solicitud_id || '',
       pedidoCliente: row.pedido_cliente || '',
+      lineaPedidoCliente: metadata.lineaPedidoCliente || '',
       articulo: row.articulo || '',
       descripcionArticulo: row.descripcion_articulo || '',
       cantidadSolicitada: num(row.cantidad_solicitada),
@@ -376,6 +470,7 @@
       cliente: row.cliente_nombre || '',
       solicitud: row.solicitud_id || '',
       pedidoCliente: row.pedido_cliente || '',
+      lineaPedidoCliente: metadata.lineaPedidoCliente || '',
       articulo: row.articulo || '',
       descripcionArticulo: row.descripcion_articulo || '',
       cantidadSolicitada: num(row.cantidad_solicitada),
@@ -416,7 +511,8 @@
         fechaLiberacion: fechaStrToISO(item.fechaLiberacion),
         fechaFinalizada: fechaStrToISO(item.fechaFinalizada),
         ubicacion: item.ubicacion || '',
-        tipoSolicitudArchivo: item.tipoSolicitudArchivo || 'plan semanal'
+        tipoSolicitudArchivo: item.tipoSolicitudArchivo || 'plan semanal',
+        lineaPedidoCliente: item.lineaPedidoCliente || ''
       })
     }));
   }
@@ -443,7 +539,8 @@
         fechaLiberacion: fechaStrToISO(item.fechaLiberacion),
         fechaFinalizada: fechaStrToISO(item.fechaFinalizada),
         ubicacion: item.ubicacion || '',
-        tipoSolicitudArchivo: item.tipoSolicitudArchivo || 'control diario'
+        tipoSolicitudArchivo: item.tipoSolicitudArchivo || 'control diario',
+        lineaPedidoCliente: item.lineaPedidoCliente || ''
       })
     }));
   }
@@ -601,28 +698,56 @@
     initRouteFilterOptions();
   }
 
+  function makeUniqueHeader(label, previous, counts) {
+    let base = text(label);
+    const prev = text(previous);
+    if (!base && prev) base = prev + ' descripción';
+    if (!base) base = 'Columna';
+    const seen = counts[base] || 0;
+    counts[base] = seen + 1;
+    return seen ? base + ' ' + (seen + 1) : base;
+  }
+
+  function rowsFromWorksheet(ws) {
+    const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+    const headerIndex = matrix.findIndex(row => {
+      const normalized = row.map(normKey);
+      return normalized.includes('pedidodecliente') ||
+        normalized.includes('iddesolicituddealmacen') ||
+        normalized.includes('iddesolicituddelogisticapormediodeterceros');
+    });
+    if (headerIndex < 0) return XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+    const headerRow = matrix[headerIndex];
+    const counts = {};
+    const headers = headerRow.map((cell, index) => makeUniqueHeader(cell, headerRow[index - 1], counts));
+    return matrix.slice(headerIndex + 1)
+      .filter(row => row.some(cell => text(cell)))
+      .map(row => Object.fromEntries(headers.map((header, index) => [header, row[index] == null ? '' : row[index]])));
+  }
+
   function parseSAPRows(arrayBuffer, fileName, mode) {
     const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array', cellDates: true });
     const sheetName = wb.SheetNames[0];
     const ws = wb.Sheets[sheetName];
     const fechaArchivo = extraerFechaDeNombreArchivo(sheetName) || extraerFechaDeNombreArchivo(fileName) || fechaToStr(new Date());
-    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    const rows = rowsFromWorksheet(ws);
 
     const items = [];
     rows.forEach((row, index) => {
-      const clienteId = text(pickField(row, ['Cliente', 'Codigo', 'Código', 'ID cliente', 'Cliente código']));
-      const clienteNombre = text(pickField(row, ['Nombre Comercial', 'Nombre', 'Cliente Nombre', 'Destinatario', 'Nombre cliente']));
-      if (!clienteId || !clienteNombre) return;
+      const clienteId = text(pickField(row, ['Cliente', 'Codigo', 'Código', 'ID cliente', 'Cliente código', 'Destinatario de las mercancías descripción']));
+      const clienteNombre = text(pickField(row, ['Nombre Comercial', 'Nombre', 'Cliente descripción', 'Cliente Nombre', 'Destinatario', 'Nombre cliente', 'Destinatario de las mercancías']));
+      const pedidoCliente = text(pickField(row, ['Pedido de cliente', 'Pedido del cliente', 'Pedido cliente', 'Pedido']));
+      if (!clienteId || !clienteNombre || !pedidoCliente) return;
 
-      const pedidoCliente = text(pickField(row, ['Pedido del cliente', 'Pedido de cliente', 'Pedido cliente', 'Pedido']));
-      const lineaPedidoCliente = text(pickField(row, ['Línea de pedido del cliente', 'Linea de pedido del cliente', 'Linea pedido cliente', 'Posición', 'Linea']));
-      const articulo = text(pickField(row, ['Artículo', 'Articulo', 'Material', 'SKU']));
-      const descripcionArticulo = text(pickField(row, ['Descripción del artículo', 'Descripcion del articulo', 'Descripción', 'Descripcion', 'Texto breve']));
+      const lineaPedidoCliente = text(pickField(row, ['Posición de pedido de cliente', 'Posicion de pedido de cliente', 'Línea de pedido del cliente', 'Linea de pedido del cliente', 'ID de partida individual', 'Posición', 'Linea']));
+      const articulo = text(pickField(row, ['Producto', 'Artículo', 'Articulo', 'Material', 'SKU']));
+      const descripcionArticulo = text(pickField(row, ['Producto descripción', 'Producto descripcion', 'Artículo descripción', 'Articulo descripcion', 'Descripción del artículo', 'Descripcion del articulo', 'Descripción', 'Descripcion', 'Texto breve']));
       const cantidadSolicitada = num(pickField(row, ['Cantidad solicitada', 'Cantidad solicitada cliente', 'Cantidad', 'Cant solicitada']));
       const cantidadFacturada = num(pickField(row, ['Cantidad facturada', 'Facturado', 'Cantidad entregada']));
-      const cantidadPendienteRaw = pickField(row, ['Cantidad pendiente', 'Pendiente', 'Cantidad abierta']);
+      const cantidadPendienteRaw = pickField(row, ['Cantidad pendiente de servir', 'Cantidad pendiente', 'Pendiente', 'Cantidad abierta']);
       const cantidadPendiente = cantidadPendienteRaw !== '' ? num(cantidadPendienteRaw) : Math.max(cantidadSolicitada - cantidadFacturada, 0);
-      const montoPlanificado = num(pickField(row, ['Importe confirmado no entregado', 'Importe Confirmado No Entregado', 'Confirmado No Entregado', 'Monto']));
+      const montoPlanificado = num(pickField(row, ['Importe confirmado no entregado', 'Importe Confirmado No Entregado', 'Valor neto', 'Monto']));
+      const montoPendienteSinStock = num(pickField(row, ['Importe pendiente sin stock']));
       const fechaPrevista = toDateLabel(pickField(row, ['Fecha', 'Fecha Entrega', 'Fecha de entrega', 'Fecha de envío planificada', 'Fecha de envio planificada'])) || fechaArchivo;
       const rutaNombre = inferRouteName(clienteNombre, clienteId);
       const item = {
@@ -635,15 +760,19 @@
         fechaControl: mode === 'control' ? fechaArchivo : '',
         pedidoCliente,
         lineaPedidoCliente,
+        referenciaExterna: text(pickField(row, ['Referencia externa'])),
         articulo,
         descripcionArticulo,
         cantidadSolicitada,
         cantidadFacturada,
         cantidadPendiente,
         montoPlanificado,
+        montoPendienteSinStock,
+        estadoCabecera: text(pickField(row, ['Estado (cabecera) (Pedido de cliente)', 'Estado cabecera'])),
+        estadoArticulo: text(pickField(row, ['Estado de artículo', 'Estado de articulo'])),
         estadoPlanificacion: mode === 'control' ? '' : 'planificado',
         estadoEntrega: '',
-        origen: mode === 'control' ? 'control diario' : 'planificacion semanal',
+        origen: mode === 'control' ? 'control diario' : 'programación mensual',
         camionAsignado: '',
         fechaCreacion: nowIso(),
         fechaActualizacion: nowIso(),
@@ -653,6 +782,7 @@
         asignado: false
       };
       item.baseKey = buildBaseItemKey(item);
+      item.sapMatchKey = buildSapMatchKey(item);
       items.push(item);
     });
 
@@ -706,6 +836,16 @@
     moveSelect.innerHTML = getTruckOptions().map(camion => `<option value="${camion}">${getTruckLabel(camion)}</option>`).join('');
   }
 
+  function syncCalendarToolbarState() {
+    const summary = document.getElementById('calSelectionSummary');
+    const moveBtn = document.getElementById('moveSelectedBtn');
+    const clearBtn = document.getElementById('clearSelectedBtn');
+    const count = (APP.selectedCalendarGroups || []).length;
+    if (summary) summary.textContent = `${count} seleccionados`;
+    if (moveBtn) moveBtn.disabled = count === 0;
+    if (clearBtn) clearBtn.disabled = count === 0;
+  }
+
   function saveLocalSnapshot() {
     const payload = {
       savedAt: nowIso(),
@@ -735,6 +875,22 @@
       }
     };
     localStorage.setItem(LOCAL_KEY, JSON.stringify(payload));
+  }
+
+  function loadEmbeddedDemoState() {
+    const payload = window.ROUTECONTROL_DATA && window.ROUTECONTROL_DATA.data;
+    if (!payload || !Array.isArray(payload.lineItems) || !payload.lineItems.length) return false;
+    Object.assign(APP, safeClone(payload));
+    APP.planLineItems = APP.planLineItems || APP.lineItems.map(item => ({ ...item }));
+    APP.controlLineItems = APP.controlLineItems || [];
+    APP.solicitudesPlanAlmacen = APP.solicitudesPlanAlmacen || [];
+    APP.solicitudesControlAlmacen = APP.solicitudesControlAlmacen || [];
+    APP.solicitudesAlmacen = APP.solicitudesAlmacen || APP.solicitudesPlanAlmacen;
+    APP.solicitudesCompare = buildSolicitudesComparison();
+    ensureAdminProfile();
+    matchWarehouseToOrders();
+    rebuildDerivedState();
+    return true;
   }
 
   function loadLocalSnapshot() {
@@ -773,6 +929,9 @@
           codigo: item.clienteId,
           nombre: item.clienteNombre,
           pedidoCliente: item.pedidoCliente || 'Sin pedido',
+          pedidos: [],
+          solicitudes: [],
+          referencias: [],
           zona: item.rutaNombre || item.zona || '',
           rutaNombre: item.rutaNombre || item.zona || '',
           cantidadSolicitada: 0,
@@ -789,6 +948,12 @@
       }
       const group = grouped.get(key);
       group.items.push(item);
+      group.pedidos = uniqueTexts([...group.pedidos, item.pedidoCliente]);
+      group.solicitudes = uniqueTexts([...group.solicitudes, item.solicitudAlmacen]);
+      group.referencias = uniqueTexts([...group.referencias, item.articulo]);
+      group.pedidoCliente = group.pedidos.join(', ') || 'Sin pedido';
+      group.cantidadPedidos = group.pedidos.length || group.items.length;
+      group.cantidadSolicitudes = group.solicitudes.length;
       group.cantidadSolicitada += item.cantidadSolicitada || 0;
       group.cantidadFacturada += item.cantidadFacturada || 0;
       group.cantidadPendiente += item.cantidadPendiente || 0;
@@ -803,6 +968,7 @@
       if (!cfg.configuracionCompleta) group.alertas.push('Cliente sin configuración');
       if (!cfg.rutaAsignada && !group.rutaNombre) group.alertas.push('Cliente sin ruta asignada');
       if (isHoliday(group.fecha)) group.alertas.push('Pedido en feriado');
+      if (!routeAllowsDate(group.rutaNombre || group.zona, group.fecha)) group.alertas.push('Ruta fuera de día operativo');
       if (!routes[group.fecha]) {
         routes[group.fecha] = {};
         getTruckOptions().forEach(camion => { routes[group.fecha][camion] = []; });
@@ -887,13 +1053,12 @@
     const search = text((document.getElementById('calSearch') || {}).value).toLowerCase();
     const visibles = APP.queueSemana.filter(item => {
       if (!search) return true;
-      return [
-        item.nombre, item.codigo, item.pedidoCliente, item.articulo, item.descripcionArticulo, item.rutaNombre
-      ].some(value => text(value).toLowerCase().includes(search));
+      return [item.nombre, item.codigo, item.pedidoCliente, item.articulo, item.descripcionArticulo, item.rutaNombre]
+        .some(value => text(value).toLowerCase().includes(search));
     });
 
     section.style.display = 'block';
-    resumen.textContent = visibles.length + ' pedidos pendientes';
+    resumen.textContent = `${visibles.length} líneas pendientes`;
 
     if (!visibles.length) {
       cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📥</div><p>No hay pedidos pendientes en QUEUE para este filtro.</p></div>';
@@ -903,32 +1068,42 @@
     const grouped = {};
     visibles.forEach((item, index) => {
       const routeName = queueByRouteName(item);
-      if (!grouped[routeName]) grouped[routeName] = [];
-      grouped[routeName].push({ item, index });
+      const clientKey = [routeName, item.codigo, item.nombre].join('|');
+      if (!grouped[routeName]) grouped[routeName] = {};
+      if (!grouped[routeName][clientKey]) grouped[routeName][clientKey] = { codigo: item.codigo, nombre: item.nombre, routeName, items: [], indexes: [] };
+      grouped[routeName][clientKey].items.push(item);
+      grouped[routeName][clientKey].indexes.push(index);
     });
 
     cont.innerHTML = `<div class="rutas-grid">${Object.keys(grouped).sort().map(routeName => {
-      const items = grouped[routeName];
+      const clients = Object.values(grouped[routeName]);
       const warn = routeName.toLowerCase().includes('sin ruta');
+      const lineCount = clients.reduce((sum, client) => sum + client.items.length, 0);
       return `<div class="ruta-col">
         <div class="ruta-col-header ${warn ? 'ch-alm' : 'ch-c1'}">
-          ${warn ? '⚠️' : '📍'} ${routeName} (${items.length})
+          ${warn ? '⚠️' : '📍'} ${routeName} (${clients.length} clientes · ${lineCount} líneas)
         </div>
         <div class="ruta-col-body">
-          ${items.map(({ item, index }) => {
-            const cfg = getClienteConfigV2(item.codigo, item.nombre);
+          ${clients.map(client => {
+            const cfg = getClienteConfigV2(client.codigo, client.nombre);
             const alerts = [];
             if (!cfg.configuracionCompleta) alerts.push('Cliente sin configuración');
-            if (!cfg.rutaAsignada && !item.rutaNombre) alerts.push('Cliente sin ruta asignada');
+            if (!cfg.rutaAsignada && !client.routeName) alerts.push('Cliente sin ruta asignada');
+            const pedidos = uniqueTexts(client.items.map(item => item.pedidoCliente));
+            const referencias = uniqueTexts(client.items.map(item => item.articulo));
+            const solicitado = client.items.reduce((sum, item) => sum + (item.cantidadSolicitada || 0), 0);
+            const facturado = client.items.reduce((sum, item) => sum + (item.cantidadFacturada || 0), 0);
+            const pendiente = client.items.reduce((sum, item) => sum + (item.cantidadPendiente || 0), 0);
+            const monto = client.items.reduce((sum, item) => sum + (item.monto || item.montoPlanificado || 0), 0);
             return `<div class="queue-card ${warn ? 'queue-card-new' : 'queue-card-plan'}" draggable="true"
-              ondragstart="onDragStartQueue(event,${index})"
+              ondragstart="onDragStartQueue(event,${client.indexes[0]})"
               ondragend="APP.dragQueue=null;this.classList.remove('dragging')">
-              <div class="queue-card-title">${item.nombre}</div>
-              <div class="queue-card-meta">${item.codigo} · Pedido ${item.pedidoCliente}${item.lineaPedidoCliente ? ' · Línea ' + item.lineaPedidoCliente : ''}</div>
-              <div class="queue-card-meta" style="margin-top:6px;"><strong>${item.articulo || 'Sin artículo'}</strong> ${item.descripcionArticulo ? '· ' + item.descripcionArticulo : ''}</div>
-              <div class="queue-card-meta" style="margin-top:6px;">Solicitado: <strong>${item.cantidadSolicitada}</strong> · Facturado: <strong>${item.cantidadFacturada}</strong> · Pendiente: <strong>${item.cantidadPendiente}</strong></div>
+              <div class="queue-card-title">${client.nombre}</div>
+              <div class="queue-card-meta">${client.codigo} · ${pedidos.length} pedidos: ${pedidos.join(', ')}</div>
+              <div class="queue-card-meta" style="margin-top:6px;">Referencias: <strong>${referencias.slice(0, 6).join(', ') || 'Sin referencia'}</strong>${referencias.length > 6 ? ' +' + (referencias.length - 6) : ''}</div>
+              <div class="queue-card-meta" style="margin-top:6px;">Solicitado: <strong>${solicitado}</strong> · Facturado: <strong>${facturado}</strong> · Pendiente: <strong>${pendiente}</strong> · Monto: <strong>${formatMonto(monto)}</strong></div>
               ${alerts.length ? `<div style="font-size:11px;color:var(--danger);margin-top:6px;">${alerts.join(' · ')}</div>` : ''}
-              <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="abrirMoveQueueModal(${index})">Asignar fecha/camión</button>
+              <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="abrirMoveQueueModal(${client.indexes[0]})">Asignar fecha/camión</button>
             </div>`;
           }).join('')}
         </div>
@@ -957,8 +1132,18 @@
     const semana = APP.calSemanas[APP.calSemanaIdx];
     calMesLabel.textContent = semana.mesNombre.replace(/^\w/, char => char.toUpperCase());
     const search = text((document.getElementById('calSearch') || {}).value).toLowerCase();
-
-    const html = [`<div style="font-size:13px;color:var(--muted);font-weight:700;margin:0 0 8px 2px;">Semana visible: ${semana.nombre}</div><div class="cal-semana">`];
+    const selectedCount = (APP.selectedCalendarGroups || []).length;
+    const html = [`
+      <div class="calendar-topbar">
+        <div style="font-size:13px;color:var(--muted);font-weight:700;">Semana visible: ${semana.nombre}</div>
+        <div class="calendar-selection-bar">
+          <span id="calSelectionSummary" class="badge badge-warn">${selectedCount} seleccionados</span>
+          <button id="moveSelectedBtn" class="btn btn-outline btn-sm" onclick="abrirMoveSelectedModal()" ${selectedCount ? '' : 'disabled'}>Mover seleccionados</button>
+          <button id="clearSelectedBtn" class="btn btn-outline btn-sm" onclick="limpiarSeleccionCalendario()" ${selectedCount ? '' : 'disabled'}>Limpiar</button>
+        </div>
+      </div>
+      <div class="cal-semana">
+    `];
     semana.dias.forEach(fecha => {
       const isHol = isHoliday(fecha);
       const dayRoutes = APP.rutas[fecha] || {};
@@ -984,16 +1169,24 @@
         groups.forEach((group, index) => {
           const realIdx = (dayRoutes[camion] || []).indexOf(group);
           const status = group.cumplida ? '✅' : group.cantidadFacturada > 0 ? '🟡' : '🔄';
+          const selected = isGroupSelected(group);
           const alertHtml = group.alertas.length
             ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
             : '';
-          html.push(`<div class="cal-card ${cardClass}" draggable="true"
+          html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true"
             ondragstart="onDragStartCal(event,'${fecha}','${camion}',${realIdx})"
             ondragend="this.classList.remove('dragging')"
             style="${group.alertas.length ? 'border:1px solid #ef4444;' : ''}">
+            <div class="cal-card-topline">
+              <label class="cal-card-check">
+                <input type="checkbox" ${selected ? 'checked' : ''} onclick="toggleSeleccionCalendario('${fecha}','${camion}',${realIdx}, event)">
+                <span>Selec.</span>
+              </label>
+              <span class="badge ${selected ? 'badge-primary' : 'badge-outline'}">${selected ? 'Lote' : 'Individual'}</span>
+            </div>
             <div class="cal-card-name">${group.nombre}</div>
-            <div class="queue-card-meta">${group.codigo} · Pedido ${group.pedidoCliente}</div>
-            <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadPendiente} pendientes</div>
+            <div class="queue-card-meta">${group.codigo} · ${group.cantidadPedidos || 1} pedidos: ${group.pedidoCliente}</div>
+            <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · ${formatMonto(group.totalPendiente)}</div>
             ${alertHtml}
             <div class="cal-card-actions">
               <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirMoveModal('${fecha}','${camion}',${realIdx})">✏️ Mover</button>
@@ -1011,6 +1204,7 @@
     });
     html.push('</div>');
     calContainer.innerHTML = html.join('');
+    syncCalendarToolbarState();
     window.renderQueueSemana();
   };
 
@@ -1041,8 +1235,9 @@
             <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
               <div>
                 <div class="ruta-item-name">${idx + 1}. ${group.nombre}</div>
-                <div class="ruta-item-detail">${group.codigo} · Pedido ${group.pedidoCliente} · ${group.zona}</div>
-                <div class="ruta-item-detail">${group.items.length} líneas · ${group.cantidadPendiente} pendientes</div>
+                <div class="ruta-item-detail">${group.codigo} · ${group.cantidadPedidos || 1} pedidos · ${group.zona}</div>
+                <div class="ruta-item-detail">Pedidos: ${group.pedidoCliente}</div>
+                <div class="ruta-item-detail">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · ${group.cantidadPendiente} pendientes</div>
                 ${group.alertas.length ? `<div style="font-size:11px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>` : ''}
               </div>
               <div style="text-align:right;">
@@ -1083,7 +1278,17 @@
   window.moverCliente = function moverClienteV2(fecha, camion, idx, nuevaFecha, nuevoCamion) {
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
-    const keys = new Set(group.items.map(item => item.baseKey));
+    const selectedKeys = new Set(APP.selectedCalendarGroups || []);
+    const groupKey = getGroupSelectionKey(group);
+    const multiMove = selectedKeys.has(groupKey) && selectedKeys.size > 1;
+    const keys = new Set();
+    if (multiMove) {
+      getSelectedGroups().forEach(({ group: selectedGroup }) => {
+        selectedGroup.items.forEach(item => keys.add(item.baseKey));
+      });
+    } else {
+      group.items.forEach(item => keys.add(item.baseKey));
+    }
     APP.lineItems.forEach(item => {
       if (keys.has(item.baseKey)) {
         item.fechaPlanificada = nuevaFecha;
@@ -1094,6 +1299,7 @@
       }
     });
     rebuildDerivedState();
+    clearCalendarSelection();
     renderCalendario();
     renderRutas();
     renderComercial();
@@ -1125,7 +1331,25 @@
     if (!group) return;
     APP.moveCliente = { fecha, cam: camion, idx };
     document.getElementById('moveModalClienteNombre').textContent = `${group.nombre} · Pedido ${group.pedidoCliente}`;
-    const dates = appendWorkingDates(fechaToStr(lunesDeSemana(fecha)), 15);
+    const dates = buildMoveDateOptions(group.items[0], fecha);
+    document.getElementById('moveFecha').innerHTML = dates.map(date => `<option value="${date}" ${date === fecha ? 'selected' : ''}>${date} (${fechaLabel(date)})</option>`).join('');
+    syncMoveOptions();
+    document.getElementById('moveCamion').value = camion;
+    document.getElementById('moveModal').classList.add('show');
+  };
+
+  window.abrirMoveSelectedModal = function abrirMoveSelectedModalV2() {
+    const selectedGroups = getSelectedGroups();
+    if (!selectedGroups.length) return alert('Selecciona al menos un pedido del calendario.');
+    const [{ fecha, camion, group }] = selectedGroups;
+    APP.moveCliente = {
+      selectedKeys: [...new Set(APP.selectedCalendarGroups || [])],
+      fecha,
+      cam: camion,
+      idx: (APP.rutas[fecha] && APP.rutas[fecha][camion] ? APP.rutas[fecha][camion].indexOf(group) : 0)
+    };
+    document.getElementById('moveModalClienteNombre').textContent = `${selectedGroups.length} pedidos seleccionados`;
+    const dates = buildMoveDateOptions(group.items[0], fecha);
     document.getElementById('moveFecha').innerHTML = dates.map(date => `<option value="${date}" ${date === fecha ? 'selected' : ''}>${date} (${fechaLabel(date)})</option>`).join('');
     syncMoveOptions();
     document.getElementById('moveCamion').value = camion;
@@ -1137,11 +1361,67 @@
     if (!item) return;
     APP.moveCliente = { queueIdx: idx };
     document.getElementById('moveModalClienteNombre').textContent = `${item.nombre} · Pedido ${item.pedidoCliente}`;
-    const dates = appendWorkingDates(APP.planFecha || fechaToStr(new Date()), 15);
+    const dates = buildMoveDateOptions(item.item, APP.planFecha || fechaToStr(new Date()));
     document.getElementById('moveFecha').innerHTML = dates.map((date, index) => `<option value="${date}" ${index === 0 ? 'selected' : ''}>${date} (${fechaLabel(date)})</option>`).join('');
     syncMoveOptions();
     document.getElementById('moveCamion').value = item.camion || getTruckOptions()[0];
     document.getElementById('moveModal').classList.add('show');
+  };
+
+  window.toggleSeleccionCalendario = function toggleSeleccionCalendarioV2(fecha, camion, idx, event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const group = getGroupByRouteRef(fecha, camion, idx);
+    if (!group) return;
+    toggleCalendarSelection(group);
+    renderCalendario();
+  };
+
+  window.limpiarSeleccionCalendario = function limpiarSeleccionCalendarioV2() {
+    clearCalendarSelection();
+    renderCalendario();
+  };
+
+  window.cerrarMoveModal = function cerrarMoveModalV2() {
+    const modal = document.getElementById('moveModal');
+    if (modal) modal.classList.remove('show');
+    APP.moveCliente = null;
+  };
+
+  window.confirmarMover = function confirmarMoverV2() {
+    if (!APP.moveCliente) return;
+    const nuevaFecha = document.getElementById('moveFecha').value;
+    const nuevoCamion = document.getElementById('moveCamion').value;
+    const moveState = APP.moveCliente;
+    window.cerrarMoveModal();
+    if (moveState.queueIdx != null) {
+      asignarQueueACalendario(moveState.queueIdx, nuevaFecha, nuevoCamion);
+      return;
+    }
+    moverCliente(moveState.fecha, moveState.cam, moveState.idx, nuevaFecha, nuevoCamion);
+  };
+
+  window.exportarCalendarioVisiblePDF = function exportarCalendarioVisiblePDFV2() {
+    const el = document.getElementById('calExportArea');
+    if (!el || !el.innerHTML.trim()) {
+      alert('No hay calendario visible para exportar.');
+      return;
+    }
+    if (typeof html2pdf === 'undefined') {
+      alert('La librería de PDF no está disponible en este momento.');
+      return;
+    }
+    const semana = APP.calSemanas && APP.calSemanas[APP.calSemanaIdx];
+    const opt = {
+      margin: [8, 8, 8, 8],
+      filename: 'RouteControl_Calendario_' + (semana ? semana.key.replace(/\//g, '-') : 'visible') + '.pdf',
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+    html2pdf().set(opt).from(el).save();
   };
 
   window.abrirNotaModal = function abrirNotaModalV2(fecha, camion, idx) {
@@ -1208,6 +1488,33 @@
     });
     const merged = [...APP.routeCostHistory.filter(row => row.fecha !== controlDate), ...rows];
     APP.routeCostHistory = dedupeBy(merged, row => [row.fecha, row.rutaNombre].join('|'));
+  }
+
+  function matchWarehouseToOrders() {
+    const warehouseItems = [
+      ...(APP.solicitudesPlanAlmacen || []),
+      ...(APP.solicitudesControlAlmacen || [])
+    ];
+    const byFullKey = new Map();
+    const byLooseKey = new Map();
+    warehouseItems.forEach(item => {
+      const fullKey = buildSapMatchKey(item);
+      const looseKey = [item.pedidoCliente, item.lineaPedidoCliente, item.articulo].map(normKey).join('|');
+      if (fullKey) byFullKey.set(fullKey, item);
+      if (looseKey) byLooseKey.set(looseKey, item);
+    });
+    [...(APP.lineItems || []), ...(APP.planLineItems || []), ...(APP.controlLineItems || [])].forEach(item => {
+      const fullKey = buildSapMatchKey(item);
+      const looseKey = [item.pedidoCliente, item.lineaPedidoCliente, item.articulo].map(normKey).join('|');
+      const match = byFullKey.get(fullKey) || byLooseKey.get(looseKey);
+      item.sapMatchKey = fullKey;
+      if (!match) return;
+      item.solicitudAlmacen = match.solicitud || '';
+      item.cantidadAlmacenSolicitada = match.cantidadSolicitada || 0;
+      item.cantidadAlmacenProcesada = match.cantidadCompletada || 0;
+      item.cantidadAlmacenPendiente = match.cantidadPendiente || 0;
+      item.estadoAlmacen = match.estado || '';
+    });
   }
 
   function registerSolicitudesSnapshot(fileName) {
@@ -1302,6 +1609,7 @@
           });
         }
 
+        matchWarehouseToOrders();
         rebuildDerivedState();
         if (!isPlan) registerRouteCostSnapshot(APP.controlFecha);
         actualizarDashboard();
@@ -1355,22 +1663,24 @@
 
   function parseWarehouseRows(rows) {
     return dedupeBy(rows.map(row => {
-      const codigo = text(pickField(row, ['ID de destinatario de mercancías', 'ID destinatario', 'Código', 'Codigo']));
-      const solicitud = text(pickField(row, ['ID de solicitud de logística por medio de terceros', 'ID de solicitud', 'Solicitud']));
-      if (!codigo || !solicitud) return null;
-      const cliente = text(pickField(row, ['Nombre de destinatario de mercancías', 'Cliente', 'Nombre destinatario']));
-      const pedidoCliente = text(pickField(row, ['Pedido del cliente', 'Pedido de cliente', 'Pedido']));
-      const articulo = text(pickField(row, ['Artículo', 'Articulo', 'Material', 'SKU']));
-      const descripcionArticulo = text(pickField(row, ['Descripción del artículo', 'Descripcion del articulo', 'Descripción', 'Descripcion']));
+      const codigo = text(pickField(row, ['Destinatario de las mercancías descripción', 'ID de destinatario de mercancías', 'ID destinatario', 'Código', 'Codigo']));
+      const cliente = text(pickField(row, ['Destinatario de las mercancías', 'Nombre de destinatario de mercancías', 'Cliente', 'Nombre destinatario']));
+      const solicitud = text(pickField(row, ['ID de solicitud de almacén', 'ID de solicitud de logística por medio de terceros', 'ID de solicitud', 'Solicitud']));
+      const pedidoCliente = text(pickField(row, ['Pedido de cliente (documento precedente)', 'Pedido del cliente', 'Pedido de cliente', 'Pedido']));
+      if (!codigo || !solicitud || !pedidoCliente) return null;
+      const lineaPedidoCliente = text(pickField(row, ['ID de partida individual', 'Posición de pedido de cliente', 'Posicion de pedido de cliente', 'Línea', 'Linea']));
+      const articulo = text(pickField(row, ['Producto', 'Artículo', 'Articulo', 'Material', 'SKU']));
+      const descripcionArticulo = text(pickField(row, ['Producto descripción', 'Producto descripcion', 'Artículo descripción', 'Articulo descripcion', 'Descripción del artículo', 'Descripcion del articulo', 'Descripción', 'Descripcion']));
       const cantidadSolicitada = num(pickField(row, ['Cantidad solicitada', 'Cantidad', 'Cant solicitada']));
-      const cantidadCompletada = num(pickField(row, ['Cantidad completada', 'Cantidad facturada', 'Cantidad entregada']));
+      const cantidadCompletada = num(pickField(row, ['Cantidad procesada', 'Cantidad completada', 'Cantidad facturada', 'Cantidad entregada']));
       const cantidadPendiente = Math.max(num(pickField(row, ['Cantidad pendiente', 'Pendiente'])) || (cantidadSolicitada - cantidadCompletada), 0);
-      const fecha = toDateLabel(pickField(row, ['Fecha de envío planificada', 'Fecha de envio planificada', 'Fecha de liberación', 'Fecha de liberacion'])) || fechaToStr(new Date());
+      const fecha = toDateLabel(pickField(row, ['Fecha de entrega planificada', 'Fecha de envío planificada', 'Fecha de envio planificada', 'Fecha de liberación', 'Fecha de liberacion'])) || fechaToStr(new Date());
       return {
         codigo,
         cliente,
         solicitud,
         pedidoCliente,
+        lineaPedidoCliente,
         articulo,
         descripcionArticulo,
         cantidadSolicitada,
@@ -1378,15 +1688,16 @@
         cantidadPendiente,
         estadoComunicacion: text(pickField(row, ['Estado de comunicación', 'Estado de comunicacion'])),
         estadoProceso: text(pickField(row, ['Estado de procesamiento', 'Estado proceso'])),
-        fechaLiberacion: toDateLabel(pickField(row, ['Fecha de liberación', 'Fecha de liberacion'])),
+        fechaLiberacion: toDateLabel(pickField(row, ['Fecha de creación', 'Fecha de creacion', 'Fecha de liberación', 'Fecha de liberacion'])),
         fechaFinalizada: toDateLabel(pickField(row, ['Fecha finalizada'])),
         fechaEnvio: fecha,
         ubicacion: text(pickField(row, ['Ubicación de procedencia', 'Ubicacion de procedencia'])),
         observaciones: text(pickField(row, ['Observaciones', 'Nota'])),
         estado: cantidadPendiente <= 0 ? 'Completada' : cantidadCompletada > 0 ? 'Parcial' : 'Pendiente',
-        costeSolicitud: num(APP.warehouseSettings.costoSolicitud || 0)
+        costeSolicitud: num(APP.warehouseSettings.costoSolicitud || 0),
+        sapMatchKey: [pedidoCliente, lineaPedidoCliente, articulo, codigo].map(normKey).join('|')
       };
-    }).filter(Boolean), item => [item.codigo, item.solicitud, item.pedidoCliente, item.articulo, item.fechaEnvio].join('|'));
+    }).filter(Boolean), item => [item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente, item.articulo, item.fechaEnvio].join('|'));
   }
 
   window.parsearSolicitudesRows = parseWarehouseRows;
@@ -1399,7 +1710,7 @@
       try {
         const wb = XLSX.read(new Uint8Array(event.target.result), { type: 'array', cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: '', range: 4 });
+        const rows = rowsFromWorksheet(ws);
         const parsed = parseWarehouseRows(rows).map(item => ({
           ...item,
           tipoSolicitudArchivo: mode === 'control' ? 'control diario' : 'plan semanal'
@@ -1415,6 +1726,8 @@
         APP.solicitudesLoaded = true;
         APP.solicitudesFileName = file.name;
         APP.solicitudesCompare = buildSolicitudesComparison();
+        matchWarehouseToOrders();
+        rebuildDerivedState();
         registerSolicitudesSnapshot(file.name);
         updateSolicitudesImportStatus();
         renderSolicitudesAlmacen();
@@ -1432,8 +1745,8 @@
   };
 
   function buildSolicitudesComparison() {
-    const planMap = new Map(APP.solicitudesPlanAlmacen.map(item => [[item.codigo, item.solicitud, item.pedidoCliente, item.articulo].join('|'), item]).entries());
-    const controlMap = new Map(APP.solicitudesControlAlmacen.map(item => [[item.codigo, item.solicitud, item.pedidoCliente, item.articulo].join('|'), item]).entries());
+    const planMap = new Map(APP.solicitudesPlanAlmacen.map(item => [[item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente || '', item.articulo].join('|'), item]).entries());
+    const controlMap = new Map(APP.solicitudesControlAlmacen.map(item => [[item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente || '', item.articulo].join('|'), item]).entries());
     const keys = new Set([...planMap.keys(), ...controlMap.keys()]);
     return [...keys].map(key => {
       const plan = planMap.get(key);
@@ -1469,7 +1782,7 @@
         <span class="badge ${badgeClass}">${item.estado}</span>
       </div>
       <div class="sol-card-meta">
-        Pedido: <strong>${item.pedidoCliente || '—'}</strong> · Artículo: <strong>${item.articulo || '—'}</strong><br>
+        Pedido: <strong>${item.pedidoCliente || '—'}</strong>${item.lineaPedidoCliente ? ' · Línea ' + item.lineaPedidoCliente : ''} · Artículo: <strong>${item.articulo || '—'}</strong><br>
         ${item.descripcionArticulo || 'Sin descripción'}<br>
         Solicitada: ${item.cantidadSolicitada} · Completada: ${item.cantidadCompletada} · Pendiente: ${item.cantidadPendiente}<br>
         ${item.observaciones ? 'Obs.: ' + item.observaciones + '<br>' : ''}
@@ -1903,18 +2216,29 @@
   function renderConfigAuxSections() {
     const mount = document.getElementById('configExtrasMount');
     if (!mount) return;
+    const days = [
+      { value: 1, label: 'Lun' },
+      { value: 2, label: 'Mar' },
+      { value: 3, label: 'Mié' },
+      { value: 4, label: 'Jue' },
+      { value: 5, label: 'Vie' },
+      { value: 6, label: 'Sáb' }
+    ];
     mount.innerHTML = `
       <div class="card" style="margin-top:16px;">
-        <div class="card-title">Rutas / zonas</div>
+        <div class="view-toolbar" style="justify-content:space-between;">
+          <div class="card-title" style="margin-bottom:0;">Rutas / zonas</div>
+          <button class="btn btn-primary btn-sm" onclick="guardarConfigRutas()">💾 Guardar cambios de rutas</button>
+        </div>
         <div class="table-wrap"><table class="data-table">
           <thead><tr><th>Nombre</th><th>Días operación</th><th>Coste</th><th>Activa</th><th>Observaciones</th></tr></thead>
-          <tbody>${APP.routeConfigs.length ? APP.routeConfigs.map(route => `<tr>
-            <td>${route.nombre || route.zona}</td>
-            <td>${(route.diasOperacion || []).join(', ') || 'Todos'}</td>
-            <td>${route.costeRuta || 0}</td>
-            <td>${route.activa === false ? 'No' : 'Sí'}</td>
-            <td>${route.observaciones || ''}</td>
-          </tr>`).join('') : '<tr><td colspan="5">Sin rutas configuradas aún.</td></tr>'}</tbody>
+          <tbody>${APP.routeConfigs.length ? APP.routeConfigs.map((route, index) => `<tr>
+            <td><input class="form-control" id="routeName_${index}" value="${route.nombre || route.zona || ''}" style="min-width:150px;"></td>
+            <td><div style="display:flex;gap:6px;flex-wrap:wrap;min-width:220px;">${days.map(day => `<label style="font-size:11px;display:flex;align-items:center;gap:3px;"><input type="checkbox" class="routeDay_${index}" value="${day.value}" ${(route.diasOperacion || []).includes(day.value) ? 'checked' : ''}>${day.label}</label>`).join('')}</div></td>
+            <td><input class="form-control" id="routeCost_${index}" type="number" step="0.01" value="${route.costeRuta || 0}" style="min-width:95px;"></td>
+            <td><input id="routeActive_${index}" type="checkbox" ${route.activa === false ? '' : 'checked'}></td>
+            <td><input class="form-control" id="routeObs_${index}" value="${route.observaciones || ''}" style="min-width:180px;"></td>
+          </tr>`).join('') : '<tr><td colspan="5">Sin rutas configuradas aún. Se crearán automáticamente al importar o asignar clientes.</td></tr>'}</tbody>
         </table></div>
       </div>
       <div class="card">
@@ -1971,6 +2295,35 @@
       </div>
     `;
   }
+
+  window.guardarConfigRutas = function guardarConfigRutas() {
+    APP.routeConfigs = APP.routeConfigs.map((route, index) => {
+      const nombre = text((document.getElementById('routeName_' + index) || {}).value) || route.nombre || route.zona;
+      const diasOperacion = [...document.querySelectorAll('.routeDay_' + index + ':checked')].map(input => parseInt(input.value, 10)).filter(Boolean);
+      return {
+        ...route,
+        nombre,
+        zona: nombre,
+        diasOperacion,
+        costeRuta: num((document.getElementById('routeCost_' + index) || {}).value),
+        activa: !!((document.getElementById('routeActive_' + index) || {}).checked),
+        observaciones: text((document.getElementById('routeObs_' + index) || {}).value)
+      };
+    });
+    APP.lineItems.forEach(item => {
+      const cfg = getClienteConfigV2(item.clienteId, item.clienteNombre);
+      if (cfg.rutaAsignada) {
+        item.rutaNombre = cfg.rutaAsignada;
+        item.zona = cfg.rutaAsignada;
+      }
+    });
+    rebuildDerivedState();
+    renderConfigClientes();
+    renderCalendario();
+    renderRutas();
+    scheduleAutoSave();
+    alert('Rutas actualizadas. Si una ruta se usa fuera de sus días de operación, se marcará en rojo en el calendario.');
+  };
 
   window.guardarCostesOperativos = function guardarCostesOperativos() {
     APP.warehouseSettings.costoSolicitud = num(document.getElementById('warehouseCostInput').value);
@@ -2173,8 +2526,10 @@
   window.exportarExcelRutas = function exportarExcelRutasV2() {
     if (!APP.rutaFecha || !APP.rutas[APP.rutaFecha]) return alert('Selecciona una fecha para exportar.');
     const wb = XLSX.utils.book_new();
+    const summaryRows = [];
     getTruckOptions().forEach(camion => {
-      const rows = (APP.rutas[APP.rutaFecha][camion] || []).map(group => ({
+      const sourceRows = APP.rutas[APP.rutaFecha][camion] || [];
+      const rows = sourceRows.map(group => ({
         'Cliente': group.nombre,
         'Código': group.codigo,
         'Pedido': group.pedidoCliente,
@@ -2185,8 +2540,18 @@
         'Pendiente': group.cantidadPendiente
       }));
       if (!rows.length) return;
+      summaryRows.push({
+        'Fecha': APP.rutaFecha,
+        'Carril': getTruckLabel(camion),
+        'Pedidos': sourceRows.length,
+        'Líneas': sourceRows.reduce((sum, group) => sum + group.items.length, 0),
+        'Pendiente': sourceRows.reduce((sum, group) => sum + (group.cantidadPendiente || 0), 0)
+      });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), camion.replace(/\s+/g, ''));
     });
+    if (summaryRows.length) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
+    }
     XLSX.writeFile(wb, 'TMS_Rutas_' + APP.rutaFecha.replace(/\//g, '-') + '.xlsx');
   };
 
@@ -2232,7 +2597,7 @@
       const user = await getAuthenticatedUser();
       ensureAdminProfile();
       if (!client || !user) {
-        if (loadLocalSnapshot()) {
+        if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
           updateSolicitudesImportStatus();
           actualizarEstadoBanner();
           actualizarDashboard();
@@ -2396,7 +2761,7 @@
       saveLocalSnapshot();
     } catch (error) {
       console.warn('Fallo la carga remota, usando respaldo local si existe:', error);
-      if (loadLocalSnapshot()) {
+      if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
         updateSolicitudesImportStatus();
         actualizarEstadoBanner();
         actualizarDashboard();
@@ -2579,21 +2944,21 @@
         <span style="font-size:20px;">📦</span>
         <div>
           <div class="card-title" style="margin-bottom:0;color:#C2410C;">Solicitudes a Almacén</div>
-          <div style="font-size:12px;color:var(--muted);">Importa aquí la planificación semanal de solicitudes y luego el control diario para poder comparar cumplimiento.</div>
+          <div style="font-size:12px;color:var(--muted);">Sube las solicitudes realizadas al almacén en XLSX o XML y compara lo pendiente vs. preparado.</div>
         </div>
       </div>
       <div class="view-toolbar" style="margin-top:14px;align-items:flex-start;">
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <input type="file" id="solicitudesPlanFileImport" accept=".xlsx,.xls" style="display:none" onchange="procesarSolicitudesAlmacen(this.files[0],'plan')">
-          <button class="btn btn-warning" onclick="document.getElementById('solicitudesPlanFileImport').click()">📂 Cargar planificación de solicitudes</button>
+          <input type="file" id="solicitudesPlanFileImport" accept=".xlsx,.xls,.xml" style="display:none" onchange="procesarSolicitudesAlmacen(this.files[0],'plan')">
+          <button class="btn btn-warning" onclick="document.getElementById('solicitudesPlanFileImport').click()">📂 Solicitudes realizadas al almacén</button>
           <div id="solPlanImportStatus" style="font-size:12px;color:var(--muted);">Sin archivo de planificación</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <input type="file" id="solicitudesControlFileImport" accept=".xlsx,.xls" style="display:none" onchange="procesarSolicitudesAlmacen(this.files[0],'control')">
-          <button class="btn btn-outline" onclick="document.getElementById('solicitudesControlFileImport').click()">📂 Cargar control diario de solicitudes</button>
+          <input type="file" id="solicitudesControlFileImport" accept=".xlsx,.xls,.xml" style="display:none" onchange="procesarSolicitudesAlmacen(this.files[0],'control')">
+          <button class="btn btn-outline" onclick="document.getElementById('solicitudesControlFileImport').click()">📂 Control diario de almacén</button>
           <div id="solCtrlImportStatus" style="font-size:12px;color:var(--muted);">Sin archivo de control</div>
         </div>
-        <span style="font-size:12px;color:var(--muted);" id="solicitudesImportHint">Campos soportados: pedido, artículo, descripción, cantidades y estados.</span>
+        <span style="font-size:12px;color:var(--muted);" id="solicitudesImportHint"><strong id="solNewRequestsCount">0</strong> nuevas solicitudes detectadas</span>
       </div>`;
     importView.appendChild(card);
   }
@@ -2603,11 +2968,20 @@
     const ctrlStatus = document.getElementById('solCtrlImportStatus');
     if (planStatus) planStatus.textContent = APP.importFiles.solicitudesPlan || 'Sin archivo de planificación';
     if (ctrlStatus) ctrlStatus.textContent = APP.importFiles.solicitudesControl || 'Sin archivo de control';
+    const newCount = document.getElementById('solNewRequestsCount');
+    if (newCount) {
+      const controlKeys = new Set((APP.solicitudesControlAlmacen || []).map(item => [item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente || '', item.articulo].join('|')));
+      const planKeys = new Set((APP.solicitudesPlanAlmacen || []).map(item => [item.codigo, item.solicitud, item.pedidoCliente, item.lineaPedidoCliente || '', item.articulo].join('|')));
+      const source = controlKeys.size ? controlKeys : planKeys;
+      const base = controlKeys.size ? planKeys : new Set();
+      newCount.textContent = [...source].filter(key => !base.has(key)).length;
+    }
   }
 
   function initCalendarActions() {
     const toolbar = document.querySelector('#calendario .view-toolbar');
     if (!toolbar || document.getElementById('addTruckBtn')) return;
+    toolbar.classList.add('calendar-toolbar');
     const button = document.createElement('button');
     button.id = 'addTruckBtn';
     button.className = 'btn btn-outline btn-sm';
@@ -2650,7 +3024,7 @@
   }
 
   function initReportFilters() {
-    const toolbar = document.querySelector('#reportes .view-toolbar');
+    const toolbar = document.querySelector('#dashReportPanel .view-toolbar');
     if (!toolbar || document.getElementById('repDateStart')) return;
     toolbar.insertAdjacentHTML('beforeend', `
       <input type="date" id="repDateStart" class="search-input" style="max-width:160px;">
@@ -2674,6 +3048,32 @@
     if (titleConfig) titleConfig.textContent = '⚙️ Configuración';
     const titleImport = document.querySelector('#importar .view-title');
     if (titleImport) titleImport.textContent = '📥 Importar Datos';
+    const planTitle = document.querySelector('#uploadZone')?.closest('.card')?.querySelector('.card-title');
+    if (planTitle) planTitle.textContent = 'Programación mensual / pedidos de cliente';
+    const planSub = document.querySelector('#uploadZone .upload-sub');
+    if (planSub) planSub.textContent = 'Archivo SAP CRMSLOIB01_Q0001 en XLSX o XML';
+    const controlSub = document.querySelector('#ctrlUploadZone .upload-sub');
+    if (controlSub) controlSub.textContent = 'Cierre diario SAP en XLSX o XML';
+  }
+
+  function enhanceImportUi() {
+    const importView = document.getElementById('importar');
+    if (!importView) return;
+    importView.classList.add('import-view-shell');
+    const statusBanner = document.getElementById('sapEstadoBanner');
+    if (statusBanner) statusBanner.classList.add('import-status-banner');
+    ['planEstadoCard', 'ctrlEstadoCard'].forEach(id => {
+      const card = document.getElementById(id);
+      if (card) card.classList.add('import-status-card');
+    });
+    ['uploadZone', 'ctrlUploadZone'].forEach(id => {
+      const zone = document.getElementById(id);
+      if (zone) zone.classList.add('upload-zone-premium');
+    });
+    const importCards = importView.querySelectorAll('.card');
+    importCards.forEach(card => card.classList.add('import-card-shell'));
+    const rutasView = document.getElementById('rutas');
+    if (rutasView) rutasView.classList.add('routes-view-shell');
   }
 
   function initRouteFilterOptions() {
@@ -2696,6 +3096,69 @@
       .queue-card { border:1px solid var(--border); border-radius:10px; padding:12px; background:#fff; margin-bottom:10px; }
       .queue-card-title { font-weight:700; color:var(--primary); font-size:13px; }
       .queue-card-meta { font-size:11px; color:var(--muted); }
+      .badge-primary { background: var(--primary); color: #fff; }
+      .badge-outline { background: #fff; color: var(--muted); border: 1px solid var(--border); }
+      .import-view-shell { align-content:start; }
+      .import-view-shell > .card { display:inline-block; width:calc(50% - 10px); vertical-align:top; margin-right:12px; min-height:260px; }
+      .import-view-shell > .view-title, .import-view-shell > #sapEstadoBanner { display:block; width:100%; }
+      @media (max-width: 900px) { .import-view-shell > .card { width:100%; margin-right:0; } }
+      .import-status-banner > div { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important; }
+      .import-status-card {
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+        min-height: 88px;
+      }
+      .import-card-shell {
+        border-left-width: 0 !important;
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.06);
+      }
+      .upload-zone-premium {
+        border-radius: 16px;
+        border-width: 1px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,247,250,0.92));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+      }
+      .upload-zone-premium .upload-sub { max-width: 420px; margin: 6px auto 0; line-height: 1.45; }
+      .calendar-toolbar { flex-wrap: wrap; gap: 10px; }
+      .calendar-topbar {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        margin:0 0 10px 2px;
+        flex-wrap:wrap;
+      }
+      .calendar-selection-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+      .cal-card-topline {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        margin-bottom:4px;
+      }
+      .cal-card-check {
+        display:flex;
+        align-items:center;
+        gap:6px;
+        font-size:10px;
+        color:var(--muted);
+      }
+      .cal-card-check input { accent-color: var(--primary); }
+      .cal-card-selected {
+        background: linear-gradient(180deg, #fff, #eef4fb);
+        box-shadow: 0 0 0 2px rgba(27,79,114,0.16);
+      }
+      .routes-view-shell #rutasContainer::before {
+        content: 'Exporta la fecha activa a Excel con un resumen por carril y el detalle por ruta.';
+        display:block;
+        margin-bottom:12px;
+        padding:12px 14px;
+        border:1px solid var(--border);
+        border-radius:12px;
+        background:#fff;
+        color:var(--muted);
+        font-size:12px;
+      }
       details summary { list-style:none; }
       details summary::-webkit-details-marker { display:none; }
     `;
@@ -2706,6 +3169,7 @@
     ensureAdminProfile();
     injectV2Styles();
     initUiLabels();
+    enhanceImportUi();
     initImportSolicitudesCard();
     initCalendarActions();
     initCommercialMount();
