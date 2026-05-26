@@ -1455,14 +1455,13 @@
     moverCliente(moveState.fecha, moveState.cam, moveState.idx, nuevaFecha, nuevoCamion);
   };
 
-  window.exportarCalendarioVisiblePDF = async function exportarCalendarioVisiblePDFV2() {
+  window.exportarCalendarioVisiblePDF = function exportarCalendarioVisiblePDFV2() {
     const el = document.getElementById('calExportArea');
     if (!el || !el.innerHTML.trim()) {
       alert('No hay calendario visible para exportar.');
       return;
     }
-    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-    if (typeof html2canvas === 'undefined' || !JsPDF) {
+    if (typeof html2pdf === 'undefined') {
       alert('La librería de PDF no está disponible en este momento.');
       return;
     }
@@ -1481,33 +1480,29 @@
     `;
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
-    try {
-      const canvas = await html2canvas(wrapper, {
+    const opt = {
+      margin: [4, 4, 4, 4],
+      filename,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         windowWidth: wrapper.scrollWidth,
         windowHeight: wrapper.scrollHeight
-      });
-      const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 5;
-      const maxW = pageW - margin * 2;
-      const maxH = pageH - margin * 2;
-      const ratio = Math.min(maxW / canvas.width, maxH / canvas.height);
-      const imgW = canvas.width * ratio;
-      const imgH = canvas.height * ratio;
-      const x = (pageW - imgW) / 2;
-      const y = (pageH - imgH) / 2;
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, imgW, imgH);
-      pdf.save(filename);
-    } catch (error) {
-      console.error('Error exportando calendario:', error);
-      alert('No se pudo exportar el calendario: ' + error.message);
-    } finally {
-      wrapper.remove();
-    }
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
+    html2pdf()
+      .set(opt)
+      .from(wrapper)
+      .save()
+      .catch(error => {
+        console.error('Error exportando calendario:', error);
+        alert('No se pudo exportar el calendario: ' + error.message);
+      })
+      .finally(() => wrapper.remove());
   };
 
   window.abrirNotaModal = function abrirNotaModalV2(fecha, camion, idx) {
