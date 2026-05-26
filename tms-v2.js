@@ -1455,14 +1455,58 @@
     moverCliente(moveState.fecha, moveState.cam, moveState.idx, nuevaFecha, nuevoCamion);
   };
 
-  window.exportarCalendarioVisiblePDF = function exportarCalendarioVisiblePDFV2() {
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[src="${src}"]`);
+      if (existing) {
+        if (existing.dataset.loaded === 'true') resolve();
+        else {
+          existing.addEventListener('load', resolve, { once: true });
+          existing.addEventListener('error', reject, { once: true });
+        }
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.onload = () => {
+        script.dataset.loaded = 'true';
+        resolve();
+      };
+      script.onerror = () => reject(new Error('No se pudo cargar ' + src));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureHtml2Pdf() {
+    if (typeof window.html2pdf !== 'undefined') return window.html2pdf;
+    const sources = [
+      'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+      'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
+    ];
+    for (const src of sources) {
+      try {
+        await loadScriptOnce(src);
+        if (typeof window.html2pdf !== 'undefined') return window.html2pdf;
+      } catch (error) {
+        console.warn('No se pudo cargar html2pdf desde', src, error);
+      }
+    }
+    throw new Error('La librería de PDF no se pudo cargar. Revisa la conexión e intenta de nuevo.');
+  }
+
+  window.exportarCalendarioVisiblePDF = async function exportarCalendarioVisiblePDFV2() {
     const el = document.getElementById('calExportArea');
     if (!el || !el.innerHTML.trim()) {
       alert('No hay calendario visible para exportar.');
       return;
     }
-    if (typeof html2pdf === 'undefined') {
-      alert('La librería de PDF no está disponible en este momento.');
+    let pdfLib;
+    try {
+      pdfLib = await ensureHtml2Pdf();
+    } catch (error) {
+      console.error('Error cargando PDF:', error);
+      alert(error.message || 'La librería de PDF no está disponible en este momento.');
       return;
     }
     const month = APP.calMeses && APP.calMeses[APP.calMesIdx];
@@ -1494,15 +1538,14 @@
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
-    html2pdf()
-      .set(opt)
-      .from(wrapper)
-      .save()
-      .catch(error => {
-        console.error('Error exportando calendario:', error);
-        alert('No se pudo exportar el calendario: ' + error.message);
-      })
-      .finally(() => wrapper.remove());
+    try {
+      await pdfLib().set(opt).from(wrapper).save();
+    } catch (error) {
+      console.error('Error exportando calendario:', error);
+      alert('No se pudo exportar el calendario: ' + error.message);
+    } finally {
+      wrapper.remove();
+    }
   };
 
   window.abrirNotaModal = function abrirNotaModalV2(fecha, camion, idx) {
