@@ -486,6 +486,9 @@
       cantidadSolicitada: num(row.cantidad_solicitada),
       cantidadFacturada: num(row.cantidad_facturada),
       cantidadPendiente: num(row.cantidad_pendiente),
+      cantidadSolicitadaOriginal: num(metadata.cantidadSolicitadaOriginal || row.cantidad_solicitada),
+      cantidadPendienteServir: num(metadata.cantidadPendienteServir || row.cantidad_solicitada),
+      cantidadPendienteSinStock: num(metadata.cantidadPendienteSinStock),
       montoPlanificado: num(metadata.montoPlanificado),
       montoEntregadoNoFacturado: num(metadata.montoEntregadoNoFacturado),
       estadoPlanificacion: row.estado_planificacion || 'planificado',
@@ -534,6 +537,9 @@
           dataset,
           montoPlanificado: num(item.montoPlanificado),
           montoEntregadoNoFacturado: num(item.montoEntregadoNoFacturado),
+          cantidadSolicitadaOriginal: num(item.cantidadSolicitadaOriginal || item.cantidadSolicitada),
+          cantidadPendienteServir: num(item.cantidadPendienteServir || item.cantidadSolicitada),
+          cantidadPendienteSinStock: num(item.cantidadPendienteSinStock),
           observaciones: item.observaciones || '',
           incidencia: item.incidencia || '',
           queueId: item.queueId || '',
@@ -719,6 +725,10 @@
     return { requested, invoiced, pending, pct };
   }
 
+  function getUsableRequestedQty(pendingToServe, pendingNoStock) {
+    return Math.max(num(pendingToServe) - num(pendingNoStock), 0);
+  }
+
   function getConfirmedUndeliveredAmount(item) {
     return num(item.montoPlanificado || 0);
   }
@@ -882,10 +892,13 @@
       const lineaPedidoCliente = text(pickField(row, ['Posición de pedido de cliente', 'Posicion de pedido de cliente', 'Línea de pedido del cliente', 'Linea de pedido del cliente', 'ID de partida individual', 'Posición', 'Linea']));
       const articulo = text(pickField(row, ['Producto', 'Artículo', 'Articulo', 'Material', 'SKU']));
       const descripcionArticulo = text(pickField(row, ['Producto descripción', 'Producto descripcion', 'Artículo descripción', 'Articulo descripcion', 'Descripción del artículo', 'Descripcion del articulo', 'Descripción', 'Descripcion', 'Texto breve']));
-      const cantidadSolicitada = num(pickField(row, ['Cantidad solicitada', 'Cantidad solicitada cliente', 'Cantidad', 'Cant solicitada']));
+      const cantidadSolicitadaOriginal = num(pickField(row, ['Cantidad solicitada', 'Cantidad solicitada cliente', 'Cantidad', 'Cant solicitada']));
       const cantidadFacturada = num(pickField(row, ['Cantidad facturada', 'Facturado', 'Cantidad entregada']));
       const cantidadPendienteRaw = pickField(row, ['Cantidad pendiente de servir', 'Cantidad pendiente', 'Pendiente', 'Cantidad abierta']);
-      const cantidadPendiente = cantidadPendienteRaw !== '' ? num(cantidadPendienteRaw) : Math.max(cantidadSolicitada - cantidadFacturada, 0);
+      const cantidadPendienteServir = cantidadPendienteRaw !== '' ? num(cantidadPendienteRaw) : Math.max(cantidadSolicitadaOriginal - cantidadFacturada, 0);
+      const cantidadPendienteSinStock = num(pickField(row, ['Cantidad pendiente sin stock', 'Cantidad sin stock', 'Pendiente sin stock', 'Cant pendiente sin stock']));
+      const cantidadSolicitada = getUsableRequestedQty(cantidadPendienteServir, cantidadPendienteSinStock);
+      const cantidadPendiente = Math.max(cantidadSolicitada - cantidadFacturada, 0);
       const montoPlanificado = num(pickField(row, [
         'Importe confirmado no entregado',
         'Importe Confirmado No Entregado',
@@ -929,6 +942,9 @@
         referenciaExterna: text(pickField(row, ['Referencia externa'])),
         articulo,
         descripcionArticulo,
+        cantidadSolicitadaOriginal,
+        cantidadPendienteServir,
+        cantidadPendienteSinStock,
         cantidadSolicitada,
         cantidadFacturada,
         cantidadPendiente,
@@ -1939,6 +1955,9 @@
       articulo: item.articulo || '',
       descripcionArticulo: item.descripcionArticulo || '',
       cantidadSolicitada: item.cantidadSolicitada || 0,
+      cantidadSolicitadaOriginal: item.cantidadSolicitadaOriginal || item.cantidadSolicitada || 0,
+      cantidadPendienteServir: item.cantidadPendienteServir || item.cantidadSolicitada || 0,
+      cantidadPendienteSinStock: item.cantidadPendienteSinStock || 0,
       cantidadCompletada: item.cantidadCompletada || 0,
       cantidadPendiente: item.cantidadPendiente || 0,
       estado: item.estado || '',
@@ -2091,9 +2110,13 @@
       const lineaPedidoCliente = text(pickField(row, ['ID de partida individual', 'Posición de pedido de cliente', 'Posicion de pedido de cliente', 'Línea', 'Linea']));
       const articulo = text(pickField(row, ['Producto', 'Artículo', 'Articulo', 'Material', 'SKU']));
       const descripcionArticulo = text(pickField(row, ['Producto descripción', 'Producto descripcion', 'Artículo descripción', 'Articulo descripcion', 'Descripción del artículo', 'Descripcion del articulo', 'Descripción', 'Descripcion']));
-      const cantidadSolicitada = num(pickField(row, ['Cantidad solicitada', 'Cantidad', 'Cant solicitada']));
+      const cantidadSolicitadaOriginal = num(pickField(row, ['Cantidad solicitada', 'Cantidad', 'Cant solicitada']));
       const cantidadCompletada = num(pickField(row, ['Cantidad procesada', 'Cantidad completada', 'Cantidad facturada', 'Cantidad entregada']));
-      const cantidadPendiente = Math.max(num(pickField(row, ['Cantidad pendiente', 'Pendiente'])) || (cantidadSolicitada - cantidadCompletada), 0);
+      const cantidadPendienteServirRaw = pickField(row, ['Cantidad pendiente de servir', 'Cantidad pendiente', 'Pendiente']);
+      const cantidadPendienteServir = cantidadPendienteServirRaw !== '' ? num(cantidadPendienteServirRaw) : Math.max(cantidadSolicitadaOriginal - cantidadCompletada, 0);
+      const cantidadPendienteSinStock = num(pickField(row, ['Cantidad pendiente sin stock', 'Cantidad sin stock', 'Pendiente sin stock', 'Cant pendiente sin stock']));
+      const cantidadSolicitada = getUsableRequestedQty(cantidadPendienteServir, cantidadPendienteSinStock);
+      const cantidadPendiente = Math.max(cantidadSolicitada - cantidadCompletada, 0);
       const fecha = toDateLabel(pickField(row, ['Fecha de entrega planificada', 'Fecha de envío planificada', 'Fecha de envio planificada', 'Fecha de liberación', 'Fecha de liberacion'])) || fechaToStr(new Date());
       return {
         codigo,
@@ -2103,6 +2126,9 @@
         lineaPedidoCliente,
         articulo,
         descripcionArticulo,
+        cantidadSolicitadaOriginal,
+        cantidadPendienteServir,
+        cantidadPendienteSinStock,
         cantidadSolicitada,
         cantidadCompletada,
         cantidadPendiente,
@@ -2895,12 +2921,16 @@
           <label class="form-row">Email
             <input id="userEmailInput" class="form-control" type="email" placeholder="correo@empresa.com">
           </label>
+          <label class="form-row">Contraseña inicial
+            <input id="userPasswordInput" class="form-control" type="password" minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+          </label>
           <label class="form-row">Rol
             <select id="userRoleInput" class="form-control">
               ${roleOptions.map(role => `<option value="${role}">${role}</option>`).join('')}
             </select>
           </label>
         </div>
+        <div class="config-help-note" style="margin-bottom:12px;">La contraseña se usa para crear el acceso en Supabase Auth y no se guarda en la configuración visible.</div>
         <div style="margin-bottom:12px;">
           <button class="btn btn-primary btn-sm" onclick="crearUsuarioPerfil()">Crear usuario</button>
         </div>
@@ -3123,25 +3153,64 @@
     };
   }
 
-  window.crearUsuarioPerfil = function crearUsuarioPerfil() {
+  async function createAuthUserForProfile(email, password, nombre, rol) {
+    const client = getSupabaseClient();
+    if (!client || !client.auth) throw new Error('No hay conexión de autenticación disponible.');
+    const current = await client.auth.getSession();
+    const currentSession = current && current.data && current.data.session;
+    const { data, error } = await client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { nombre, rol }
+      }
+    });
+    if (currentSession && data && data.session) {
+      await client.auth.setSession({
+        access_token: currentSession.access_token,
+        refresh_token: currentSession.refresh_token
+      });
+    }
+    if (error) throw error;
+    return (data && data.user && data.user.id) || '';
+  }
+
+  window.crearUsuarioPerfil = async function crearUsuarioPerfil() {
     const nombre = text(document.getElementById('userNameInput').value);
     const email = text(document.getElementById('userEmailInput').value);
+    const password = String((document.getElementById('userPasswordInput') || {}).value || '');
     const rol = text(document.getElementById('userRoleInput').value) || 'Operaciones';
-    if (!nombre || !email) {
-      alert('Completa nombre y email para crear el usuario.');
+    if (!nombre || !email || !password) {
+      alert('Completa nombre, email y contraseña para crear el usuario.');
+      return;
+    }
+    if (password.length < 6) {
+      alert('La contraseña debe tener al menos 6 caracteres.');
       return;
     }
     if (APP.userProfiles.some(profile => text(profile.email).toLowerCase() === email.toLowerCase())) {
       alert('Ya existe un usuario con ese email.');
       return;
     }
+    let authUserId = '';
+    try {
+      authUserId = await createAuthUserForProfile(email, password, nombre, rol);
+    } catch (error) {
+      console.error('No se pudo crear el acceso del usuario:', error);
+      alert('No se pudo crear el acceso con esa contraseña: ' + (error.message || error));
+      return;
+    }
     APP.userProfiles.push({
-      userId: 'user-' + Date.now(),
+      userId: authUserId || 'user-' + Date.now(),
+      authUserId,
       nombre,
       email,
       rol,
-      permisosPorModulo: getPermissionsForRole(rol)
+      permisosPorModulo: getPermissionsForRole(rol),
+      passwordConfigured: true
     });
+    const passwordInput = document.getElementById('userPasswordInput');
+    if (passwordInput) passwordInput.value = '';
     renderConfigAuxSections();
     scheduleAutoSave();
   };
@@ -3228,6 +3297,9 @@
       articulo: item.articulo || '',
       descripcionArticulo: item.descripcionArticulo || '',
       cantidadSolicitada: item.cantidadSolicitada || 0,
+      cantidadSolicitadaOriginal: item.cantidadSolicitadaOriginal || item.cantidadSolicitada || 0,
+      cantidadPendienteServir: item.cantidadPendienteServir || item.cantidadSolicitada || 0,
+      cantidadPendienteSinStock: item.cantidadPendienteSinStock || 0,
       cantidadCompletada: item.cantidadCompletada || 0,
       cantidadPendiente: item.cantidadPendiente || 0,
       estado: item.estado || '',
