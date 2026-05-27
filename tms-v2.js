@@ -290,7 +290,12 @@
 
   function getRouteConfigByName(routeName) {
     const name = text(routeName);
-    return APP.routeConfigs.find(r => text(r.nombre) === name || text(r.zona) === name) || null;
+    if (!name) return null;
+    const normalized = normKey(name);
+    return APP.routeConfigs.find(r => {
+      const names = [r.nombre, r.zona, r.id].map(text).filter(Boolean);
+      return names.some(value => value === name || normKey(value) === normalized);
+    }) || null;
   }
 
   function ensureRouteConfig(routeName) {
@@ -801,8 +806,26 @@
       const cantidadFacturada = num(pickField(row, ['Cantidad facturada', 'Facturado', 'Cantidad entregada']));
       const cantidadPendienteRaw = pickField(row, ['Cantidad pendiente de servir', 'Cantidad pendiente', 'Pendiente', 'Cantidad abierta']);
       const cantidadPendiente = cantidadPendienteRaw !== '' ? num(cantidadPendienteRaw) : Math.max(cantidadSolicitada - cantidadFacturada, 0);
-      const montoPlanificado = num(pickField(row, ['Importe confirmado no entregado', 'Importe Confirmado No Entregado', 'Importe confirmado, no entregado', 'Valor neto', 'Monto']));
-      const montoEntregadoNoFacturado = num(pickField(row, ['Importe entregado no facturado', 'Importe Entregado No Facturado', 'Importe entregado, no facturado', 'Pendiente de facturar', 'Importe pendiente de facturar']));
+      const montoPlanificado = num(pickField(row, [
+        'Importe confirmado no entregado',
+        'Importe Confirmado No Entregado',
+        'Importe confirmado, no entregado',
+        'Importe confirmado no entregado (moneda de transacción)',
+        'Importe confirmado no entregado moneda de transacción',
+        'Imp. confirmado no entregado',
+        'Valor neto',
+        'Monto'
+      ]));
+      const montoEntregadoNoFacturado = num(pickField(row, [
+        'Importe entregado no facturado',
+        'Importe Entregado No Facturado',
+        'Importe entregado, no facturado',
+        'Importe entregado no facturado (moneda de transacción)',
+        'Importe entregado no facturado moneda de transacción',
+        'Imp. entregado no facturado',
+        'Pendiente de facturar',
+        'Importe pendiente de facturar'
+      ]));
       const montoPendienteSinStock = num(pickField(row, ['Importe pendiente sin stock']));
       const fechaPrevista = toDateLabel(pickField(row, ['Fecha', 'Fecha Entrega', 'Fecha de entrega', 'Fecha de envío planificada', 'Fecha de envio planificada'])) || fechaArchivo;
       const rutaNombre = inferRouteName(clienteNombre, clienteId);
@@ -2878,7 +2901,7 @@
       grouped.get(key).items.push(item);
     });
     return [...grouped.values()].map(row => {
-      const routeCfg = getRouteConfigByName(row.rutaNombre) || { id: row.rutaNombre, costeRuta: 0 };
+      const routeCfg = getRouteConfigByName(row.rutaNombre);
       const summary = calcProgressSummary(row.items);
       const importePlanificado = row.items.reduce((sum, item) => sum + getOperationalAmount(item), 0);
       const importeReal = row.items.reduce((sum, item) => {
@@ -2886,11 +2909,14 @@
         const deliveredRatio = requested > 0 ? Math.min((item.cantidadFacturada || 0) / requested, 1) : 0;
         return sum + getOperationalAmount(item) * deliveredRatio;
       }, 0);
+      const coste = routeCfg ? num(routeCfg.costeRuta) : 0;
       return {
         fecha: row.fecha,
-        rutaId: routeCfg.id || row.rutaNombre,
+        rutaId: (routeCfg && routeCfg.id) || row.rutaNombre,
         rutaNombre: row.rutaNombre,
-        coste: num(routeCfg.costeRuta),
+        coste,
+        costePendienteConfig: !routeCfg || coste <= 0,
+        costeAlerta: !routeCfg ? 'Ruta no existe en Configuración' : (coste <= 0 ? 'Coste de ruta en cero' : ''),
         fuenteControlDiario: APP.importFiles.control || '',
         pedidosAsociados: uniqueTexts(row.items.map(item => item.pedidoCliente)),
         cumplimiento: summary.pct,
@@ -2905,10 +2931,13 @@
     const routeCfg = getRouteConfigByName(row.rutaNombre || row.ruta || '') || null;
     const importePlanificado = num(row.importePlanificado);
     const importeReal = num(row.importeReal);
+    const coste = routeCfg ? num(routeCfg.costeRuta) : num(row.coste);
     return {
       ...row,
       rutaId: (routeCfg && routeCfg.id) || row.rutaId || row.rutaNombre || '',
-      coste: routeCfg ? num(routeCfg.costeRuta) : num(row.coste),
+      coste,
+      costePendienteConfig: !routeCfg || coste <= 0,
+      costeAlerta: !routeCfg ? 'Ruta no existe en Configuración' : (coste <= 0 ? 'Coste de ruta en cero' : ''),
       importePlanificado,
       importeReal,
       diferencia: importePlanificado - importeReal
@@ -2961,6 +2990,7 @@
     const progress = calcProgressSummary(items);
     const routeCostTotal = routeHistory.reduce((sum, row) => sum + num(row.coste), 0);
     const warehouseCostTotal = warehouseHistory.reduce((sum, row) => sum + num(row.costeSolicitud), 0);
+    const routeCostIssues = routeHistory.filter(row => row.costePendienteConfig);
     output.innerHTML = `
       <div class="card">
         <div class="card-title">Resumen operativo</div>
@@ -2972,14 +3002,24 @@
           <div class="kpi-card"><div class="kpi-label">Gasto almacén</div><div class="kpi-val">${formatMonto(warehouseCostTotal)}</div></div>
         </div>
       </div>
+      ${routeCostIssues.length ? `<div class="card route-cost-alert">
+        <div class="card-title">Rutas con coste pendiente</div>
+        <div class="route-cost-alert-list">
+          ${routeCostIssues.map(row => `<div class="route-cost-alert-item">
+            <strong>${row.rutaNombre}</strong>
+            <span>${row.fecha} · ${row.costeAlerta}</span>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
       <div class="card">
         <div class="card-title">Gasto teórico / real de rutas</div>
         ${routeHistory.length ? `<div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Fecha</th><th>Ruta</th><th>Coste</th><th>Cumplimiento</th><th>Planificado</th><th>Real</th><th>Diferencia</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Ruta</th><th>Coste</th><th>Estado coste</th><th>Cumplimiento</th><th>Planificado</th><th>Real</th><th>Diferencia</th></tr></thead>
           <tbody>${routeHistory.map(row => `<tr>
             <td>${row.fecha}</td>
             <td>${row.rutaNombre}</td>
             <td>${formatMonto(row.coste)}</td>
+            <td>${row.costePendienteConfig ? `<span class="badge badge-warn">${row.costeAlerta}</span>` : '<span class="badge badge-ok">Configurado</span>'}</td>
             <td>${row.cumplimiento}%</td>
             <td>${formatMonto(row.importePlanificado)}</td>
             <td>${formatMonto(row.importeReal)}</td>
@@ -3767,6 +3807,11 @@
       .queue-card-meta { font-size:11px; color:var(--muted); }
       .badge-primary { background: var(--primary); color: #fff; }
       .badge-outline { background: #fff; color: var(--muted); border: 1px solid var(--border); }
+      .route-cost-alert { border-left:4px solid var(--warning); }
+      .route-cost-alert-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
+      .route-cost-alert-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#FFF8EC; }
+      .route-cost-alert-item strong { display:block; color:var(--text); font-size:13px; margin-bottom:3px; }
+      .route-cost-alert-item span { display:block; color:var(--muted); font-size:12px; }
       .import-view-shell { align-content:start; }
       .import-table-mode > #sapEstadoBanner,
       .import-table-mode > .card:not(#importExcelTableCard) { display:none !important; }
