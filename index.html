@@ -776,9 +776,6 @@ body {
     <button class="nav-btn" id="nav-calendario" onclick="cambiarVista('calendario',this)">
       <span class="nav-icon">📅</span><span class="nav-label">Calendario</span>
     </button>
-    <button class="nav-btn" id="nav-rutas" onclick="cambiarVista('rutas',this)">
-      <span class="nav-icon">🚚</span><span class="nav-label">Rutas</span>
-    </button>
     <button class="nav-btn" id="nav-comercial" onclick="cambiarVista('comercial',this)">
       <span class="nav-icon">👔</span><span class="nav-label">Vista Comercial</span>
     </button>
@@ -1159,28 +1156,6 @@ body {
           <span id="queueSemanaResumen" class="badge badge-warn">0 pendientes</span>
         </div>
         <div id="queueSemanaContainer"></div>
-      </div>
-    </div>
-
-    <!-- ========== VISTA 4: RUTAS ========== -->
-    <div id="rutas" class="view">
-      <div class="view-title">🚚 Gestión de Rutas</div>
-
-      <div class="card" style="padding:14px 16px;">
-        <div class="view-toolbar">
-          <div style="display:flex;align-items:center;gap:10px;">
-            <label style="font-size:13px;font-weight:600;color:var(--muted);">Fecha:</label>
-            <select id="rutasDiaSelect" onchange="APP.rutaFecha=this.value;renderRutas()" class="search-input" style="padding:7px 10px;">
-              <option value="">Seleccionar fecha...</option>
-            </select>
-          </div>
-          <input type="text" id="rutasSearch" class="search-input" placeholder="Buscar..." oninput="renderRutas()" style="max-width:180px;">
-          <button class="btn btn-primary btn-sm" onclick="exportarExcelRutas()">Exportar Excel</button>
-        </div>
-      </div>
-
-      <div id="rutasContainer">
-        <div class="empty-state"><div class="empty-icon">🚚</div><p>Selecciona una fecha para ver las rutas.</p></div>
       </div>
     </div>
 
@@ -1743,7 +1718,6 @@ function cambiarVista(id, btn) {
   // Inicializar vistas al activarlas
   if (id === 'dashboard') actualizarDashboard();
   if (id === 'calendario') renderCalendario();
-  if (id === 'rutas') renderRutas();
   if (id === 'comercial') renderComercial();
   if (id === 'configClientes') renderConfigClientes();
   if (id === 'solicitudesAlmacen') renderSolicitudesAlmacen();

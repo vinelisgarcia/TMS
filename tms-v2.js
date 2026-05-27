@@ -71,7 +71,6 @@
     importar: 'Importar',
     dashboard: 'Dashboard',
     calendario: 'Calendario',
-    rutas: 'Rutas',
     reportes: 'Reportes',
     comercial: 'Comercial',
     configuracion: 'Configuración',
@@ -350,7 +349,6 @@
       importar: { ver: true, editar: true, importar: true },
       dashboard: { ver: true, editar: true },
       calendario: { ver: true, editar: true },
-      rutas: { ver: true, editar: true },
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: true },
       configuracion: { ver: true, editar: true, importar: true },
@@ -1700,6 +1698,24 @@
     return false;
   }
 
+  function downloadPdf(pdf, filename) {
+    try {
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (error) {
+      console.warn('Descarga PDF por Blob falló; usando save().', error);
+      pdf.save(filename);
+    }
+  }
+
   window.exportarCalendarioVisiblePDF = async function exportarCalendarioVisiblePDFV2() {
     const el = document.getElementById('calExportArea');
     if (!el || !el.innerHTML.trim()) {
@@ -1766,7 +1782,7 @@
       const x = (pageW - imgW) / 2;
       const y = (pageH - imgH) / 2;
       pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, imgW, imgH);
-      pdf.save(filename);
+      downloadPdf(pdf, filename);
     } catch (error) {
       console.error('Error exportando calendario:', error);
       alert('No se pudo exportar el calendario: ' + error.message);
@@ -2485,9 +2501,12 @@
       alert('No hay vista comercial para exportar.');
       return;
     }
-    const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
-    if (typeof html2canvas === 'undefined' || !JsPDF) {
-      alert('La librería de PDF no está disponible en este momento.');
+    let pdfTools;
+    try {
+      pdfTools = await ensurePdfTools();
+    } catch (error) {
+      console.error('Error cargando PDF comercial:', error);
+      alert(error.message || 'La librería de PDF no está disponible en este momento.');
       return;
     }
     const wrapper = document.createElement('div');
@@ -2498,8 +2517,22 @@
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
     try {
-      const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: wrapper.scrollWidth, windowHeight: wrapper.scrollHeight });
-      const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const canvas = await pdfTools.html2canvas(wrapper, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        width: wrapper.scrollWidth,
+        height: wrapper.scrollHeight,
+        windowWidth: wrapper.scrollWidth,
+        windowHeight: wrapper.scrollHeight,
+        scrollX: 0,
+        scrollY: 0
+      });
+      if (!canvasHasVisibleContent(canvas)) {
+        throw new Error('La captura de la vista comercial salió vacía.');
+      }
+      const pdf = new pdfTools.JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
       const margin = 8;
@@ -2516,7 +2549,7 @@
         pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, position, imgW, imgH);
         remaining -= pageImgH;
       }
-      pdf.save('TMS_Vista_Comercial.pdf');
+      downloadPdf(pdf, 'TMS_Vista_Comercial.pdf');
     } catch (error) {
       console.error('Error exportando vista comercial:', error);
       alert('No se pudo exportar la vista comercial: ' + error.message);
@@ -2734,9 +2767,9 @@
     ];
     const rolePermissionGuide = [
       { role: 'Admin', scope: SCOPE_LABELS.full, detail: 'Puede ver, editar e importar en todos los módulos.' },
-      { role: 'Operaciones', scope: SCOPE_LABELS.ops, detail: 'Puede importar, editar calendario, rutas, reportes, solicitudes y almacén. Comercial queda solo lectura y Configuración no visible.' },
+      { role: 'Operaciones', scope: SCOPE_LABELS.ops, detail: 'Puede importar, editar calendario, reportes, solicitudes y almacén. Comercial queda solo lectura y Configuración no visible.' },
       { role: 'Comercial', scope: SCOPE_LABELS.commercial, detail: 'Puede editar Vista Comercial. Dashboard, Calendario, Reportes y Solicitudes quedan solo lectura.' },
-      { role: 'Almacén', scope: SCOPE_LABELS.ops, detail: 'Usa permisos operativos: solicitudes y almacén editables, además de calendario/rutas/reportes.' },
+      { role: 'Almacén', scope: SCOPE_LABELS.ops, detail: 'Usa permisos operativos: solicitudes y almacén editables, además de calendario y reportes.' },
       { role: 'Solo lectura', scope: SCOPE_LABELS.read_only, detail: 'Puede ver todos los módulos sin editar ni importar.' }
     ];
     mount.innerHTML = `
@@ -2840,7 +2873,7 @@
   };
 
   function summarizePermissions(perms) {
-    const entries = Object.entries(perms || {});
+    const entries = Object.entries(perms || {}).filter(([module]) => MODULE_LABELS[module]);
     if (!entries.length) return 'Sin permisos definidos';
     const editable = entries.filter(([, actions]) => actions && (actions.editar || actions.importar)).map(([module]) => MODULE_LABELS[module] || module);
     if (editable.length === entries.length) return 'Ver y editar todo';
@@ -2849,7 +2882,7 @@
   }
 
   function renderPermissionChips(perms) {
-    const entries = Object.entries(perms || {});
+    const entries = Object.entries(perms || {}).filter(([module]) => MODULE_LABELS[module]);
     if (!entries.length) return '<span class="permission-chip muted">Sin permisos</span>';
     return entries.map(([module, actions]) => {
       const label = MODULE_LABELS[module] || module;
@@ -2926,7 +2959,6 @@
       importar: { ver: true, editar: true, importar: true },
       dashboard: { ver: true, editar: true },
       calendario: { ver: true, editar: true },
-      rutas: { ver: true, editar: true },
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: true },
       configuracion: { ver: true, editar: true, importar: true },
@@ -2942,7 +2974,6 @@
         importar: { ver: false, editar: false, importar: false },
         dashboard: { ver: true, editar: false },
         calendario: { ver: true, editar: false },
-        rutas: { ver: false, editar: false },
         reportes: { ver: true, editar: false },
         comercial: { ver: true, editar: true },
         configuracion: { ver: false, editar: false, importar: false },
@@ -2954,7 +2985,6 @@
       importar: { ver: true, editar: true, importar: true },
       dashboard: { ver: true, editar: false },
       calendario: { ver: true, editar: true },
-      rutas: { ver: true, editar: true },
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: false },
       configuracion: { ver: false, editar: false, importar: false },
@@ -4261,7 +4291,6 @@
       #nav-importar .nav-icon::before { content:'↓'; }
       #nav-dashboard .nav-icon::before { content:'▥'; }
       #nav-calendario .nav-icon::before { content:'□'; }
-      #nav-rutas .nav-icon::before { content:'→'; }
       #nav-comercial .nav-icon::before { content:'$'; }
       #nav-configClientes .nav-icon::before { content:'⚙'; }
       #nav-solicitudesAlmacen .nav-icon::before { content:'▤'; }
