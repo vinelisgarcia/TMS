@@ -4,6 +4,7 @@
   if (typeof APP === 'undefined') return;
 
   const LOCAL_KEY = 'tms_alvarez_v2_state';
+  const THEME_KEY = 'tms_alvarez_visual_theme';
   const CURRENT_YEAR = new Date().getFullYear();
   const RD_HOLIDAYS = {
     2026: [
@@ -31,6 +32,7 @@
     feriadosRD: APP.feriadosRD || (RD_HOLIDAYS[CURRENT_YEAR] || []),
     importFiles: APP.importFiles || { plan: '', control: '', solicitudesPlan: '', solicitudesControl: '' },
     selectedCalendarGroups: APP.selectedCalendarGroups || [],
+    visualTheme: APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light',
     appVersion: 'v2'
   });
 
@@ -49,6 +51,38 @@
   function text(value) {
     return String(value == null ? '' : value).trim();
   }
+
+  function normalizeVisualTheme(theme) {
+    return ['light', 'dark', 'brand'].includes(theme) ? theme : 'light';
+  }
+
+  function getThemeLabel(theme) {
+    return ({ light: 'Claro', dark: 'Oscuro', brand: 'Alvarez' }[normalizeVisualTheme(theme)] || 'Claro');
+  }
+
+  function syncThemeButtons() {
+    document.querySelectorAll('[data-theme-option]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.themeOption === APP.visualTheme);
+    });
+    const label = document.getElementById('themeCurrentLabel');
+    if (label) label.textContent = getThemeLabel(APP.visualTheme);
+  }
+
+  function applyVisualTheme(theme, persist) {
+    const nextTheme = normalizeVisualTheme(theme);
+    APP.visualTheme = nextTheme;
+    if (persist) localStorage.setItem(THEME_KEY, nextTheme);
+    if (!document.body) return;
+    document.body.classList.remove('theme-light', 'theme-dark', 'theme-brand');
+    document.body.classList.add('theme-' + nextTheme);
+    document.body.dataset.theme = nextTheme;
+    syncThemeButtons();
+  }
+
+  window.setVisualTheme = function setVisualTheme(theme) {
+    applyVisualTheme(theme, true);
+    if (typeof window.scheduleAutoSave === 'function') window.scheduleAutoSave();
+  };
 
   function num(value) {
     if (value == null || value === '') return 0;
@@ -871,7 +905,8 @@
         solicitudesFileName: APP.solicitudesFileName,
         camionExtraEnabled: APP.camionExtraEnabled,
         feriadosRD: APP.feriadosRD,
-        importFiles: APP.importFiles
+        importFiles: APP.importFiles,
+        visualTheme: APP.visualTheme
       }
     };
     localStorage.setItem(LOCAL_KEY, JSON.stringify(payload));
@@ -887,6 +922,8 @@
     APP.solicitudesControlAlmacen = APP.solicitudesControlAlmacen || [];
     APP.solicitudesAlmacen = APP.solicitudesAlmacen || APP.solicitudesPlanAlmacen;
     APP.solicitudesCompare = buildSolicitudesComparison();
+    APP.visualTheme = normalizeVisualTheme(APP.visualTheme || localStorage.getItem(THEME_KEY));
+    applyVisualTheme(APP.visualTheme, true);
     ensureAdminProfile();
     matchWarehouseToOrders();
     rebuildDerivedState();
@@ -899,6 +936,8 @@
       if (!raw) return false;
       const payload = JSON.parse(raw);
       Object.assign(APP, payload.app || {});
+      APP.visualTheme = normalizeVisualTheme(APP.visualTheme || localStorage.getItem(THEME_KEY));
+      applyVisualTheme(APP.visualTheme, true);
       ensureAdminProfile();
       rebuildDerivedState();
       return true;
@@ -2456,7 +2495,7 @@
       <div class="form-row"><label>Condiciones especiales</label><textarea id="cfgCondiciones" class="form-control" style="min-height:70px;">${cfg.condicionesEspeciales || ''}</textarea></div>
       <div class="form-row"><label>Observaciones</label><textarea id="cfgNota" class="form-control" style="min-height:90px;">${cfg.observaciones || ''}</textarea></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-primary" onclick="guardarConfigCliente()">💾 Guardar configuración</button>
+        <button class="btn btn-primary" onclick="guardarConfigCliente()">Guardar configuración</button>
         <button class="btn btn-outline" onclick="limpiarConfigCliente()">Limpiar</button>
       </div>
     `;
@@ -2601,7 +2640,7 @@
       <div class="card" style="margin-top:16px;">
         <div class="view-toolbar" style="justify-content:space-between;">
           <div class="card-title" style="margin-bottom:0;">Rutas / zonas</div>
-          <button class="btn btn-primary btn-sm" onclick="guardarConfigRutas()">💾 Guardar cambios de rutas</button>
+          <button class="btn btn-primary btn-sm" onclick="guardarConfigRutas()">Guardar cambios de rutas</button>
         </div>
         <div class="table-wrap"><table class="data-table">
           <thead><tr><th>Nombre</th><th>Días operación</th><th>Coste</th><th>Activa</th><th>Observaciones</th></tr></thead>
@@ -2642,7 +2681,7 @@
           </label>
         </div>
         <div style="margin-bottom:12px;">
-          <button class="btn btn-primary btn-sm" onclick="crearUsuarioPerfil()">➕ Crear usuario</button>
+          <button class="btn btn-primary btn-sm" onclick="crearUsuarioPerfil()">Crear usuario</button>
         </div>
         <div class="table-wrap"><table class="data-table">
           <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Permisos</th><th>Acciones</th></tr></thead>
@@ -3037,6 +3076,8 @@
         APP.camionExtraEnabled = !!settingsMap.app_state.camionExtraEnabled;
         APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
         APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
+        APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
+        applyVisualTheme(APP.visualTheme, true);
       }
 
       const currentItems = [];
@@ -3176,7 +3217,8 @@
             solicitudesFileName: APP.solicitudesFileName || '',
             camionExtraEnabled: !!APP.camionExtraEnabled,
             feriadosRD: APP.feriadosRD || [],
-            importFiles: APP.importFiles || {}
+            importFiles: APP.importFiles || {},
+            visualTheme: APP.visualTheme || 'light'
           })
         }
       ];
@@ -3267,7 +3309,7 @@
       await replaceSupabaseTable('tms_warehouse_history', warehouseHistoryRows);
 
       if (btn) {
-        btn.textContent = '✅ Guardado en nube';
+        btn.textContent = 'Guardado en nube';
       }
       return true;
     } catch (error) {
@@ -3278,7 +3320,7 @@
       if (btn) {
         setTimeout(() => {
           btn.disabled = false;
-          btn.textContent = originalText || '💾 Guardar cambios';
+          btn.textContent = originalText || 'Guardar cambios';
         }, 1400);
       }
     }
@@ -3302,12 +3344,12 @@
       <div class="view-toolbar" style="margin-top:14px;align-items:flex-start;">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <input type="file" id="solicitudesPlanFileImport" accept=".xlsx,.xls,.xml" style="display:none" onchange="procesarSolicitudesAlmacen(this.files[0],'plan')">
-          <button class="btn btn-warning" onclick="document.getElementById('solicitudesPlanFileImport').click()">📂 Solicitudes realizadas al almacén</button>
+          <button class="btn btn-warning" onclick="document.getElementById('solicitudesPlanFileImport').click()">Solicitudes realizadas al almacén</button>
           <div id="solPlanImportStatus" style="font-size:12px;color:var(--muted);">Sin archivo de planificación</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <input type="file" id="solicitudesControlFileImport" accept=".xlsx,.xls,.xml" style="display:none" onchange="procesarSolicitudesAlmacen(this.files[0],'control')">
-          <button class="btn btn-outline" onclick="document.getElementById('solicitudesControlFileImport').click()">📂 Control diario de almacén</button>
+          <button class="btn btn-outline" onclick="document.getElementById('solicitudesControlFileImport').click()">Control diario de almacén</button>
           <div id="solCtrlImportStatus" style="font-size:12px;color:var(--muted);">Sin archivo de control</div>
         </div>
         <span style="font-size:12px;color:var(--muted);" id="solicitudesImportHint"><strong id="solNewRequestsCount">0</strong> nuevas solicitudes detectadas</span>
@@ -3433,7 +3475,7 @@
     const button = document.createElement('button');
     button.id = 'addTruckBtn';
     button.className = 'btn btn-outline btn-sm';
-    button.textContent = '➕ Agregar tercer camión';
+    button.textContent = 'Agregar tercer camión';
     button.onclick = function () {
       APP.camionExtraEnabled = true;
       syncMoveOptions();
@@ -3512,6 +3554,43 @@
     `);
   }
 
+  function initThemeSettings() {
+    const view = document.getElementById('configClientes');
+    if (!view || document.getElementById('visualThemeCard')) return;
+    const card = document.createElement('div');
+    card.id = 'visualThemeCard';
+    card.className = 'card theme-settings-card';
+    card.innerHTML = `
+      <div class="theme-settings-head">
+        <div>
+          <div class="card-title">Tema visual</div>
+          <div class="theme-settings-sub">Simplifica colores, iconos y encabezados para cada forma de trabajo.</div>
+        </div>
+        <span id="themeCurrentLabel" class="badge badge-outline">${getThemeLabel(APP.visualTheme)}</span>
+      </div>
+      <div class="theme-option-grid">
+        <button type="button" class="theme-option" data-theme-option="light" onclick="setVisualTheme('light')">
+          <span class="theme-preview theme-preview-light"></span>
+          <strong>Claro operativo</strong>
+          <small>Blanco, gris y azul sobrio.</small>
+        </button>
+        <button type="button" class="theme-option" data-theme-option="dark" onclick="setVisualTheme('dark')">
+          <span class="theme-preview theme-preview-dark"></span>
+          <strong>Oscuro</strong>
+          <small>Menos brillo para uso continuo.</small>
+        </button>
+        <button type="button" class="theme-option" data-theme-option="brand" onclick="setVisualTheme('brand')">
+          <span class="theme-preview theme-preview-brand"></span>
+          <strong>Alvarez color</strong>
+          <small>Marca simple con acento amarillo.</small>
+        </button>
+      </div>
+    `;
+    const toolbarCard = view.querySelector('.card');
+    view.insertBefore(card, toolbarCard || view.firstChild);
+    syncThemeButtons();
+  }
+
   function initConfigExtras() {
     const view = document.getElementById('configClientes');
     if (!view || document.getElementById('configExtrasMount')) return;
@@ -3524,9 +3603,9 @@
     const navConfig = document.querySelector('#nav-configClientes .nav-label');
     if (navConfig) navConfig.textContent = 'Configuración';
     const titleConfig = document.querySelector('#configClientes .view-title');
-    if (titleConfig) titleConfig.textContent = '⚙️ Configuración';
+    if (titleConfig) titleConfig.textContent = 'Configuración';
     const titleImport = document.querySelector('#importar .view-title');
-    if (titleImport) titleImport.textContent = '📥 Importar Datos';
+    if (titleImport) titleImport.textContent = 'Importar Datos';
     const planTitle = document.querySelector('#uploadZone')?.closest('.card')?.querySelector('.card-title');
     if (planTitle) planTitle.textContent = 'Programación mensual / pedidos de cliente';
     const planSub = document.querySelector('#uploadZone .upload-sub');
@@ -3797,6 +3876,142 @@
         color:var(--muted);
         font-size:12px;
       }
+      body.theme-light {
+        --primary:#123F5D;
+        --secondary:#166534;
+        --warning:#9A6700;
+        --danger:#B42318;
+        --bg:#F5F6F8;
+        --card:#FFFFFF;
+        --border:#DDE3EA;
+        --text:#17212B;
+        --muted:#667085;
+        --soft:#F8FAFC;
+        --header:#123F5D;
+        --icon:#17212B;
+      }
+      body.theme-dark {
+        --primary:#D7E7F5;
+        --secondary:#7FD49B;
+        --warning:#F7C948;
+        --danger:#FF9B8D;
+        --bg:#0F141A;
+        --card:#171E26;
+        --border:#2A3440;
+        --text:#E7EDF3;
+        --muted:#A5B1BE;
+        --soft:#111820;
+        --header:#101820;
+        --icon:#F8FAFC;
+      }
+      body.theme-brand {
+        --primary:#161616;
+        --secondary:#1F7A3A;
+        --warning:#C28A00;
+        --danger:#B42318;
+        --bg:#F7F6F1;
+        --card:#FFFFFF;
+        --border:#DDD8C8;
+        --text:#181818;
+        --muted:#68635B;
+        --soft:#FFF7D6;
+        --header:#F4C900;
+        --icon:#111111;
+      }
+      body.theme-dark,
+      body.theme-dark #content { background:var(--bg); color:var(--text); }
+      body.theme-dark .card,
+      body.theme-dark .stat-box,
+      body.theme-dark .kpi-card,
+      body.theme-dark .chart-card,
+      body.theme-dark .queue-card,
+      body.theme-dark .sol-card,
+      body.theme-dark .commercial-day,
+      body.theme-dark .commercial-client-card,
+      body.theme-dark .config-client-list,
+      body.theme-dark .config-client-item,
+      body.theme-dark .import-excel-header { background:var(--card) !important; color:var(--text); border-color:var(--border) !important; }
+      body.theme-dark .search-input,
+      body.theme-dark .form-control,
+      body.theme-dark .nota-input,
+      body.theme-dark input,
+      body.theme-dark select,
+      body.theme-dark textarea { background:#111820 !important; color:var(--text) !important; border-color:var(--border) !important; }
+      body.theme-dark .data-table td,
+      body.theme-dark .commercial-detail-table td,
+      body.theme-dark .import-excel-table td { background:var(--card); color:var(--text); border-color:var(--border); }
+      body.theme-dark .data-table th,
+      body.theme-dark .commercial-detail-table th,
+      body.theme-dark .import-excel-table th,
+      body.theme-dark .com-th { background:#222C36 !important; color:#F8FAFC !important; }
+      body.theme-dark .cal-month-section,
+      body.theme-dark .cal-dia-col,
+      body.theme-dark .cal-card { background:var(--card) !important; border-color:var(--border) !important; color:var(--text); }
+      body.theme-dark .cal-dia-header,
+      body.theme-dark .commercial-day-head { background:#111820 !important; color:var(--text); border-color:var(--border); }
+      body.theme-brand #appHeader { background:var(--header); color:#111; border-bottom:1px solid #D7B400; }
+      body.theme-brand #saveStateBtn,
+      body.theme-brand #sapHeaderInfo { color:#111; border-color:rgba(0,0,0,.24); background:rgba(255,255,255,.36); }
+      #appHeader .logo { font-size:20px; color:currentColor; filter:grayscale(1); }
+      body.theme-brand .btn-primary,
+      body.theme-brand .data-table th,
+      body.theme-brand .cal-week-title,
+      body.theme-brand .com-th { background:#161616 !important; color:#fff !important; }
+      body.theme-brand .nav-btn.active { background:#161616; color:#fff; }
+      body.theme-brand .stat-value,
+      body.theme-brand .kpi-val,
+      body.theme-brand .card-title,
+      body.theme-brand .view-title { color:#161616; }
+      body.theme-dark #appHeader,
+      body.theme-dark #sidebar { background:var(--header); color:var(--text); border-color:var(--border); }
+      body.theme-dark .nav-btn { color:var(--text); }
+      body.theme-dark .nav-btn:hover { background:#1D2630; }
+      body.theme-dark .nav-btn.active { background:#E7EDF3; color:#101820; }
+      body.theme-dark .btn-outline { background:#111820; color:var(--text); border-color:var(--border); }
+      body.theme-light #appHeader,
+      body.theme-dark #appHeader { background:var(--header); }
+      body.theme-light #sidebar,
+      body.theme-brand #sidebar { background:#fff; }
+      .nav-icon {
+        width:22px;
+        display:inline-flex;
+        justify-content:center;
+        color:currentColor;
+        font-size:0 !important;
+        line-height:1;
+      }
+      .nav-icon::before { font-size:17px; font-weight:800; color:currentColor; }
+      #nav-importar .nav-icon::before { content:'↓'; }
+      #nav-dashboard .nav-icon::before { content:'▥'; }
+      #nav-calendario .nav-icon::before { content:'□'; }
+      #nav-rutas .nav-icon::before { content:'→'; }
+      #nav-comercial .nav-icon::before { content:'$'; }
+      #nav-configClientes .nav-icon::before { content:'⚙'; }
+      #nav-solicitudesAlmacen .nav-icon::before { content:'▤'; }
+      #nav-almacen .nav-icon::before { content:'▦'; }
+      .theme-settings-card { padding:16px; }
+      .theme-settings-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px; }
+      .theme-settings-sub { color:var(--muted); font-size:12px; margin-top:-6px; }
+      .theme-option-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; }
+      .theme-option {
+        background:var(--card);
+        border:1px solid var(--border);
+        color:var(--text);
+        border-radius:10px;
+        padding:10px;
+        text-align:left;
+        cursor:pointer;
+        display:grid;
+        gap:5px;
+      }
+      .theme-option:hover, .theme-option.active { border-color:var(--primary); box-shadow:0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent); }
+      .theme-option strong { font-size:13px; }
+      .theme-option small { color:var(--muted); font-size:11px; line-height:1.35; }
+      .theme-preview { height:34px; border-radius:7px; border:1px solid var(--border); display:block; }
+      .theme-preview-light { background:linear-gradient(90deg,#123F5D 0 24%,#fff 24% 66%,#F5F6F8 66%); }
+      .theme-preview-dark { background:linear-gradient(90deg,#101820 0 24%,#171E26 24% 66%,#0F141A 66%); }
+      .theme-preview-brand { background:linear-gradient(90deg,#F4C900 0 24%,#fff 24% 66%,#161616 66%); }
+      @media (max-width: 760px) { .theme-option-grid { grid-template-columns:1fr; } }
       details summary { list-style:none; }
       details summary::-webkit-details-marker { display:none; }
     `;
@@ -3806,6 +4021,7 @@
   function initV2UI() {
     ensureAdminProfile();
     injectV2Styles();
+    applyVisualTheme(APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light', true);
     initUiLabels();
     enhanceImportUi();
     initImportSolicitudesCard();
@@ -3813,6 +4029,7 @@
     initCalendarActions();
     initCommercialMount();
     initReportFilters();
+    initThemeSettings();
     initConfigExtras();
     syncMoveOptions();
     initRouteFilterOptions();

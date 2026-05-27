@@ -752,9 +752,9 @@ body {
 
 <!-- HEADER -->
 <div id="appHeader" style="display:none;">
-  <span class="logo">🚚</span>
+  <span class="logo">→</span>
   <h1>TMS - ALVAREZ</h1>
-  <button id="saveStateBtn" onclick="guardarEnSupabase()">💾 Guardar cambios</button>
+  <button id="saveStateBtn" onclick="guardarEnSupabase()">Guardar cambios</button>
   <span id="sapHeaderInfo" style="display:none;"></span>
   <div id="userBadge">
     <span id="userEmail" style="opacity:0.8;"></span>
@@ -1031,10 +1031,10 @@ body {
             <div style="font-size:12px;color:var(--muted);">Genera el resumen de entregas desde el dashboard.</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <input type="text" id="repSearch" class="search-input" placeholder="🔍 Filtrar por cliente..." oninput="generarReporte()" style="max-width:220px;">
+            <input type="text" id="repSearch" class="search-input" placeholder="Filtrar por cliente..." oninput="generarReporte()" style="max-width:220px;">
             <button class="btn btn-primary" onclick="generarReporte()">📈 Generar</button>
-            <button class="btn btn-outline" onclick="descargarPDF()">📄 PDF</button>
-            <button class="btn btn-success" onclick="exportarReporteExcel()">📊 Excel</button>
+            <button class="btn btn-outline" onclick="descargarPDF()">PDF</button>
+            <button class="btn btn-success" onclick="exportarReporteExcel()">Excel</button>
           </div>
         </div>
         <div id="reporteLoading" style="display:none;text-align:center;padding:40px;">
@@ -1051,7 +1051,7 @@ body {
       <div id="dashPlanVsReal" style="display:none;margin-bottom:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
           <div style="font-size:15px;font-weight:700;color:var(--secondary);">📊 Plan vs. Real — <span id="pvr_fecha">—</span></div>
-          <button class="btn btn-outline btn-sm" onclick="exportarPlanVsRealExcel()">⬇️ Exportar</button>
+          <button class="btn btn-outline btn-sm" onclick="exportarPlanVsRealExcel()">Exportar</button>
         </div>
 
         <!-- KPIs comparativos -->
@@ -1118,7 +1118,7 @@ body {
       <div class="card" id="dashClientesCard" style="display:none;">
         <div class="view-toolbar">
           <span class="card-title" style="margin-bottom:0;">📋 Todos los Clientes</span>
-          <input type="text" id="dashSearch" class="search-input" placeholder="🔍 Buscar cliente..." oninput="actualizarTablaClientes(APP.filtroSector||'Todos')" style="max-width:220px;">
+          <input type="text" id="dashSearch" class="search-input" placeholder="Buscar cliente..." oninput="actualizarTablaClientes(APP.filtroSector||'Todos')" style="max-width:220px;">
         </div>
         <div id="dashSectorFiltros" class="filter-bar"></div>
         <div id="dashContent" class="table-wrap">
@@ -1138,8 +1138,8 @@ body {
             <span id="calMesActualLabel" style="font-weight:700;color:var(--primary);min-width:150px;text-align:center;">—</span>
             <button class="btn btn-outline btn-sm" onclick="navCalMes(1)">Siguiente →</button>
           </div>
-          <input type="text" id="calSearch" class="search-input" placeholder="🔍 Buscar cliente..." oninput="renderCalendario()" style="max-width:200px;">
-          <button class="btn btn-primary btn-sm" onclick="exportarCalendarioVisiblePDF()">📄 Exportar PDF</button>
+          <input type="text" id="calSearch" class="search-input" placeholder="Buscar cliente..." oninput="renderCalendario()" style="max-width:200px;">
+          <button class="btn btn-primary btn-sm" onclick="exportarCalendarioVisiblePDF()">Exportar PDF</button>
         </div>
         <div id="calMesNav"></div>
       </div>
@@ -1174,8 +1174,8 @@ body {
               <option value="">Seleccionar fecha...</option>
             </select>
           </div>
-          <input type="text" id="rutasSearch" class="search-input" placeholder="🔍 Buscar..." oninput="renderRutas()" style="max-width:180px;">
-          <button class="btn btn-primary btn-sm" onclick="exportarExcelRutas()">⬇️ Exportar Excel</button>
+          <input type="text" id="rutasSearch" class="search-input" placeholder="Buscar..." oninput="renderRutas()" style="max-width:180px;">
+          <button class="btn btn-primary btn-sm" onclick="exportarExcelRutas()">Exportar Excel</button>
         </div>
       </div>
 
@@ -1209,7 +1209,7 @@ body {
           <button id="cf_c2"    class="filter-btn" onclick="filtrarCom('c2')">🚛 C2</button>
           <div style="margin-left:auto;display:flex;gap:6px;">
             <button class="btn btn-outline btn-sm" onclick="limpiarFiltrosCom()">✕ Limpiar</button>
-            <button class="btn btn-success btn-sm" onclick="exportarComercialExcel()">⬇️ Excel</button>
+            <button class="btn btn-success btn-sm" onclick="exportarComercialExcel()">Excel</button>
           </div>
         </div>
 
@@ -1244,8 +1244,8 @@ body {
 
       <div class="card" style="padding:14px 16px;">
         <div class="view-toolbar">
-          <input type="text" id="almSearch" class="search-input" placeholder="🔍 Buscar..." oninput="renderAlmacen()" style="max-width:200px;">
-          <button class="btn btn-success btn-sm" onclick="exportarAlmacenExcel()">⬇️ Exportar Excel</button>
+          <input type="text" id="almSearch" class="search-input" placeholder="Buscar..." oninput="renderAlmacen()" style="max-width:200px;">
+          <button class="btn btn-success btn-sm" onclick="exportarAlmacenExcel()">Exportar Excel</button>
         </div>
         <div id="almContainer">
           <div class="empty-state"><div class="empty-icon">🏭</div><p>Sin datos cargados.</p></div>
@@ -1259,10 +1259,10 @@ body {
 
       <div class="card" style="padding:14px 16px;">
         <div class="view-toolbar">
-          <input type="text" id="configSearch" class="search-input" placeholder="🔍 Buscar cliente..." oninput="renderConfigClientes()" style="max-width:240px;">
+          <input type="text" id="configSearch" class="search-input" placeholder="Buscar cliente..." oninput="renderConfigClientes()" style="max-width:240px;">
           <input type="file" id="configFile" accept=".xlsx,.xls,.xml,.json" style="display:none" onchange="importarConfigClientes(this.files[0])">
-          <button class="btn btn-outline btn-sm" onclick="document.getElementById('configFile').click()">📂 Importar configuración</button>
-          <button class="btn btn-success btn-sm" onclick="exportarConfigClientes()">⬇️ Exportar configuración</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('configFile').click()">Importar configuración</button>
+          <button class="btn btn-success btn-sm" onclick="exportarConfigClientes()">Exportar configuración</button>
           <button class="btn btn-primary btn-sm" onclick="recalcularPlanConConfig()">↻ Recalcular planificación</button>
           <span id="configResumen" class="badge badge-pend">0 configurados</span>
         </div>
@@ -1292,8 +1292,8 @@ body {
           </div>
         </div>
         <div class="view-toolbar">
-          <input type="text" id="solSearch" class="search-input" placeholder="🔍 Buscar código, cliente o solicitud..." oninput="renderSolicitudesAlmacen()" style="max-width:280px;">
-          <button class="btn btn-outline btn-sm" onclick="exportarSolicitudesAlmacenExcel()">⬇️ Exportar</button>
+          <input type="text" id="solSearch" class="search-input" placeholder="Buscar código, cliente o solicitud..." oninput="renderSolicitudesAlmacen()" style="max-width:280px;">
+          <button class="btn btn-outline btn-sm" onclick="exportarSolicitudesAlmacenExcel()">Exportar</button>
           <span id="solicitudesResumen" class="badge badge-pend">Sin archivo</span>
         </div>
       </div>
@@ -1324,7 +1324,7 @@ body {
 
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="cerrarMoveModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="confirmarMover()">✅ Mover</button>
+      <button class="btn btn-primary" onclick="confirmarMover()">Mover</button>
     </div>
   </div>
 </div>
@@ -1340,7 +1340,7 @@ body {
     <textarea id="incidenciaInput" class="nota-input" placeholder="Describe la incidencia (si aplica)..."></textarea>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="document.getElementById('notaModal').classList.remove('show')">Cancelar</button>
-      <button class="btn btn-primary" onclick="guardarNota()">💾 Guardar</button>
+      <button class="btn btn-primary" onclick="guardarNota()">Guardar</button>
     </div>
   </div>
 </div>
@@ -4229,6 +4229,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260526-pdf-canvas-check"></script>
+<script src="./tms-v2.js?v=20260526-themes"></script>
 </body>
 </html>
