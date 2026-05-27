@@ -67,6 +67,25 @@
     return ({ light: 'Claro', dark: 'Oscuro', brand: 'Alvarez' }[normalizeVisualTheme(theme)] || 'Claro');
   }
 
+  const MODULE_LABELS = {
+    importar: 'Importar',
+    dashboard: 'Dashboard',
+    calendario: 'Calendario',
+    rutas: 'Rutas',
+    reportes: 'Reportes',
+    comercial: 'Comercial',
+    configuracion: 'Configuración',
+    solicitudesAlmacen: 'Solicitudes almacén',
+    almacen: 'Almacén'
+  };
+
+  const SCOPE_LABELS = {
+    full: 'Acceso completo',
+    read_only: 'Solo lectura',
+    ops: 'Operación',
+    commercial: 'Comercial'
+  };
+
   function syncThemeButtons() {
     document.querySelectorAll('[data-theme-option]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.themeOption === APP.visualTheme);
@@ -296,6 +315,10 @@
       const names = [r.nombre, r.zona, r.id].map(text).filter(Boolean);
       return names.some(value => value === name || normKey(value) === normalized);
     }) || null;
+  }
+
+  function routeExistsByName(routeName) {
+    return !!getRouteConfigByName(routeName);
   }
 
   function ensureRouteConfig(routeName) {
@@ -2527,13 +2550,14 @@
       return;
     }
     if (!APP.configClienteSel || !filtered.some(item => item.codigo === APP.configClienteSel)) APP.configClienteSel = filtered[0].codigo;
+    const pendingHelp = '<div class="config-help-note"><strong>Pendiente</strong> significa que falta guardar la configuración completa del cliente: ruta asignada, días de recepción y horario de almacén.</div>';
     list.innerHTML = filtered.map(item => {
       const cfg = getClienteConfigV2(item.codigo, item.nombre);
       return `<button class="config-client-item ${APP.configClienteSel === item.codigo ? 'active' : ''}" onclick="seleccionarConfigCliente('${item.codigo}')">
         <strong>${item.nombre}</strong>${cfg.configuracionCompleta ? '<span class="badge badge-ok" style="float:right;">Completa</span>' : '<span class="badge badge-warn" style="float:right;">Pendiente</span>'}<br>
         <span style="font-size:11px;color:var(--muted);">${item.codigo} · ${cfg.rutaAsignada || item.zona || 'Sin ruta'}</span>
       </button>`;
-    }).join('');
+    }).join('') + pendingHelp;
     renderConfigEditor();
     renderConfigAuxSections();
   };
@@ -2708,11 +2732,24 @@
       { value: 5, label: 'Vie' },
       { value: 6, label: 'Sáb' }
     ];
+    const rolePermissionGuide = [
+      { role: 'Admin', scope: SCOPE_LABELS.full, detail: 'Puede ver, editar e importar en todos los módulos.' },
+      { role: 'Operaciones', scope: SCOPE_LABELS.ops, detail: 'Puede importar, editar calendario, rutas, reportes, solicitudes y almacén. Comercial queda solo lectura y Configuración no visible.' },
+      { role: 'Comercial', scope: SCOPE_LABELS.commercial, detail: 'Puede editar Vista Comercial. Dashboard, Calendario, Reportes y Solicitudes quedan solo lectura.' },
+      { role: 'Almacén', scope: SCOPE_LABELS.ops, detail: 'Usa permisos operativos: solicitudes y almacén editables, además de calendario/rutas/reportes.' },
+      { role: 'Solo lectura', scope: SCOPE_LABELS.read_only, detail: 'Puede ver todos los módulos sin editar ni importar.' }
+    ];
     mount.innerHTML = `
       <div class="card" style="margin-top:16px;">
         <div class="view-toolbar" style="justify-content:space-between;">
           <div class="card-title" style="margin-bottom:0;">Rutas / zonas</div>
           <button class="btn btn-primary btn-sm" onclick="guardarConfigRutas()">Guardar cambios de rutas</button>
+        </div>
+        <div class="config-help-note" style="margin-bottom:12px;">Agrega aquí una ruta nueva cuando todavía no exista en la importación, por ejemplo <strong>Exportacion</strong>. Luego podrás asignarla a clientes y definir su coste.</div>
+        <div class="route-add-form">
+          <input id="newRouteNameInput" class="form-control" placeholder="Nueva ruta / zona">
+          <input id="newRouteCostInput" class="form-control" type="number" step="0.01" min="0" placeholder="Coste">
+          <button class="btn btn-success btn-sm" onclick="agregarRutaConfig()">Agregar ruta</button>
         </div>
         <div class="table-wrap"><table class="data-table">
           <thead><tr><th>Nombre</th><th>Días operación</th><th>Coste</th><th>Activa</th><th>Observaciones</th></tr></thead>
@@ -2735,7 +2772,7 @@
             <input id="userEmailInput" class="form-control" type="email" placeholder="correo@empresa.com">
           </label>
           <label class="form-row">Rol
-            <select id="userRoleInput" class="form-control">
+            <select id="userRoleInput" class="form-control" onchange="sincronizarPermisosPorRol()">
               <option value="Admin">Admin</option>
               <option value="Operaciones">Operaciones</option>
               <option value="Comercial">Comercial</option>
@@ -2756,15 +2793,23 @@
           <button class="btn btn-primary btn-sm" onclick="crearUsuarioPerfil()">Crear usuario</button>
         </div>
         <div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Permisos</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Permisos efectivos</th><th>Detalle</th><th>Acciones</th></tr></thead>
           <tbody>${APP.userProfiles.map((profile, index) => `<tr>
             <td>${profile.nombre}</td>
             <td>${profile.email || '—'}</td>
             <td>${profile.rol}</td>
-            <td>${profile.rol === 'Admin' ? 'Acceso total' : 'Personalizado'}</td>
+            <td>${profile.rol === 'Admin' ? 'Acceso total' : summarizePermissions(profile.permisosPorModulo)}</td>
+            <td>${renderPermissionChips(profile.permisosPorModulo || buildPermissions('read_only', profile.rol))}</td>
             <td>${profile.rol === 'Admin' ? '<span class="badge badge-ok">Base</span>' : `<button class="btn btn-outline btn-sm" onclick="eliminarUsuarioPerfil(${index})">Eliminar</button>`}</td>
           </tr>`).join('')}</tbody>
         </table></div>
+        <div class="permission-guide">
+          ${rolePermissionGuide.map(item => `<div class="permission-guide-item">
+            <strong>${item.role}</strong>
+            <span>${item.scope}</span>
+            <p>${item.detail}</p>
+          </div>`).join('')}
+        </div>
       </div>
       <div class="card">
         <div class="card-title">Costes operativos</div>
@@ -2779,6 +2824,66 @@
       </div>
     `;
   }
+
+  window.sincronizarPermisosPorRol = function sincronizarPermisosPorRol() {
+    const role = text((document.getElementById('userRoleInput') || {}).value);
+    const scopeInput = document.getElementById('userScopeInput');
+    if (!scopeInput) return;
+    const scopeByRole = {
+      Admin: 'full',
+      Operaciones: 'ops',
+      Comercial: 'commercial',
+      Almacén: 'ops',
+      'Solo lectura': 'read_only'
+    };
+    scopeInput.value = scopeByRole[role] || 'ops';
+  };
+
+  function summarizePermissions(perms) {
+    const entries = Object.entries(perms || {});
+    if (!entries.length) return 'Sin permisos definidos';
+    const editable = entries.filter(([, actions]) => actions && (actions.editar || actions.importar)).map(([module]) => MODULE_LABELS[module] || module);
+    if (editable.length === entries.length) return 'Ver y editar todo';
+    if (!editable.length) return 'Solo lectura';
+    return 'Edita: ' + editable.join(', ');
+  }
+
+  function renderPermissionChips(perms) {
+    const entries = Object.entries(perms || {});
+    if (!entries.length) return '<span class="permission-chip muted">Sin permisos</span>';
+    return entries.map(([module, actions]) => {
+      const label = MODULE_LABELS[module] || module;
+      const canImport = !!(actions && actions.importar);
+      const canEdit = !!(actions && actions.editar);
+      const canView = !!(actions && actions.ver);
+      const status = canImport ? 'Importa' : (canEdit ? 'Edita' : (canView ? 'Ver' : 'Sin acceso'));
+      const cls = canImport || canEdit ? 'edit' : (canView ? 'view' : 'off');
+      return `<span class="permission-chip ${cls}">${label}: ${status}</span>`;
+    }).join('');
+  }
+
+  window.agregarRutaConfig = function agregarRutaConfig() {
+    const nameInput = document.getElementById('newRouteNameInput');
+    const costInput = document.getElementById('newRouteCostInput');
+    const routeName = text(nameInput && nameInput.value);
+    if (!routeName) return alert('Escribe el nombre de la ruta.');
+    if (routeExistsByName(routeName)) return alert('Esa ruta ya existe en Configuración.');
+    APP.routeConfigs.push({
+      id: 'route-' + normKey(routeName),
+      nombre: routeName,
+      zona: routeName,
+      diasOperacion: [],
+      costeRuta: num(costInput && costInput.value),
+      activa: true,
+      observaciones: 'Creada manualmente'
+    });
+    if (nameInput) nameInput.value = '';
+    if (costInput) costInput.value = '';
+    renderConfigAuxSections();
+    renderConfigEditor();
+    initRouteFilterOptions();
+    scheduleAutoSave();
+  };
 
   window.guardarConfigRutas = function guardarConfigRutas() {
     APP.routeConfigs = APP.routeConfigs.map((route, index) => {
@@ -3807,6 +3912,18 @@
       .queue-card-meta { font-size:11px; color:var(--muted); }
       .badge-primary { background: var(--primary); color: #fff; }
       .badge-outline { background: #fff; color: var(--muted); border: 1px solid var(--border); }
+      .config-help-note { color:var(--muted); font-size:12px; line-height:1.45; border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#F8FAFC; }
+      .route-add-form { display:grid; grid-template-columns:minmax(180px, 1fr) minmax(110px, 160px) auto; gap:8px; align-items:center; margin-bottom:12px; }
+      .permission-guide { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px; margin-top:12px; }
+      .permission-guide-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#F8FAFC; }
+      .permission-guide-item strong { display:block; font-size:13px; color:var(--text); }
+      .permission-guide-item span { display:block; font-size:11px; font-weight:800; color:var(--primary); text-transform:uppercase; margin-top:2px; }
+      .permission-guide-item p { color:var(--muted); font-size:12px; line-height:1.35; margin-top:6px; }
+      .permission-chip { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:3px 7px; margin:2px; font-size:10px; font-weight:800; white-space:nowrap; }
+      .permission-chip.edit { background:#EAF7EF; color:#166534; border-color:#B7E4C7; }
+      .permission-chip.view { background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE; }
+      .permission-chip.off,
+      .permission-chip.muted { background:#F3F4F6; color:#6B7280; border-color:#E5E7EB; }
       .route-cost-alert { border-left:4px solid var(--warning); }
       .route-cost-alert-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
       .route-cost-alert-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#FFF8EC; }
@@ -4171,6 +4288,7 @@
       .theme-preview-light { background:linear-gradient(90deg,#123F5D 0 24%,#fff 24% 66%,#F5F6F8 66%); }
       .theme-preview-dark { background:linear-gradient(90deg,#101820 0 24%,#171E26 24% 66%,#0F141A 66%); }
       .theme-preview-brand { background:linear-gradient(90deg,#F4C900 0 24%,#fff 24% 66%,#161616 66%); }
+      @media (max-width: 760px) { .route-add-form { grid-template-columns:1fr; } }
       @media (max-width: 760px) { .theme-option-grid { grid-template-columns:1fr; } }
       details summary { list-style:none; }
       details summary::-webkit-details-marker { display:none; }
