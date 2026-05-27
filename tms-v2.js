@@ -692,6 +692,24 @@
     return getConfirmedUndeliveredAmount(item) + getDeliveredNotInvoicedAmount(item);
   }
 
+  function getClientConfirmedUndelivered(client) {
+    if (client && Array.isArray(client.items)) {
+      return client.items.reduce((sum, item) => sum + getConfirmedUndeliveredAmount(item), 0);
+    }
+    return num(client && client.monto);
+  }
+
+  function getClientDeliveredNotInvoiced(client) {
+    if (client && Array.isArray(client.items)) {
+      return client.items.reduce((sum, item) => sum + getDeliveredNotInvoicedAmount(item), 0);
+    }
+    return num(client && (client.pendienteFacturar || client.pf));
+  }
+
+  function getClientOperationalAmount(client) {
+    return getClientConfirmedUndelivered(client) + getClientDeliveredNotInvoiced(client);
+  }
+
   function deriveItemStatus(item) {
     if ((item.cantidadPendiente || 0) <= 0 && (item.cantidadFacturada || 0) > 0) return 'entregado';
     if ((item.cantidadFacturada || 0) > 0 && (item.cantidadPendiente || 0) > 0) return 'parcial';
@@ -737,6 +755,8 @@
       group.monto += getConfirmedUndeliveredAmount(item);
       group.pendienteFacturar += getDeliveredNotInvoicedAmount(item);
       group.totalPendiente += getOperationalAmount(item);
+      group.items = group.items || [];
+      group.items.push(item);
       group.cantidadPedidos += 1;
       group.entregado += item.cantidadFacturada || 0;
       group.cumplida = group.cumplida || deriveItemStatus(item) === 'entregado';
@@ -831,16 +851,23 @@
         'Importe confirmado no entregado',
         'Importe Confirmado No Entregado',
         'Importe confirmado, no entregado',
+        'Confirmado no entregado',
+        'Confirmado No Entregado',
+        'Facturado no entregado',
+        'Facturado No Entregado',
         'Importe confirmado no entregado (moneda de transacción)',
         'Importe confirmado no entregado moneda de transacción',
-        'Imp. confirmado no entregado',
-        'Valor neto',
-        'Monto'
+        'Imp. confirmado no entregado'
       ]));
       const montoEntregadoNoFacturado = num(pickField(row, [
         'Importe entregado no facturado',
         'Importe Entregado No Facturado',
         'Importe entregado, no facturado',
+        'Entregado no facturado',
+        'Entregado No Facturado',
+        'Pte de facturar',
+        'Pte. de facturar',
+        'Pte Facturar',
         'Importe entregado no facturado (moneda de transacción)',
         'Importe entregado no facturado moneda de transacción',
         'Imp. entregado no facturado',
@@ -1063,7 +1090,7 @@
       group.cantidadSolicitada += item.cantidadSolicitada || 0;
       group.cantidadFacturada += item.cantidadFacturada || 0;
       group.cantidadPendiente += item.cantidadPendiente || 0;
-      group.totalPendiente += getOperationalAmount(item) || item.cantidadSolicitada || 0;
+      group.totalPendiente += getOperationalAmount(item);
       group.cumplida = group.items.every(current => deriveItemStatus(current) === 'entregado');
       group.nota = group.nota || item.observaciones || '';
       group.incidencia = group.incidencia || item.incidencia || '';
@@ -1160,9 +1187,9 @@
           cantidadSolicitada: item.cantidadSolicitada || 0,
           cantidadFacturada: item.cantidadFacturada || 0,
           cantidadPendiente: item.cantidadPendiente || 0,
-          monto: getOperationalAmount(item) || item.cantidadSolicitada || 0,
+          monto: getOperationalAmount(item),
           pf: getDeliveredNotInvoicedAmount(item),
-          totalPendiente: getOperationalAmount(item) || item.cantidadSolicitada || 0,
+          totalPendiente: getOperationalAmount(item),
           planificado: false,
           fechaControl: item.fechaControl || APP.controlFecha || '',
           zona: routeName,
@@ -1864,9 +1891,8 @@
   }
 
   function registerSolicitudesSnapshot(fileName) {
-    const fecha = fechaToStr(new Date());
     const rows = APP.solicitudesAlmacen.map(item => ({
-      fecha,
+      fecha: item.fechaLiberacion || item.fechaEnvio || fechaToStr(new Date()),
       clienteId: item.codigo,
       clienteNombre: item.cliente,
       pedidoCliente: item.pedidoCliente || '',
@@ -1881,7 +1907,11 @@
       fuente: fileName || '',
       tipo: item.tipoSolicitudArchivo || ''
     }));
-    APP.solicitudesHistory = [...APP.solicitudesHistory.filter(row => row.fecha !== fecha), ...rows];
+    const keys = new Set(rows.map(row => [row.fecha, row.clienteId, row.pedidoCliente, row.articulo].join('|')));
+    APP.solicitudesHistory = [
+      ...APP.solicitudesHistory.filter(row => !keys.has([row.fecha, row.clienteId, row.pedidoCliente, row.articulo].join('|'))),
+      ...rows
+    ];
   }
 
   window.procesarArchivo = function procesarArchivoV2(file, mode) {
@@ -1951,6 +1981,9 @@
             if (!match) return;
             item.cantidadFacturada = match.cantidadFacturada || item.cantidadFacturada || 0;
             item.cantidadPendiente = match.cantidadPendiente || Math.max((item.cantidadSolicitada || 0) - (item.cantidadFacturada || 0), 0);
+            item.montoPlanificado = match.montoPlanificado || item.montoPlanificado || 0;
+            item.montoEntregadoNoFacturado = match.montoEntregadoNoFacturado || item.montoEntregadoNoFacturado || 0;
+            item.montoPendienteSinStock = match.montoPendienteSinStock || item.montoPendienteSinStock || 0;
             item.fechaActualizacion = nowIso();
           });
         }
@@ -2276,7 +2309,7 @@
   };
 
   function getCommercialLineAmount(item) {
-    return getOperationalAmount(item) || num(item.montoPendienteSinStock || item.totalPendiente || 0);
+    return getOperationalAmount(item);
   }
 
   function getCommercialPlannedQty(item) {
@@ -3089,6 +3122,37 @@
     return rows;
   }
 
+  function buildWarehouseRowsForReport() {
+    if (!(APP.solicitudesAlmacen || []).length) return APP.solicitudesHistory || [];
+    return (APP.solicitudesAlmacen || []).map(item => ({
+      fecha: item.fechaLiberacion || item.fechaEnvio || fechaToStr(new Date()),
+      clienteId: item.codigo,
+      clienteNombre: item.cliente,
+      pedidoCliente: item.pedidoCliente || '',
+      articulo: item.articulo || '',
+      descripcionArticulo: item.descripcionArticulo || '',
+      cantidadSolicitada: item.cantidadSolicitada || 0,
+      cantidadCompletada: item.cantidadCompletada || 0,
+      cantidadPendiente: item.cantidadPendiente || 0,
+      estado: item.estado || '',
+      costeSolicitud: num(item.costeSolicitud || APP.warehouseSettings.costoSolicitud || 0),
+      fuente: APP.importFiles.solicitudesControl || APP.importFiles.solicitudesPlan || APP.importFiles.solicitudes || '',
+      tipo: item.tipoSolicitudArchivo || ''
+    }));
+  }
+
+  function summarizeRouteCostIssues(rows) {
+    const grouped = new Map();
+    rows.forEach(row => {
+      const key = [row.rutaNombre, row.costeAlerta].join('|');
+      if (!grouped.has(key)) grouped.set(key, { ...row, fechas: [], count: 0 });
+      const current = grouped.get(key);
+      current.count += 1;
+      current.fechas = uniqueTexts([...current.fechas, row.fecha]);
+    });
+    return [...grouped.values()];
+  }
+
   window.generarReporte = function generarReporteV2() {
     const output = document.getElementById('reporteOutput');
     if (!output) return;
@@ -3114,7 +3178,7 @@
       if (end && iso > end) return false;
       return true;
     });
-    const warehouseHistory = APP.solicitudesHistory.filter(row => {
+    const warehouseHistory = buildWarehouseRowsForReport().filter(row => {
       const iso = fechaStrToISO(row.fecha);
       if (clientQuery && ![row.clienteId, row.clienteNombre].some(value => text(value).toLowerCase().includes(clientQuery))) return false;
       if (start && iso < start) return false;
@@ -3125,7 +3189,13 @@
     const progress = calcProgressSummary(items);
     const routeCostTotal = routeHistory.reduce((sum, row) => sum + num(row.coste), 0);
     const warehouseCostTotal = warehouseHistory.reduce((sum, row) => sum + num(row.costeSolicitud), 0);
-    const routeCostIssues = routeHistory.filter(row => row.costePendienteConfig);
+    const routeCostIssues = summarizeRouteCostIssues(routeHistory.filter(row => row.costePendienteConfig));
+    const warehouseSummary = {
+      solicitudes: warehouseHistory.length,
+      clientes: new Set(warehouseHistory.map(row => row.clienteId)).size,
+      pendientes: warehouseHistory.reduce((sum, row) => sum + num(row.cantidadPendiente), 0),
+      completadas: warehouseHistory.reduce((sum, row) => sum + num(row.cantidadCompletada), 0)
+    };
     output.innerHTML = `
       <div class="card">
         <div class="card-title">Resumen operativo</div>
@@ -3139,15 +3209,17 @@
       </div>
       ${routeCostIssues.length ? `<div class="card route-cost-alert">
         <div class="card-title">Rutas con coste pendiente</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:10px;">Si aparece <strong>BAVARO</strong>, normalmente significa que el sistema infirió esa ruta desde el nombre del cliente, pero no existe una ruta configurada con ese nombre exacto y coste. Asígnala en Configuración a la ruta correcta, por ejemplo PUNTA CANA / BAVARO, BARCELO- BAVARO o la que aplique.</div>
         <div class="route-cost-alert-list">
           ${routeCostIssues.map(row => `<div class="route-cost-alert-item">
             <strong>${row.rutaNombre}</strong>
-            <span>${row.fecha} · ${row.costeAlerta}</span>
+            <span>${row.count} día(s): ${row.fechas.join(', ')} · ${row.costeAlerta}</span>
           </div>`).join('')}
         </div>
       </div>` : ''}
       <div class="card">
         <div class="card-title">Gasto teórico / real de rutas</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:10px;">Planificado usa el monto operativo: confirmado no entregado + entregado no facturado. Real estima la porción entregada usando ese mismo monto y el avance facturado por línea.</div>
         ${routeHistory.length ? `<div class="table-wrap"><table class="data-table">
           <thead><tr><th>Fecha</th><th>Ruta</th><th>Coste</th><th>Estado coste</th><th>Cumplimiento</th><th>Planificado</th><th>Real</th><th>Diferencia</th></tr></thead>
           <tbody>${routeHistory.map(row => `<tr>
@@ -3163,9 +3235,15 @@
         </table></div>` : '<div class="empty-state" style="padding:20px;"><p>No hay histórico de rutas para ese rango.</p></div>'}
       </div>
       <div class="card">
-        <div class="card-title">Solicitudes a almacén</div>
+        <div class="card-title">Solicitudes a almacén por fecha de liberación</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px;">
+          <div class="kpi-card"><div class="kpi-label">Solicitudes / líneas</div><div class="kpi-val">${warehouseSummary.solicitudes}</div></div>
+          <div class="kpi-card"><div class="kpi-label">Clientes</div><div class="kpi-val">${warehouseSummary.clientes}</div></div>
+          <div class="kpi-card"><div class="kpi-label">Pendientes</div><div class="kpi-val">${warehouseSummary.pendientes}</div></div>
+          <div class="kpi-card"><div class="kpi-label">Completadas</div><div class="kpi-val">${warehouseSummary.completadas}</div></div>
+        </div>
         ${warehouseHistory.length ? `<div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Artículo</th><th>Solicitada</th><th>Completada</th><th>Pendiente</th><th>Estado</th><th>Coste</th></tr></thead>
+          <thead><tr><th>Fecha liberación</th><th>Cliente</th><th>Artículo</th><th>Solicitada</th><th>Completada</th><th>Pendiente</th><th>Estado</th><th>Coste</th></tr></thead>
           <tbody>${warehouseHistory.map(row => `<tr>
             <td>${row.fecha}</td>
             <td>${row.clienteNombre || row.clienteId}</td>
@@ -3258,6 +3336,34 @@
   const originalActualizarDashboard = window.actualizarDashboard;
   window.actualizarDashboard = function actualizarDashboardV2() {
     if (typeof originalActualizarDashboard === 'function') originalActualizarDashboard();
+    const clients = APP.clientes || [];
+    const confirmedTotal = clients.reduce((sum, client) => sum + getClientConfirmedUndelivered(client), 0);
+    const deliveredPendingTotal = clients.reduce((sum, client) => sum + getClientDeliveredNotInvoiced(client), 0);
+    const operationalTotal = clients.reduce((sum, client) => sum + getClientOperationalAmount(client), 0);
+    const confirmedEl = document.getElementById('dashConfirmado');
+    const pendingEl = document.getElementById('dashPendiente');
+    const totalEl = document.getElementById('dashTotal');
+    if (confirmedEl) confirmedEl.textContent = formatMonto(confirmedTotal);
+    if (pendingEl) pendingEl.textContent = formatMonto(deliveredPendingTotal);
+    if (totalEl) totalEl.textContent = formatMonto(operationalTotal);
+    const topDiv = document.getElementById('dashTopClientes');
+    if (topDiv) {
+      const top10 = [...clients]
+        .map(client => ({ ...client, montoOperativo: getClientOperationalAmount(client) }))
+        .filter(client => client.montoOperativo > 0)
+        .sort((a, b) => b.montoOperativo - a.montoOperativo)
+        .slice(0, 10);
+      const max = top10[0] ? top10[0].montoOperativo : 1;
+      topDiv.innerHTML = top10.length ? top10.map(client => {
+        const pct = Math.max(2, Math.round(client.montoOperativo / max * 100));
+        const camColor = client.camion === 'CAMION 1' ? 'var(--c1)' : client.camion === 'CAMION 2' ? 'var(--c2)' : 'var(--calmacen)';
+        return `<div class="prog-row">
+          <div class="prog-label" title="${client.nombre}">${client.nombre}</div>
+          <div class="prog-bar-bg"><div class="prog-bar-fill" style="width:${pct}%;background:${camColor};"></div></div>
+          <div class="prog-val">${formatMonto(client.montoOperativo)}</div>
+        </div>`;
+      }).join('') : '<div class="empty-state" style="padding:16px;"><p>Sin montos pendientes para mostrar.</p></div>';
+    }
     const empty = !APP.lineItems.length;
     const dashContent = document.getElementById('dashContent');
     if (empty && dashContent) {

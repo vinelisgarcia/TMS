@@ -509,11 +509,11 @@ body {
 .chart-canvas-wrap { position: relative; height: 180px; }
 
 /* PROGRESS BAR (inline) */
-.prog-row { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
-.prog-label { font-size: 12px; color: var(--text); flex: 0 0 110px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.prog-bar-bg { flex: 1; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.prog-row { display: grid; grid-template-columns: minmax(220px, 1.8fr) minmax(120px, 1fr) 118px; align-items: center; gap: 10px; margin-bottom: 11px; }
+.prog-label { font-size: 12px; color: var(--text); white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; }
+.prog-bar-bg { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; min-width: 110px; }
 .prog-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
-.prog-val { font-size: 11px; color: var(--muted); flex: 0 0 70px; text-align: right; }
+.prog-val { font-size: 11px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* KPI SECONDARY ROW */
 .kpi-row {
@@ -795,7 +795,7 @@ body {
 
     <!-- ========== VISTA 1: IMPORTAR SAP ========== -->
     <div id="importar" class="view active">
-      <div class="view-title">📥 Importar Reporte SAP</div>
+      <div class="view-title">Importar Reporte SAP</div>
 
       <!-- ESTADO ACTUAL DE ARCHIVOS CARGADOS -->
       <div id="sapEstadoBanner" style="display:none;margin-bottom:16px;">
@@ -915,7 +915,7 @@ body {
 
     <!-- ========== VISTA 2: DASHBOARD ========== -->
     <div id="dashboard" class="view">
-      <div class="view-title">📊 Dashboard</div>
+      <div class="view-title">Dashboard</div>
 
       <!-- KPIs principales -->
       <div class="stats" style="margin-bottom:12px;">
@@ -944,49 +944,49 @@ body {
       <!-- KPIs secundarios -->
       <div class="kpi-row">
         <div class="kpi-mini">
-          <span class="kpi-mini-icon">✅</span>
+          <span class="kpi-mini-icon">✓</span>
           <div class="kpi-mini-text">
             <div class="kpi-mini-val" id="dashCumplidas">—</div>
             <div class="kpi-mini-lbl">Cumplidas</div>
           </div>
         </div>
         <div class="kpi-mini">
-          <span class="kpi-mini-icon">🔄</span>
+          <span class="kpi-mini-icon">↻</span>
           <div class="kpi-mini-text">
             <div class="kpi-mini-val" id="dashPendientes">—</div>
             <div class="kpi-mini-lbl">Pendientes</div>
           </div>
         </div>
         <div class="kpi-mini">
-          <span class="kpi-mini-icon">⚠️</span>
+          <span class="kpi-mini-icon">!</span>
           <div class="kpi-mini-text">
             <div class="kpi-mini-val" id="dashIncidencias">—</div>
             <div class="kpi-mini-lbl">Incidencias</div>
           </div>
         </div>
         <div class="kpi-mini">
-          <span class="kpi-mini-icon">🚚</span>
+          <span class="kpi-mini-icon">1</span>
           <div class="kpi-mini-text">
             <div class="kpi-mini-val" id="dashC1">—</div>
             <div class="kpi-mini-lbl">Camión 1</div>
           </div>
         </div>
         <div class="kpi-mini">
-          <span class="kpi-mini-icon">🚛</span>
+          <span class="kpi-mini-icon">2</span>
           <div class="kpi-mini-text">
             <div class="kpi-mini-val" id="dashC2">—</div>
             <div class="kpi-mini-lbl">Camión 2</div>
           </div>
         </div>
         <div class="kpi-mini">
-          <span class="kpi-mini-icon">📅</span>
+          <span class="kpi-mini-icon">D</span>
           <div class="kpi-mini-text">
             <div class="kpi-mini-val" id="dashDias">—</div>
             <div class="kpi-mini-lbl">Días planif.</div>
           </div>
         </div>
         <div class="kpi-mini" style="grid-column: span 1; background: linear-gradient(135deg,#EEF4FB,#fff);">
-          <span class="kpi-mini-icon">📈</span>
+          <span class="kpi-mini-icon">%</span>
           <div class="kpi-mini-text">
             <div class="kpi-mini-val" id="dashCumplimiento" style="color:var(--secondary);">—</div>
             <div class="kpi-mini-lbl">Cumplimiento</div>
@@ -999,7 +999,7 @@ body {
 
         <!-- Gráfico 1: Monto por día -->
         <div class="chart-card" style="grid-column: span 2;">
-          <div class="chart-card-title">📅 Carga por día (RD$)</div>
+          <div class="chart-card-title">Carga por día (RD$)</div>
           <div class="chart-canvas-wrap">
             <canvas id="chartDias"></canvas>
           </div>
@@ -1007,7 +1007,7 @@ body {
 
         <!-- Gráfico 2: Donut por camión -->
         <div class="chart-card">
-          <div class="chart-card-title">🚚 Distribución por Camión</div>
+          <div class="chart-card-title">Distribución por camión</div>
           <div class="chart-canvas-wrap" style="height:160px;">
             <canvas id="chartCamiones"></canvas>
           </div>
@@ -1017,14 +1017,14 @@ body {
 
       <!-- Gráfico 3: Top clientes por monto (barras horizontales CSS) -->
       <div class="chart-card" style="margin-bottom:16px;">
-        <div class="chart-card-title">🏆 Top 10 Clientes por Monto Pendiente</div>
+        <div class="chart-card-title">Top 10 clientes por monto pendiente</div>
         <div id="dashTopClientes"></div>
       </div>
 
       <div class="card" id="dashReportPanel">
         <div class="view-toolbar" style="justify-content:space-between;">
           <div>
-            <div class="card-title" style="margin-bottom:2px;">📈 Reporte operativo</div>
+            <div class="card-title" style="margin-bottom:2px;">Reporte operativo</div>
             <div style="font-size:12px;color:var(--muted);">Genera el resumen de entregas desde el dashboard.</div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -1114,7 +1114,7 @@ body {
       <!-- TABLA CLIENTES -->
       <div class="card" id="dashClientesCard" style="display:none;">
         <div class="view-toolbar">
-          <span class="card-title" style="margin-bottom:0;">📋 Todos los Clientes</span>
+          <span class="card-title" style="margin-bottom:0;">Todos los Clientes</span>
           <input type="text" id="dashSearch" class="search-input" placeholder="Buscar cliente..." oninput="actualizarTablaClientes(APP.filtroSector||'Todos')" style="max-width:220px;">
         </div>
         <div id="dashSectorFiltros" class="filter-bar"></div>
@@ -1126,7 +1126,7 @@ body {
 
     <!-- ========== VISTA 3: CALENDARIO ========== -->
     <div id="calendario" class="view">
-      <div class="view-title">📅 Calendario de Entregas</div>
+      <div class="view-title">Calendario de Entregas</div>
 
       <div class="card" style="padding:14px 16px;">
         <div class="view-toolbar">
@@ -1150,7 +1150,7 @@ body {
       <div id="queueSemanaSection" class="card" style="display:none;margin-top:18px;border-left:4px solid var(--warning);">
         <div class="view-toolbar" style="justify-content:space-between;">
           <div>
-            <div class="card-title" style="margin-bottom:2px;color:var(--warning);">📥 QUEUE para esta semana</div>
+            <div class="card-title" style="margin-bottom:2px;color:var(--warning);">Queue para esta semana</div>
             <div style="font-size:12px;color:var(--muted);">Clientes detectados en el cierre diario. Verde: ya estaban en planificación. Ámbar: no estaban contemplados.</div>
           </div>
           <span id="queueSemanaResumen" class="badge badge-warn">0 pendientes</span>
@@ -1161,7 +1161,7 @@ body {
 
     <!-- ========== VISTA 6: COMERCIAL ========== -->
     <div id="comercial" class="view">
-      <div class="view-title">👔 Vista Comercial</div>
+      <div class="view-title">Vista Comercial</div>
 
       <!-- KPIs -->
       <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
@@ -1208,7 +1208,7 @@ body {
 
     <!-- ========== VISTA 7: ALMACÉN ========== -->
     <div id="almacen" class="view">
-      <div class="view-title">🏭 Vista Almacén</div>
+      <div class="view-title">Vista Almacén</div>
 
       <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
         <div class="kpi-card"><div class="kpi-label">Total Pedidos</div><div class="kpi-val" id="ak1">—</div></div>
@@ -1230,7 +1230,7 @@ body {
 
     <!-- ========== VISTA 8: CONFIGURACIÓN CLIENTES ========== -->
     <div id="configClientes" class="view">
-      <div class="view-title">⚙️ Configuración de Clientes</div>
+      <div class="view-title">Configuración de Clientes</div>
 
       <div class="card" style="padding:14px 16px;">
         <div class="view-toolbar">
@@ -1256,7 +1256,7 @@ body {
 
     <!-- ========== VISTA 9: SOLICITUDES A ALMACÉN ========== -->
     <div id="solicitudesAlmacen" class="view">
-      <div class="view-title">📦 Solicitudes a Almacén</div>
+      <div class="view-title">Solicitudes a Almacén</div>
 
       <div class="card" style="border-left:4px solid var(--secondary);">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
@@ -1773,11 +1773,17 @@ function parsearSAP(arrayBuffer, fileName) {
 
     const monto = parseFloat(row['Importe confirmado no entregado']
                            ||row['Importe Confirmado No Entregado']
-                           ||row['Confirmado No Entregado']||0)||0;
+                           ||row['Confirmado No Entregado']
+                           ||row['Facturado No Entregado']
+                           ||row['Facturado no entregado']||0)||0;
     const pf    = parseFloat(row['Importe entregado no facturado']
                            ||row['Importe Entregado No Facturado']
+                           ||row['Entregado No Facturado']
+                           ||row['Entregado no facturado']
                            ||row['Pendiente de Facturar']
                            ||row['Pendiente Facturar']
+                           ||row['Pte. de facturar']
+                           ||row['Pte de facturar']
                            ||row['Pte Facturar']||0)||0;
     const facturado = parseFloat(row['Importe facturado']||0)||0;
     const pedidoNum = row['Pedido de cliente']||row['Pedido']||'';
