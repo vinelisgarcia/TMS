@@ -52,6 +52,13 @@
     return String(value == null ? '' : value).trim();
   }
 
+  function jsString(value) {
+    return String(value == null ? '' : value)
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/\n/g, ' ');
+  }
+
   function normalizeVisualTheme(theme) {
     return ['light', 'dark', 'brand'].includes(theme) ? theme : 'light';
   }
@@ -416,6 +423,7 @@
       cantidadFacturada: num(row.cantidad_facturada),
       cantidadPendiente: num(row.cantidad_pendiente),
       montoPlanificado: num(metadata.montoPlanificado),
+      montoEntregadoNoFacturado: num(metadata.montoEntregadoNoFacturado),
       estadoPlanificacion: row.estado_planificacion || 'planificado',
       estadoEntrega: row.estado_entrega || '',
       origen: row.origen || 'planificacion semanal',
@@ -461,6 +469,7 @@
         metadata: safeClone({
           dataset,
           montoPlanificado: num(item.montoPlanificado),
+          montoEntregadoNoFacturado: num(item.montoEntregadoNoFacturado),
           observaciones: item.observaciones || '',
           incidencia: item.incidencia || '',
           queueId: item.queueId || '',
@@ -645,6 +654,18 @@
     return { requested, invoiced, pending, pct };
   }
 
+  function getConfirmedUndeliveredAmount(item) {
+    return num(item.montoPlanificado || 0);
+  }
+
+  function getDeliveredNotInvoicedAmount(item) {
+    return num(item.montoEntregadoNoFacturado || item.importeEntregadoNoFacturado || item.montoPendienteFacturar || 0);
+  }
+
+  function getOperationalAmount(item) {
+    return getConfirmedUndeliveredAmount(item) + getDeliveredNotInvoicedAmount(item);
+  }
+
   function deriveItemStatus(item) {
     if ((item.cantidadPendiente || 0) <= 0 && (item.cantidadFacturada || 0) > 0) return 'entregado';
     if ((item.cantidadFacturada || 0) > 0 && (item.cantidadPendiente || 0) > 0) return 'parcial';
@@ -687,9 +708,9 @@
         });
       }
       const group = groups.get(key);
-      group.monto += item.montoPlanificado || 0;
-      group.pendienteFacturar += item.cantidadPendiente || 0;
-      group.totalPendiente += (item.montoPlanificado || item.cantidadSolicitada || 0);
+      group.monto += getConfirmedUndeliveredAmount(item);
+      group.pendienteFacturar += getDeliveredNotInvoicedAmount(item);
+      group.totalPendiente += getOperationalAmount(item);
       group.cantidadPedidos += 1;
       group.entregado += item.cantidadFacturada || 0;
       group.cumplida = group.cumplida || deriveItemStatus(item) === 'entregado';
@@ -780,7 +801,8 @@
       const cantidadFacturada = num(pickField(row, ['Cantidad facturada', 'Facturado', 'Cantidad entregada']));
       const cantidadPendienteRaw = pickField(row, ['Cantidad pendiente de servir', 'Cantidad pendiente', 'Pendiente', 'Cantidad abierta']);
       const cantidadPendiente = cantidadPendienteRaw !== '' ? num(cantidadPendienteRaw) : Math.max(cantidadSolicitada - cantidadFacturada, 0);
-      const montoPlanificado = num(pickField(row, ['Importe confirmado no entregado', 'Importe Confirmado No Entregado', 'Valor neto', 'Monto']));
+      const montoPlanificado = num(pickField(row, ['Importe confirmado no entregado', 'Importe Confirmado No Entregado', 'Importe confirmado, no entregado', 'Valor neto', 'Monto']));
+      const montoEntregadoNoFacturado = num(pickField(row, ['Importe entregado no facturado', 'Importe Entregado No Facturado', 'Importe entregado, no facturado', 'Pendiente de facturar', 'Importe pendiente de facturar']));
       const montoPendienteSinStock = num(pickField(row, ['Importe pendiente sin stock']));
       const fechaPrevista = toDateLabel(pickField(row, ['Fecha', 'Fecha Entrega', 'Fecha de entrega', 'Fecha de envío planificada', 'Fecha de envio planificada'])) || fechaArchivo;
       const rutaNombre = inferRouteName(clienteNombre, clienteId);
@@ -801,6 +823,7 @@
         cantidadFacturada,
         cantidadPendiente,
         montoPlanificado,
+        montoEntregadoNoFacturado,
         montoPendienteSinStock,
         estadoCabecera: text(pickField(row, ['Estado (cabecera) (Pedido de cliente)', 'Estado cabecera'])),
         estadoArticulo: text(pickField(row, ['Estado de artículo', 'Estado de articulo'])),
@@ -996,7 +1019,7 @@
       group.cantidadSolicitada += item.cantidadSolicitada || 0;
       group.cantidadFacturada += item.cantidadFacturada || 0;
       group.cantidadPendiente += item.cantidadPendiente || 0;
-      group.totalPendiente += item.montoPlanificado || item.cantidadSolicitada || 0;
+      group.totalPendiente += getOperationalAmount(item) || item.cantidadSolicitada || 0;
       group.cumplida = group.items.every(current => deriveItemStatus(current) === 'entregado');
       group.nota = group.nota || item.observaciones || '';
       group.incidencia = group.incidencia || item.incidencia || '';
@@ -1093,9 +1116,9 @@
           cantidadSolicitada: item.cantidadSolicitada || 0,
           cantidadFacturada: item.cantidadFacturada || 0,
           cantidadPendiente: item.cantidadPendiente || 0,
-          monto: item.montoPlanificado || item.cantidadSolicitada || 0,
-          pf: item.cantidadPendiente || 0,
-          totalPendiente: item.montoPlanificado || item.cantidadPendiente || item.cantidadSolicitada || 0,
+          monto: getOperationalAmount(item) || item.cantidadSolicitada || 0,
+          pf: getDeliveredNotInvoicedAmount(item),
+          totalPendiente: getOperationalAmount(item) || item.cantidadSolicitada || 0,
           planificado: false,
           fechaControl: item.fechaControl || APP.controlFecha || '',
           zona: routeName,
@@ -1142,7 +1165,8 @@
     }
 
     const grouped = {};
-    visibles.forEach((item, index) => {
+    visibles.forEach(item => {
+      const index = APP.queueSemana.indexOf(item);
       const routeName = queueByRouteName(item);
       const clientKey = [routeName, item.codigo, item.nombre].join('|');
       if (!grouped[routeName]) grouped[routeName] = {};
@@ -1156,8 +1180,9 @@
       const warn = routeName.toLowerCase().includes('sin ruta');
       const lineCount = clients.reduce((sum, client) => sum + client.items.length, 0);
       return `<div class="ruta-col">
-        <div class="ruta-col-header ${warn ? 'ch-alm' : 'ch-c1'}">
-          ${warn ? '⚠️' : '📍'} ${routeName} (${clients.length} clientes · ${lineCount} líneas)
+        <div class="ruta-col-header ${warn ? 'ch-alm' : 'ch-c1'} queue-route-header">
+          <span>${routeName} (${clients.length} clientes · ${lineCount} líneas)</span>
+          <button class="btn btn-outline btn-sm" onclick="abrirMoveRouteQueueModal('${jsString(routeName)}')">Asignar ruta completa</button>
         </div>
         <div class="ruta-col-body">
           ${clients.map(client => {
@@ -1170,7 +1195,7 @@
             const solicitado = client.items.reduce((sum, item) => sum + (item.cantidadSolicitada || 0), 0);
             const facturado = client.items.reduce((sum, item) => sum + (item.cantidadFacturada || 0), 0);
             const pendiente = client.items.reduce((sum, item) => sum + (item.cantidadPendiente || 0), 0);
-            const monto = client.items.reduce((sum, item) => sum + (item.monto || item.montoPlanificado || 0), 0);
+            const monto = client.items.reduce((sum, item) => sum + (item.monto || getOperationalAmount(item.item || item) || 0), 0);
             return `<div class="queue-card ${warn ? 'queue-card-new' : 'queue-card-plan'}" draggable="true"
               ondragstart="onDragStartQueue(event,${client.indexes[0]})"
               ondragend="APP.dragQueue=null;this.classList.remove('dragging')">
@@ -1225,17 +1250,19 @@
 
     currentMonth.semanas.forEach((semana, weekIndex) => {
       html.push(`<section class="cal-month-section">
-        <div class="cal-week-title">Semana ${weekIndex + 1} — ${semana.nombre}</div>
+        <div class="cal-week-title">Semana ${weekIndex + 1}<span>${semana.nombre}</span></div>
         <div class="cal-semana">`);
       semana.dias.forEach(fecha => {
         const isHol = isHoliday(fecha);
         const dayRoutes = APP.rutas[fecha] || {};
         html.push(`<div class="cal-dia-col">
           <div class="cal-dia-header" style="${isHol ? 'background:#fde8e8;color:var(--danger);' : ''}">
-            ${fechaLabel(fecha)}<br><small style="font-weight:400;opacity:0.8;">${fecha}${isHol ? ' · Feriado RD' : ''}</small>
+            <strong>${fechaLabel(fecha)}</strong><small>${fecha}${isHol ? ' · Feriado RD' : ''}</small>
           </div>`);
 
-        getTruckOptions().forEach(camion => {
+        const activeTrucks = getTruckOptions().filter(camion => (dayRoutes[camion] || []).length || search);
+        if (!activeTrucks.length) activeTrucks.push('CAMION 1');
+        activeTrucks.forEach(camion => {
           const truckClass = camion === 'CAMION 1' ? 'ch-c1' : camion === 'CAMION 2' ? 'ch-c2' : camion === 'CAMION 3' ? 'ch-alm' : 'ch-alm';
           const cardClass = camion === 'CAMION 1' ? 'cal-card-c1' : camion === 'CAMION 2' ? 'cal-card-c2' : 'cal-card-alm';
           const groups = (dayRoutes[camion] || []).filter(group => {
@@ -1366,6 +1393,31 @@
     scheduleAutoSave();
   };
 
+  window.asignarRutaQueueACalendario = function asignarRutaQueueACalendarioV2(routeName, fecha, camion) {
+    const selected = APP.queueSemana.filter(item => queueByRouteName(item) === routeName);
+    if (!selected.length) return;
+    const selectedIds = new Set(selected.map(item => item.queueId + '|' + item.fechaControl));
+    selected.forEach(queueItem => {
+      const item = { ...queueItem.item };
+      item.fechaPlanificada = fecha;
+      item.camionAsignado = camion;
+      item.rutaNombre = routeName;
+      item.zona = routeName;
+      item.origen = 'manual';
+      item.manualProgramado = true;
+      item.fechaActualizacion = nowIso();
+      APP.lineItems.push(item);
+    });
+    APP.queueSemana = APP.queueSemana.filter(item => !selectedIds.has(item.queueId + '|' + item.fechaControl));
+    rebuildDerivedState();
+    actualizarDashboard();
+    renderCalendario();
+    renderRutas();
+    renderComercial();
+    renderAlmacen();
+    scheduleAutoSave();
+  };
+
   window.moverCliente = function moverClienteV2(fecha, camion, idx, nuevaFecha, nuevoCamion) {
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
@@ -1447,6 +1499,19 @@
     document.getElementById('moveModal').classList.add('show');
   };
 
+  window.abrirMoveRouteQueueModal = function abrirMoveRouteQueueModalV2(routeName) {
+    APP.moveCliente = { queueRouteName: routeName };
+    const routeItems = APP.queueSemana.filter(item => queueByRouteName(item) === routeName);
+    const clientCount = new Set(routeItems.map(item => item.codigo)).size;
+    document.getElementById('moveModalClienteNombre').textContent = `${routeName} · ${clientCount} clientes · ${routeItems.length} líneas`;
+    const sample = routeItems[0] && routeItems[0].item;
+    const dates = buildMoveDateOptions(sample || {}, APP.planFecha || fechaToStr(new Date()));
+    document.getElementById('moveFecha').innerHTML = dates.map((date, index) => `<option value="${date}" ${index === 0 ? 'selected' : ''}>${date} (${fechaLabel(date)})</option>`).join('');
+    syncMoveOptions();
+    document.getElementById('moveCamion').value = getTruckOptions()[0];
+    document.getElementById('moveModal').classList.add('show');
+  };
+
   window.abrirMoveQueueModal = function abrirMoveQueueModalV2(idx) {
     const item = APP.queueSemana[idx];
     if (!item) return;
@@ -1487,6 +1552,10 @@
     const nuevoCamion = document.getElementById('moveCamion').value;
     const moveState = APP.moveCliente;
     window.cerrarMoveModal();
+    if (moveState.queueRouteName) {
+      asignarRutaQueueACalendario(moveState.queueRouteName, nuevaFecha, nuevoCamion);
+      return;
+    }
     if (moveState.queueIdx != null) {
       asignarQueueACalendario(moveState.queueIdx, nuevaFecha, nuevoCamion);
       return;
@@ -1700,28 +1769,7 @@
   }
 
   function registerRouteCostSnapshot(controlDate) {
-    const rows = [];
-    Object.keys(APP.rutas).forEach(fecha => {
-      if (fecha !== controlDate) return;
-      Object.keys(APP.rutas[fecha] || {}).forEach(camion => {
-        (APP.rutas[fecha][camion] || []).forEach(group => {
-          const routeCfg = getRouteConfigByName(group.rutaNombre) || { nombre: group.rutaNombre, costeRuta: 0 };
-          const summary = calcProgressSummary(group.items);
-          rows.push({
-            fecha,
-            rutaId: routeCfg.id || group.rutaNombre,
-            rutaNombre: group.rutaNombre,
-            coste: num(routeCfg.costeRuta),
-            fuenteControlDiario: APP.importFiles.control || '',
-            pedidosAsociados: group.items.map(item => item.pedidoCliente).filter(Boolean),
-            cumplimiento: summary.pct,
-            importePlanificado: group.items.reduce((sum, item) => sum + (item.montoPlanificado || item.cantidadSolicitada || 0), 0),
-            importeReal: group.items.reduce((sum, item) => sum + (item.cantidadFacturada || 0), 0),
-            diferencia: group.items.reduce((sum, item) => sum + (item.cantidadPendiente || 0), 0)
-          });
-        });
-      });
-    });
+    const rows = buildRouteCostRowsFromSchedule((APP.lineItems || []).filter(item => item.fechaPlanificada === controlDate));
     const merged = [...APP.routeCostHistory.filter(row => row.fecha !== controlDate), ...rows];
     APP.routeCostHistory = dedupeBy(merged, row => [row.fecha, row.rutaNombre].join('|'));
   }
@@ -2166,7 +2214,7 @@
   };
 
   function getCommercialLineAmount(item) {
-    return num(item.montoPlanificado || item.montoPendienteSinStock || item.totalPendiente || 0);
+    return getOperationalAmount(item) || num(item.montoPendienteSinStock || item.totalPendiente || 0);
   }
 
   function getCommercialPlannedQty(item) {
@@ -2527,6 +2575,7 @@
       item.fechaActualizacion = nowIso();
     });
     rebuildDerivedState();
+    refreshRouteCostHistoryFromSchedule();
     renderConfigClientes();
     renderCalendario();
     renderComercial();
@@ -2818,6 +2867,64 @@
     scheduleAutoSave();
   };
 
+  function buildRouteCostRowsFromSchedule(items) {
+    const grouped = new Map();
+    items.forEach(item => {
+      const fecha = item.fechaPlanificada || '';
+      const routeName = item.rutaNombre || item.zona || inferRouteName(item.clienteNombre, item.clienteId);
+      if (!fecha || !routeName) return;
+      const key = [fecha, routeName].join('|');
+      if (!grouped.has(key)) grouped.set(key, { fecha, rutaNombre: routeName, items: [] });
+      grouped.get(key).items.push(item);
+    });
+    return [...grouped.values()].map(row => {
+      const routeCfg = getRouteConfigByName(row.rutaNombre) || { id: row.rutaNombre, costeRuta: 0 };
+      const summary = calcProgressSummary(row.items);
+      const importePlanificado = row.items.reduce((sum, item) => sum + getOperationalAmount(item), 0);
+      const importeReal = row.items.reduce((sum, item) => {
+        const requested = item.cantidadSolicitada || 0;
+        const deliveredRatio = requested > 0 ? Math.min((item.cantidadFacturada || 0) / requested, 1) : 0;
+        return sum + getOperationalAmount(item) * deliveredRatio;
+      }, 0);
+      return {
+        fecha: row.fecha,
+        rutaId: routeCfg.id || row.rutaNombre,
+        rutaNombre: row.rutaNombre,
+        coste: num(routeCfg.costeRuta),
+        fuenteControlDiario: APP.importFiles.control || '',
+        pedidosAsociados: uniqueTexts(row.items.map(item => item.pedidoCliente)),
+        cumplimiento: summary.pct,
+        importePlanificado,
+        importeReal,
+        diferencia: importePlanificado - importeReal
+      };
+    });
+  }
+
+  function normalizeRouteCostRow(row) {
+    const routeCfg = getRouteConfigByName(row.rutaNombre || row.ruta || '') || null;
+    const importePlanificado = num(row.importePlanificado);
+    const importeReal = num(row.importeReal);
+    return {
+      ...row,
+      rutaId: (routeCfg && routeCfg.id) || row.rutaId || row.rutaNombre || '',
+      coste: routeCfg ? num(routeCfg.costeRuta) : num(row.coste),
+      importePlanificado,
+      importeReal,
+      diferencia: importePlanificado - importeReal
+    };
+  }
+
+  function refreshRouteCostHistoryFromSchedule() {
+    const rows = buildRouteCostRowsFromSchedule(APP.lineItems || []);
+    const keys = new Set(rows.map(row => [row.fecha, row.rutaNombre].join('|')));
+    APP.routeCostHistory = [
+      ...(APP.routeCostHistory || []).map(normalizeRouteCostRow).filter(row => !keys.has([row.fecha, row.rutaNombre].join('|'))),
+      ...rows
+    ];
+    return rows;
+  }
+
   window.generarReporte = function generarReporteV2() {
     const output = document.getElementById('reporteOutput');
     if (!output) return;
@@ -2835,7 +2942,8 @@
       return true;
     });
 
-    const routeHistory = APP.routeCostHistory.filter(row => {
+    refreshRouteCostHistoryFromSchedule();
+    const routeHistory = (APP.routeCostHistory || []).filter(row => {
       const iso = fechaStrToISO(row.fecha);
       if (routeFilter && row.rutaNombre !== routeFilter) return false;
       if (start && iso < start) return false;
@@ -3475,22 +3583,23 @@
     const button = document.createElement('button');
     button.id = 'addTruckBtn';
     button.className = 'btn btn-outline btn-sm';
-    button.textContent = 'Agregar tercer camión';
+    const syncButton = () => { button.textContent = APP.camionExtraEnabled ? 'Quitar camión adicional' : 'Agregar camión adicional'; };
     button.onclick = function () {
-      APP.camionExtraEnabled = true;
+      APP.camionExtraEnabled = !APP.camionExtraEnabled;
+      if (!APP.camionExtraEnabled) {
+        APP.lineItems.forEach(item => {
+          if (item.camionAsignado === 'CAMION 3') item.camionAsignado = chooseTruckForItem(item);
+        });
+      }
       syncMoveOptions();
       rebuildDerivedState();
       renderCalendario();
       renderRutas();
       scheduleAutoSave();
-      this.disabled = true;
-      this.textContent = 'Camión 3 activo';
+      syncButton();
     };
     toolbar.appendChild(button);
-    if (APP.camionExtraEnabled) {
-      button.disabled = true;
-      button.textContent = 'Camión 3 activo';
-    }
+    syncButton();
   }
 
   function initCommercialMount() {
@@ -3652,6 +3761,8 @@
       .form-row { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
       .form-control { padding:8px 10px; border:1px solid var(--border); border-radius:8px; }
       .queue-card { border:1px solid var(--border); border-radius:10px; padding:12px; background:#fff; margin-bottom:10px; }
+      .queue-route-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+      .queue-route-header .btn { background:rgba(255,255,255,0.92); color:var(--primary); border-color:rgba(255,255,255,0.7); }
       .queue-card-title { font-weight:700; color:var(--primary); font-size:13px; }
       .queue-card-meta { font-size:11px; color:var(--muted); }
       .badge-primary { background: var(--primary); color: #fff; }
@@ -3699,10 +3810,14 @@
       .calendar-selection-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
       .calendar-month-label { font-size:13px; font-weight:700; color:var(--muted); margin-right:4px; align-self:center; }
       .month-filter { border-radius:12px; padding:8px 16px; font-size:13px; }
-      .cal-month-section { margin-bottom:18px; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fff; }
-      .cal-week-title { background:var(--primary); color:#fff; font-size:16px; font-weight:800; padding:12px 16px; }
+      .cal-month-section { margin-bottom:18px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#fff; }
+      .cal-week-title { background:var(--primary); color:#fff; font-size:14px; font-weight:800; padding:9px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+      .cal-week-title span { font-size:12px; font-weight:700; opacity:.9; }
       .cal-month-section .cal-semana { margin:0; padding:0; gap:0; }
       .cal-month-section .cal-dia-col { border-right:1px solid var(--border); padding:0 6px 10px; }
+      .cal-month-section .cal-dia-header { background:var(--soft, #F8FAFC); color:var(--text); border-bottom:1px solid var(--border); padding:7px 6px; display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:34px; }
+      .cal-month-section .cal-dia-header strong { font-size:12px; }
+      .cal-month-section .cal-dia-header small { font-size:10px; color:var(--muted); font-weight:600; }
       .cal-month-section .cal-dia-col:last-child { border-right:none; }
       .calendar-pdf-stage {
         position:fixed;
