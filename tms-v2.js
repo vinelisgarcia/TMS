@@ -27,6 +27,7 @@
     solicitudesCompare: APP.solicitudesCompare || [],
     warehouseSettings: APP.warehouseSettings || { costoSolicitud: 0 },
     userProfiles: APP.userProfiles || [],
+    rolePermissions: APP.rolePermissions || buildDefaultRolePermissions(),
     currentUserProfile: APP.currentUserProfile || null,
     camionExtraEnabled: !!APP.camionExtraEnabled,
     feriadosRD: APP.feriadosRD || (RD_HOLIDAYS[CURRENT_YEAR] || []),
@@ -76,13 +77,6 @@
     configuracion: 'Configuración',
     solicitudesAlmacen: 'Solicitudes almacén',
     almacen: 'Almacén'
-  };
-
-  const SCOPE_LABELS = {
-    full: 'Acceso completo',
-    read_only: 'Solo lectura',
-    ops: 'Operación',
-    commercial: 'Comercial'
   };
 
   function syncThemeButtons() {
@@ -357,6 +351,49 @@
     };
   }
 
+  function buildDefaultRolePermissions() {
+    return {
+      Admin: buildPermissions('full', 'Admin'),
+      Operaciones: buildPermissions('ops', 'Operaciones'),
+      Comercial: buildPermissions('commercial', 'Comercial'),
+      Almacén: buildPermissions('warehouse', 'Almacén'),
+      'Solo lectura': buildPermissions('read_only', 'Solo lectura')
+    };
+  }
+
+  function ensureRolePermissions() {
+    const defaults = buildDefaultRolePermissions();
+    APP.rolePermissions = APP.rolePermissions || {};
+    Object.keys(defaults).forEach(role => {
+      APP.rolePermissions[role] = APP.rolePermissions[role] || defaults[role];
+    });
+    Object.keys(APP.rolePermissions).forEach(role => {
+      APP.rolePermissions[role] = normalizePermissions(APP.rolePermissions[role]);
+    });
+    APP.userProfiles.forEach(profile => {
+      profile.permisosPorModulo = safeClone(APP.rolePermissions[profile.rol] || APP.rolePermissions['Solo lectura'] || defaults['Solo lectura']);
+    });
+  }
+
+  function normalizePermissions(perms) {
+    const base = {};
+    Object.keys(MODULE_LABELS).forEach(module => {
+      const current = (perms && perms[module]) || {};
+      base[module] = {
+        ver: !!current.ver,
+        editar: !!current.editar,
+        importar: !!current.importar
+      };
+      if (base[module].editar || base[module].importar) base[module].ver = true;
+    });
+    return base;
+  }
+
+  function getPermissionsForRole(role) {
+    APP.rolePermissions = APP.rolePermissions || buildDefaultRolePermissions();
+    return safeClone(APP.rolePermissions[role] || APP.rolePermissions['Solo lectura'] || buildPermissions('read_only', role));
+  }
+
   function ensureAdminProfile() {
     const { userEmail } = getSessionInfo();
     const fallbackEmail = userEmail || 'vinelis.garcia@tms-alvarez.local';
@@ -367,7 +404,7 @@
         nombre: 'Vinelis Garcia',
         email: fallbackEmail,
         rol: 'Admin',
-        permisosPorModulo: buildAdminPermissions()
+        permisosPorModulo: getPermissionsForRole('Admin')
       };
       APP.userProfiles.unshift(adminProfile);
     } else {
@@ -377,8 +414,9 @@
       if (!text(adminProfile.email) || adminProfile.email === 'manuel.onate@tms-alvarez.local') {
         adminProfile.email = fallbackEmail;
       }
-      adminProfile.permisosPorModulo = adminProfile.permisosPorModulo || buildAdminPermissions();
+      adminProfile.permisosPorModulo = getPermissionsForRole('Admin');
     }
+    ensureRolePermissions();
     APP.currentUserProfile =
       APP.userProfiles.find(profile => text(profile.email).toLowerCase() === fallbackEmail.toLowerCase()) ||
       adminProfile ||
@@ -617,7 +655,8 @@
   function hasPermission(moduleName, action) {
     const profile = APP.currentUserProfile;
     if (!profile || profile.rol === 'Admin') return true;
-    return !!(profile.permisosPorModulo && profile.permisosPorModulo[moduleName] && profile.permisosPorModulo[moduleName][action]);
+    const perms = getPermissionsForRole(profile.rol);
+    return !!(perms && perms[moduleName] && perms[moduleName][action]);
   }
 
   function isHoliday(fechaStr) {
@@ -990,6 +1029,7 @@
         solicitudesHistory: APP.solicitudesHistory,
         warehouseSettings: APP.warehouseSettings,
         userProfiles: APP.userProfiles,
+        rolePermissions: APP.rolePermissions,
         clienteConfig: APP.clienteConfig,
         planLoaded: APP.planLoaded,
         planFecha: APP.planFecha,
@@ -2798,13 +2838,11 @@
       { value: 5, label: 'Vie' },
       { value: 6, label: 'Sáb' }
     ];
-    const rolePermissionGuide = [
-      { role: 'Admin', scope: SCOPE_LABELS.full, detail: 'Puede ver, editar e importar en todos los módulos.' },
-      { role: 'Operaciones', scope: SCOPE_LABELS.ops, detail: 'Puede importar, editar calendario, reportes, solicitudes y almacén. Comercial queda solo lectura y Configuración no visible.' },
-      { role: 'Comercial', scope: SCOPE_LABELS.commercial, detail: 'Puede editar Vista Comercial. Dashboard, Calendario, Reportes y Solicitudes quedan solo lectura.' },
-      { role: 'Almacén', scope: SCOPE_LABELS.ops, detail: 'Usa permisos operativos: solicitudes y almacén editables, además de calendario y reportes.' },
-      { role: 'Solo lectura', scope: SCOPE_LABELS.read_only, detail: 'Puede ver todos los módulos sin editar ni importar.' }
-    ];
+    ensureRolePermissions();
+    const roleOptions = Object.keys(APP.rolePermissions);
+    if (!APP.selectedRolePermission || !APP.rolePermissions[APP.selectedRolePermission]) {
+      APP.selectedRolePermission = roleOptions[0] || 'Operaciones';
+    }
     mount.innerHTML = `
       <div class="card" style="margin-top:16px;">
         <div class="view-toolbar" style="justify-content:space-between;">
@@ -2829,7 +2867,27 @@
         </table></div>
       </div>
       <div class="card">
-        <div class="card-title">Roles y usuarios</div>
+        <div class="card-title">Permisos por rol</div>
+        <div class="config-help-note" style="margin-bottom:12px;">Primero configura qué puede ver, editar o importar cada rol. Al crear un usuario solo tendrás que asignarle un rol.</div>
+        <div class="role-permission-toolbar">
+          <label class="form-row" style="margin-bottom:0;">Rol a configurar
+            <select id="rolePermissionSelect" class="form-control" onchange="seleccionarRolPermisos(this.value)">
+              ${roleOptions.map(role => `<option value="${role}" ${role === APP.selectedRolePermission ? 'selected' : ''}>${role}</option>`).join('')}
+            </select>
+          </label>
+          <label class="form-row" style="margin-bottom:0;">Nuevo rol
+            <input id="newRoleNameInput" class="form-control" placeholder="Ej. Supervisor">
+          </label>
+          <button class="btn btn-outline btn-sm" onclick="agregarRolPermisos()">Crear rol</button>
+          <button class="btn btn-primary btn-sm" onclick="guardarPermisosRol()">Guardar permisos del rol</button>
+        </div>
+        <div class="table-wrap"><table class="data-table role-permission-table">
+          <thead><tr><th>Módulo</th><th>Ver</th><th>Editar</th><th>Importar</th></tr></thead>
+          <tbody>${renderRolePermissionRows(APP.selectedRolePermission)}</tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Usuarios</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px;">
           <label class="form-row">Nombre
             <input id="userNameInput" class="form-control" placeholder="Nombre completo">
@@ -2838,20 +2896,8 @@
             <input id="userEmailInput" class="form-control" type="email" placeholder="correo@empresa.com">
           </label>
           <label class="form-row">Rol
-            <select id="userRoleInput" class="form-control" onchange="sincronizarPermisosPorRol()">
-              <option value="Admin">Admin</option>
-              <option value="Operaciones">Operaciones</option>
-              <option value="Comercial">Comercial</option>
-              <option value="Almacén">Almacén</option>
-              <option value="Solo lectura">Solo lectura</option>
-            </select>
-          </label>
-          <label class="form-row">Permisos
-            <select id="userScopeInput" class="form-control">
-              <option value="full">Acceso completo</option>
-              <option value="read_only">Solo lectura</option>
-              <option value="ops">Operación</option>
-              <option value="commercial">Comercial</option>
+            <select id="userRoleInput" class="form-control">
+              ${roleOptions.map(role => `<option value="${role}">${role}</option>`).join('')}
             </select>
           </label>
         </div>
@@ -2864,18 +2910,11 @@
             <td>${profile.nombre}</td>
             <td>${profile.email || '—'}</td>
             <td>${profile.rol}</td>
-            <td>${profile.rol === 'Admin' ? 'Acceso total' : summarizePermissions(profile.permisosPorModulo)}</td>
-            <td>${renderPermissionChips(profile.permisosPorModulo || buildPermissions('read_only', profile.rol))}</td>
+            <td>${profile.rol === 'Admin' ? 'Acceso total' : summarizePermissions(getPermissionsForRole(profile.rol))}</td>
+            <td>${renderPermissionChips(getPermissionsForRole(profile.rol))}</td>
             <td>${profile.rol === 'Admin' ? '<span class="badge badge-ok">Base</span>' : `<button class="btn btn-outline btn-sm" onclick="eliminarUsuarioPerfil(${index})">Eliminar</button>`}</td>
           </tr>`).join('')}</tbody>
         </table></div>
-        <div class="permission-guide">
-          ${rolePermissionGuide.map(item => `<div class="permission-guide-item">
-            <strong>${item.role}</strong>
-            <span>${item.scope}</span>
-            <p>${item.detail}</p>
-          </div>`).join('')}
-        </div>
       </div>
       <div class="card">
         <div class="card-title">Costes operativos</div>
@@ -2893,16 +2932,62 @@
 
   window.sincronizarPermisosPorRol = function sincronizarPermisosPorRol() {
     const role = text((document.getElementById('userRoleInput') || {}).value);
-    const scopeInput = document.getElementById('userScopeInput');
-    if (!scopeInput) return;
-    const scopeByRole = {
-      Admin: 'full',
-      Operaciones: 'ops',
-      Comercial: 'commercial',
-      Almacén: 'ops',
-      'Solo lectura': 'read_only'
-    };
-    scopeInput.value = scopeByRole[role] || 'ops';
+    return getPermissionsForRole(role);
+  };
+
+  function renderRolePermissionRows(role) {
+    const perms = getPermissionsForRole(role);
+    return Object.entries(MODULE_LABELS).map(([module, label]) => {
+      const actions = perms[module] || {};
+      const canImport = module === 'importar' || module === 'configuracion';
+      return `<tr>
+        <td><strong>${label}</strong></td>
+        <td><input type="checkbox" class="rolePerm" data-module="${module}" data-action="ver" ${actions.ver ? 'checked' : ''}></td>
+        <td><input type="checkbox" class="rolePerm" data-module="${module}" data-action="editar" ${actions.editar ? 'checked' : ''}></td>
+        <td>${canImport ? `<input type="checkbox" class="rolePerm" data-module="${module}" data-action="importar" ${actions.importar ? 'checked' : ''}>` : '<span style="color:var(--muted);">—</span>'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  window.seleccionarRolPermisos = function seleccionarRolPermisos(role) {
+    APP.selectedRolePermission = role;
+    renderConfigAuxSections();
+  };
+
+  window.agregarRolPermisos = function agregarRolPermisos() {
+    const input = document.getElementById('newRoleNameInput');
+    const role = text(input && input.value);
+    if (!role) return alert('Escribe el nombre del nuevo rol.');
+    if (APP.rolePermissions[role]) return alert('Ese rol ya existe.');
+    APP.rolePermissions[role] = buildPermissions('read_only', role);
+    APP.selectedRolePermission = role;
+    renderConfigAuxSections();
+    scheduleAutoSave();
+  };
+
+  window.guardarPermisosRol = function guardarPermisosRol() {
+    const role = text((document.getElementById('rolePermissionSelect') || {}).value) || APP.selectedRolePermission;
+    if (!role) return;
+    const perms = {};
+    Object.keys(MODULE_LABELS).forEach(module => {
+      perms[module] = { ver: false, editar: false, importar: false };
+    });
+    document.querySelectorAll('.rolePerm').forEach(input => {
+      const module = input.dataset.module;
+      const action = input.dataset.action;
+      if (!module || !action) return;
+      perms[module][action] = !!input.checked;
+    });
+    Object.keys(perms).forEach(module => {
+      if (perms[module].editar || perms[module].importar) perms[module].ver = true;
+    });
+    APP.rolePermissions[role] = normalizePermissions(perms);
+    APP.userProfiles.forEach(profile => {
+      if (profile.rol === role) profile.permisosPorModulo = getPermissionsForRole(role);
+    });
+    renderConfigAuxSections();
+    scheduleAutoSave();
+    alert('Permisos del rol actualizados.');
   };
 
   function summarizePermissions(perms) {
@@ -3014,6 +3099,18 @@
         almacen: { ver: false, editar: false }
       };
     }
+    if (scope === 'warehouse') {
+      return {
+        importar: { ver: false, editar: false, importar: false },
+        dashboard: { ver: true, editar: false },
+        calendario: { ver: true, editar: false },
+        reportes: { ver: true, editar: false },
+        comercial: { ver: false, editar: false },
+        configuracion: { ver: false, editar: false, importar: false },
+        solicitudesAlmacen: { ver: true, editar: true },
+        almacen: { ver: true, editar: true }
+      };
+    }
     return {
       importar: { ver: true, editar: true, importar: true },
       dashboard: { ver: true, editar: false },
@@ -3030,7 +3127,6 @@
     const nombre = text(document.getElementById('userNameInput').value);
     const email = text(document.getElementById('userEmailInput').value);
     const rol = text(document.getElementById('userRoleInput').value) || 'Operaciones';
-    const scope = text(document.getElementById('userScopeInput').value) || 'ops';
     if (!nombre || !email) {
       alert('Completa nombre y email para crear el usuario.');
       return;
@@ -3044,7 +3140,7 @@
       nombre,
       email,
       rol,
-      permisosPorModulo: buildPermissions(scope, rol)
+      permisosPorModulo: getPermissionsForRole(rol)
     });
     renderConfigAuxSections();
     scheduleAutoSave();
@@ -3455,6 +3551,8 @@
 
       const settingsMap = Object.fromEntries(settingsRows.map(row => [row.clave, row.valor || {}]));
       APP.warehouseSettings = settingsMap.warehouse || { costoSolicitud: 0 };
+      APP.rolePermissions = settingsMap.role_permissions || APP.rolePermissions || buildDefaultRolePermissions();
+      ensureRolePermissions();
       if (settingsMap.app_state) {
         APP.planLoaded = !!settingsMap.app_state.planLoaded;
         APP.planFecha = settingsMap.app_state.planFecha || null;
@@ -3595,6 +3693,7 @@
 
       const settingsRows = [
         { clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) },
+        { clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) },
         {
           clave: 'app_state',
           valor: safeClone({
@@ -3617,7 +3716,7 @@
         nombre: profile.nombre || '',
         email: profile.email || '',
         rol: profile.rol || 'Solo lectura',
-        permisos_por_modulo: safeClone(profile.permisosPorModulo || buildPermissions('read_only', profile.rol)),
+        permisos_por_modulo: getPermissionsForRole(profile.rol || 'Solo lectura'),
         activo: profile.activo !== false
       }));
 
@@ -4050,6 +4149,12 @@
       .badge-outline { background: #fff; color: var(--muted); border: 1px solid var(--border); }
       .config-help-note { color:var(--muted); font-size:12px; line-height:1.45; border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#F8FAFC; }
       .route-add-form { display:grid; grid-template-columns:minmax(180px, 1fr) minmax(110px, 160px) auto; gap:8px; align-items:center; margin-bottom:12px; }
+      .role-permission-toolbar { display:grid; grid-template-columns:minmax(180px, 240px) minmax(180px, 1fr) auto auto; gap:10px; align-items:end; margin-bottom:12px; }
+      .role-permission-table th,
+      .role-permission-table td { text-align:center; }
+      .role-permission-table th:first-child,
+      .role-permission-table td:first-child { text-align:left; }
+      .role-permission-table input[type="checkbox"] { width:16px; height:16px; }
       .permission-guide { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px; margin-top:12px; }
       .permission-guide-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#F8FAFC; }
       .permission-guide-item strong { display:block; font-size:13px; color:var(--text); }
@@ -4423,7 +4528,7 @@
       .theme-preview-light { background:linear-gradient(90deg,#123F5D 0 24%,#fff 24% 66%,#F5F6F8 66%); }
       .theme-preview-dark { background:linear-gradient(90deg,#101820 0 24%,#171E26 24% 66%,#0F141A 66%); }
       .theme-preview-brand { background:linear-gradient(90deg,#F4C900 0 24%,#fff 24% 66%,#161616 66%); }
-      @media (max-width: 760px) { .route-add-form { grid-template-columns:1fr; } }
+      @media (max-width: 760px) { .route-add-form, .role-permission-toolbar { grid-template-columns:1fr; } }
       @media (max-width: 760px) { .theme-option-grid { grid-template-columns:1fr; } }
       details summary { list-style:none; }
       details summary::-webkit-details-marker { display:none; }
