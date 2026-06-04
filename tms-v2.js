@@ -34,6 +34,8 @@
     importFiles: APP.importFiles || { plan: '', control: '', solicitudesPlan: '', solicitudesControl: '' },
     selectedCalendarGroups: APP.selectedCalendarGroups || [],
     visualTheme: APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light',
+    undoStack: APP.undoStack || [],
+    pendingTruckPhoto: APP.pendingTruckPhoto || null,
     appVersion: 'v2'
   });
 
@@ -441,6 +443,101 @@
     return JSON.parse(JSON.stringify(value == null ? null : value));
   }
 
+  const UNDO_STATE_KEYS = [
+    'lineItems',
+    'planLineItems',
+    'controlLineItems',
+    'solicitudesAlmacen',
+    'solicitudesPlanAlmacen',
+    'solicitudesControlAlmacen',
+    'solicitudesCompare',
+    'routeConfigs',
+    'routeCostHistory',
+    'solicitudesHistory',
+    'warehouseSettings',
+    'userProfiles',
+    'rolePermissions',
+    'clienteConfig',
+    'planLoaded',
+    'planFecha',
+    'controlLoaded',
+    'controlFecha',
+    'solicitudesLoaded',
+    'solicitudesFileName',
+    'camionExtraEnabled',
+    'feriadosRD',
+    'importFiles',
+    'visualTheme'
+  ];
+
+  function updateUndoButton() {
+    const btn = document.getElementById('undoStateBtn');
+    if (!btn) return;
+    const latest = APP.undoStack && APP.undoStack[APP.undoStack.length - 1];
+    btn.disabled = !(APP.undoStack || []).length;
+    btn.title = latest ? 'Revertir: ' + latest.label : 'No hay cambios para revertir';
+  }
+
+  function createUndoSnapshot(label) {
+    const state = {};
+    UNDO_STATE_KEYS.forEach(key => {
+      state[key] = safeClone(APP[key]);
+    });
+    return {
+      label: label || 'último cambio',
+      createdAt: nowIso(),
+      state
+    };
+  }
+
+  function pushUndoState(label) {
+    if (APP.isRestoringUndo) return;
+    APP.undoStack = APP.undoStack || [];
+    APP.undoStack.push(createUndoSnapshot(label));
+    if (APP.undoStack.length > 15) APP.undoStack.shift();
+    updateUndoButton();
+  }
+
+  function restoreUndoSnapshot(snapshot) {
+    if (!snapshot || !snapshot.state) return false;
+    APP.isRestoringUndo = true;
+    try {
+      Object.assign(APP, safeClone(snapshot.state));
+      ensureAdminProfile();
+      applyVisualTheme(APP.visualTheme || 'light', true);
+      matchWarehouseToOrders();
+      rebuildDerivedState();
+      updateSolicitudesImportStatus();
+      if (typeof window.actualizarEstadoBanner === 'function') window.actualizarEstadoBanner();
+      if (typeof window.actualizarDashboard === 'function') window.actualizarDashboard();
+      renderCalendario();
+      renderRutas();
+      renderComercial();
+      renderConfigClientes();
+      renderConfigAuxSections();
+      renderSolicitudesAlmacen();
+      renderAlmacen();
+      initRouteFilterOptions();
+      saveLocalSnapshot();
+      return true;
+    } finally {
+      APP.isRestoringUndo = false;
+      updateUndoButton();
+    }
+  }
+
+  window.revertirUltimoCambio = function revertirUltimoCambio() {
+    const snapshot = (APP.undoStack || []).pop();
+    if (!snapshot) {
+      updateUndoButton();
+      alert('No hay cambios recientes para revertir.');
+      return;
+    }
+    if (!restoreUndoSnapshot(snapshot)) return;
+    window.guardarEnSupabase().catch(e => console.warn('Error guardando reversión:', e));
+    alert('Se revirtió: ' + snapshot.label);
+  };
+
   function chunkRows(rows, size) {
     const out = [];
     for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size));
@@ -500,6 +597,11 @@
       zona: metadata.zona || row.ruta_nombre || '',
       observaciones: metadata.observaciones || '',
       incidencia: metadata.incidencia || '',
+      precintoDespacho: metadata.precintoDespacho || '',
+      comentarioRuta: metadata.comentarioRuta || '',
+      fotoCamion: metadata.fotoCamion || '',
+      fotoCamionNombre: metadata.fotoCamionNombre || '',
+      fechaCierreRuta: metadata.fechaCierreRuta || '',
       queueId: metadata.queueId || '',
       manualProgramado: !!row.manual_programado,
       asignado: !!metadata.asignado
@@ -542,6 +644,11 @@
           cantidadPendienteSinStock: num(item.cantidadPendienteSinStock),
           observaciones: item.observaciones || '',
           incidencia: item.incidencia || '',
+          precintoDespacho: item.precintoDespacho || '',
+          comentarioRuta: item.comentarioRuta || '',
+          fotoCamion: item.fotoCamion || '',
+          fotoCamionNombre: item.fotoCamionNombre || '',
+          fechaCierreRuta: item.fechaCierreRuta || '',
           queueId: item.queueId || '',
           zona: item.zona || item.rutaNombre || '',
           asignado: !!item.asignado
@@ -1131,6 +1238,11 @@
           cumplida: false,
           nota: '',
           incidencia: '',
+          precintoDespacho: '',
+          comentarioRuta: '',
+          fotoCamion: '',
+          fotoCamionNombre: '',
+          fechaCierreRuta: '',
           manualProgramado: !!item.manualProgramado,
           alertas: []
         });
@@ -1150,6 +1262,11 @@
       group.cumplida = group.items.every(current => deriveItemStatus(current) === 'entregado');
       group.nota = group.nota || item.observaciones || '';
       group.incidencia = group.incidencia || item.incidencia || '';
+      group.precintoDespacho = group.precintoDespacho || item.precintoDespacho || '';
+      group.comentarioRuta = group.comentarioRuta || item.comentarioRuta || '';
+      group.fotoCamion = group.fotoCamion || item.fotoCamion || '';
+      group.fotoCamionNombre = group.fotoCamionNombre || item.fotoCamionNombre || '';
+      group.fechaCierreRuta = group.fechaCierreRuta || item.fechaCierreRuta || '';
     });
 
     grouped.forEach(group => {
@@ -1410,6 +1527,9 @@
             const alertHtml = group.alertas.length
               ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
               : '';
+            const evidenceHtml = (group.precintoDespacho || group.fotoCamion)
+              ? `<div class="route-evidence-line">${group.precintoDespacho ? 'Precinto: ' + group.precintoDespacho : ''}${group.precintoDespacho && group.fotoCamion ? ' · ' : ''}${group.fotoCamion ? 'Foto adjunta' : ''}</div>`
+              : '';
             html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true"
               ondragstart="onDragStartCal(event,'${fecha}','${camion}',${realIdx})"
               ondragend="this.classList.remove('dragging')"
@@ -1424,6 +1544,7 @@
               <div class="cal-card-name">${group.nombre}</div>
               <div class="queue-card-meta">${group.codigo} · ${group.cantidadPedidos || 1} pedidos: ${group.pedidoCliente}</div>
               <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · ${formatMonto(group.totalPendiente)}</div>
+              ${evidenceHtml}
               ${alertHtml}
               <div class="cal-card-actions">
                 <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirMoveModal('${fecha}','${camion}',${realIdx})">✏️ Mover</button>
@@ -1503,6 +1624,7 @@
   window.asignarQueueACalendario = function asignarQueueACalendarioV2(idx, fecha, camion) {
     const queueItem = APP.queueSemana[idx];
     if (!queueItem) return;
+    pushUndoState('asignar pedido al calendario');
     const item = { ...queueItem.item };
     item.fechaPlanificada = fecha;
     item.camionAsignado = camion;
@@ -1523,6 +1645,7 @@
   window.asignarRutaQueueACalendario = function asignarRutaQueueACalendarioV2(routeName, fecha, camion) {
     const selected = APP.queueSemana.filter(item => queueByRouteName(item) === routeName);
     if (!selected.length) return;
+    pushUndoState('asignar ruta al calendario');
     const selectedIds = new Set(selected.map(item => item.queueId + '|' + item.fechaControl));
     selected.forEach(queueItem => {
       const item = { ...queueItem.item };
@@ -1548,6 +1671,7 @@
   window.moverCliente = function moverClienteV2(fecha, camion, idx, nuevaFecha, nuevoCamion) {
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
+    pushUndoState('mover pedido de ruta');
     const selectedKeys = new Set(APP.selectedCalendarGroups || []);
     const groupKey = getGroupSelectionKey(group);
     const multiMove = selectedKeys.has(groupKey) && selectedKeys.size > 1;
@@ -1580,6 +1704,11 @@
   window.toggleCumplida = function toggleCumplidaV2(fecha, camion, idx) {
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
+    if (!group.cumplida) {
+      window.abrirNotaModal(fecha, camion, idx, { completeOnSave: true });
+      return;
+    }
+    pushUndoState('deshacer ruta cumplida');
     const newQty = group.cumplida ? 0 : null;
     const keys = new Set(group.items.map(item => item.baseKey));
     APP.lineItems.forEach(item => {
@@ -1799,6 +1928,75 @@
     }
   }
 
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('No se pudo leer la imagen.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function loadImageFromDataUrl(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('No se pudo procesar la imagen.'));
+      img.src = dataUrl;
+    });
+  }
+
+  async function compressTruckPhoto(file) {
+    const raw = await readFileAsDataUrl(file);
+    const img = await loadImageFromDataUrl(raw);
+    const maxSide = 1200;
+    const scale = Math.min(1, maxSide / Math.max(img.width || maxSide, img.height || maxSide));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round((img.width || maxSide) * scale));
+    canvas.height = Math.max(1, Math.round((img.height || maxSide) * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return {
+      dataUrl: canvas.toDataURL('image/jpeg', 0.76),
+      name: file.name || 'foto-camion.jpg'
+    };
+  }
+
+  function setTruckPhotoPreview(photo) {
+    const wrap = document.getElementById('fotoCamionPreviewWrap');
+    const img = document.getElementById('fotoCamionPreview');
+    const name = document.getElementById('fotoCamionNombre');
+    if (!wrap || !img) return;
+    if (photo && photo.dataUrl) {
+      wrap.style.display = 'block';
+      img.src = photo.dataUrl;
+      if (name) name.textContent = photo.name || 'Foto adjunta';
+    } else {
+      wrap.style.display = 'none';
+      img.removeAttribute('src');
+      if (name) name.textContent = '';
+    }
+  }
+
+  window.previsualizarFotoCamion = async function previsualizarFotoCamion(file) {
+    if (!file) {
+      APP.pendingTruckPhoto = null;
+      setTruckPhotoPreview(null);
+      return;
+    }
+    if (!/^image\//.test(file.type || '')) {
+      alert('Selecciona un archivo de imagen.');
+      return;
+    }
+    try {
+      APP.pendingTruckPhoto = await compressTruckPhoto(file);
+      setTruckPhotoPreview(APP.pendingTruckPhoto);
+    } catch (error) {
+      console.error('Error procesando foto:', error);
+      alert('No se pudo preparar la foto del camión.');
+    }
+  };
+
   window.exportarCalendarioVisiblePDF = async function exportarCalendarioVisiblePDFV2() {
     const el = document.getElementById('calExportArea');
     if (!el || !el.innerHTML.trim()) {
@@ -1874,13 +2072,21 @@
     }
   };
 
-  window.abrirNotaModal = function abrirNotaModalV2(fecha, camion, idx) {
+  window.abrirNotaModal = function abrirNotaModalV2(fecha, camion, idx, options) {
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
-    APP.moveCliente = { fecha, cam: camion, idx };
+    APP.moveCliente = { fecha, cam: camion, idx, completeOnSave: !!(options && options.completeOnSave) };
+    APP.pendingTruckPhoto = null;
     document.getElementById('notaModalNombre').textContent = `${group.nombre} · Pedido ${group.pedidoCliente}`;
     document.getElementById('notaInput').value = group.nota || '';
     document.getElementById('incidenciaInput').value = group.incidencia || '';
+    const precintoInput = document.getElementById('precintoInput');
+    const comentarioInput = document.getElementById('comentarioRutaInput');
+    const fotoInput = document.getElementById('fotoCamionInput');
+    if (precintoInput) precintoInput.value = group.precintoDespacho || '';
+    if (comentarioInput) comentarioInput.value = group.comentarioRuta || '';
+    if (fotoInput) fotoInput.value = '';
+    setTruckPhotoPreview(group.fotoCamion ? { dataUrl: group.fotoCamion, name: group.fotoCamionNombre } : null);
     document.getElementById('notaModal').classList.add('show');
   };
 
@@ -1888,21 +2094,39 @@
     if (!APP.moveCliente) return;
     const group = getGroupByRouteRef(APP.moveCliente.fecha, APP.moveCliente.cam, APP.moveCliente.idx);
     if (!group) return;
+    pushUndoState(APP.moveCliente.completeOnSave ? 'completar ruta con evidencia' : 'guardar nota de ruta');
     const nota = text(document.getElementById('notaInput').value);
     const incidencia = text(document.getElementById('incidenciaInput').value);
+    const precinto = text((document.getElementById('precintoInput') || {}).value);
+    const comentarioRuta = text((document.getElementById('comentarioRutaInput') || {}).value);
+    const currentPhoto = APP.pendingTruckPhoto || (group.fotoCamion ? { dataUrl: group.fotoCamion, name: group.fotoCamionNombre } : null);
     const keys = new Set(group.items.map(item => item.baseKey));
+    let photoStored = false;
     APP.lineItems.forEach(item => {
       if (!keys.has(item.baseKey)) return;
       item.observaciones = nota;
       item.incidencia = incidencia;
+      item.precintoDespacho = precinto;
+      item.comentarioRuta = comentarioRuta;
+      item.fotoCamion = currentPhoto && !photoStored ? currentPhoto.dataUrl : '';
+      item.fotoCamionNombre = currentPhoto ? currentPhoto.name : '';
+      if (currentPhoto && !photoStored) photoStored = true;
+      if (APP.moveCliente.completeOnSave) {
+        item.cantidadFacturada = item.cantidadSolicitada || item.cantidadFacturada || 0;
+        item.cantidadPendiente = Math.max((item.cantidadSolicitada || 0) - (item.cantidadFacturada || 0), 0);
+        item.fechaCierreRuta = nowIso();
+      }
       item.fechaActualizacion = nowIso();
     });
     document.getElementById('notaModal').classList.remove('show');
     APP.moveCliente = null;
+    APP.pendingTruckPhoto = null;
     rebuildDerivedState();
+    actualizarDashboard();
     renderCalendario();
     renderRutas();
     renderComercial();
+    renderAlmacen();
     scheduleAutoSave();
   };
 
@@ -2010,6 +2234,7 @@
         const parsed = parseSAPRows(event.target.result, file.name, mode);
         const items = parsed.items;
         if (!items.length) throw new Error('No se encontraron filas válidas para importar.');
+        pushUndoState(isPlan ? 'importar planificación semanal' : 'importar control diario');
 
         if (isPlan) {
           APP.importFiles.plan = file.name;
@@ -2161,6 +2386,7 @@
           ...item,
           tipoSolicitudArchivo: mode === 'control' ? 'control diario' : 'plan semanal'
         }));
+        pushUndoState(mode === 'control' ? 'importar solicitudes de control' : 'importar solicitudes de planificación');
         if (mode === 'control') {
           APP.solicitudesControlAlmacen = parsed;
           APP.importFiles.solicitudesControl = file.name;
@@ -2731,6 +2957,7 @@
   window.guardarConfigCliente = function guardarConfigClienteV2() {
     const codigo = APP.configClienteSel;
     if (!codigo) return;
+    pushUndoState('guardar configuración de cliente');
     const client = APP.planificacion.find(item => item.codigo === codigo) || APP.clientes.find(item => item.codigo === codigo) || {};
     const rutaAsignada = text(document.getElementById('cfgRuta').value);
     const diasRecepcion = text(document.getElementById('cfgDias').value).split(',').map(part => parseInt(part, 10)).filter(Boolean);
@@ -2763,6 +2990,7 @@
 
   window.limpiarConfigCliente = function limpiarConfigClienteV2() {
     if (!APP.configClienteSel) return;
+    pushUndoState('limpiar configuración de cliente');
     delete APP.clienteConfig[APP.configClienteSel];
     renderConfigClientes();
     scheduleAutoSave();
@@ -2773,6 +3001,7 @@
       alert('Importa una planificación semanal antes de recalcular.');
       return;
     }
+    pushUndoState('recalcular plan con configuración');
     APP.lineItems = APP.planLineItems.map(item => ({ ...item }));
     schedulePlanItems(APP.lineItems, APP.planFecha || fechaToStr(new Date()));
     rebuildDerivedState();
@@ -2818,6 +3047,7 @@
         let created = 0;
         let updated = 0;
         const errors = [];
+        pushUndoState('importar configuración de clientes');
         rows.forEach((row, index) => {
           const codigo = text(pickField(row, ['Código cliente', 'Codigo cliente', 'Código', 'Codigo']));
           if (!codigo) {
@@ -2989,6 +3219,7 @@
     const role = text(input && input.value);
     if (!role) return alert('Escribe el nombre del nuevo rol.');
     if (APP.rolePermissions[role]) return alert('Ese rol ya existe.');
+    pushUndoState('crear rol');
     APP.rolePermissions[role] = buildPermissions('read_only', role);
     APP.selectedRolePermission = role;
     renderConfigAuxSections();
@@ -2998,6 +3229,7 @@
   window.guardarPermisosRol = function guardarPermisosRol() {
     const role = text((document.getElementById('rolePermissionSelect') || {}).value) || APP.selectedRolePermission;
     if (!role) return;
+    pushUndoState('guardar permisos de rol');
     const perms = {};
     Object.keys(MODULE_LABELS).forEach(module => {
       perms[module] = { ver: false, editar: false, importar: false };
@@ -3049,6 +3281,7 @@
     const routeName = text(nameInput && nameInput.value);
     if (!routeName) return alert('Escribe el nombre de la ruta.');
     if (routeExistsByName(routeName)) return alert('Esa ruta ya existe en Configuración.');
+    pushUndoState('agregar ruta');
     APP.routeConfigs.push({
       id: 'route-' + normKey(routeName),
       nombre: routeName,
@@ -3067,6 +3300,7 @@
   };
 
   window.guardarConfigRutas = function guardarConfigRutas() {
+    pushUndoState('guardar configuración de rutas');
     APP.routeConfigs = APP.routeConfigs.map((route, index) => {
       const nombre = text((document.getElementById('routeName_' + index) || {}).value) || route.nombre || route.zona;
       const diasOperacion = [...document.querySelectorAll('.routeDay_' + index + ':checked')].map(input => parseInt(input.value, 10)).filter(Boolean);
@@ -3096,6 +3330,7 @@
   };
 
   window.guardarCostesOperativos = function guardarCostesOperativos() {
+    pushUndoState('guardar costes operativos');
     APP.warehouseSettings.costoSolicitud = num(document.getElementById('warehouseCostInput').value);
     registerSolicitudesSnapshot(APP.importFiles.solicitudes);
     scheduleAutoSave();
@@ -3200,6 +3435,7 @@
       alert('No se pudo crear el acceso con esa contraseña: ' + (error.message || error));
       return;
     }
+    pushUndoState('crear usuario');
     APP.userProfiles.push({
       userId: authUserId || 'user-' + Date.now(),
       authUserId,
@@ -3218,6 +3454,7 @@
   window.eliminarUsuarioPerfil = function eliminarUsuarioPerfil(index) {
     const profile = APP.userProfiles[index];
     if (!profile || profile.rol === 'Admin') return;
+    pushUndoState('eliminar usuario');
     APP.userProfiles.splice(index, 1);
     renderConfigAuxSections();
     scheduleAutoSave();
@@ -3228,14 +3465,16 @@
     items.forEach(item => {
       const fecha = item.fechaPlanificada || '';
       const routeName = item.rutaNombre || item.zona || inferRouteName(item.clienteNombre, item.clienteId);
+      const camion = item.camionAsignado || chooseTruckForItem(item);
       if (!fecha || !routeName) return;
-      const key = [fecha, routeName].join('|');
-      if (!grouped.has(key)) grouped.set(key, { fecha, rutaNombre: routeName, items: [] });
+      const key = [fecha, routeName, camion].join('|');
+      if (!grouped.has(key)) grouped.set(key, { fecha, rutaNombre: routeName, camion, items: [] });
       grouped.get(key).items.push(item);
     });
     return [...grouped.values()].map(row => {
       const routeCfg = getRouteConfigByName(row.rutaNombre);
       const summary = calcProgressSummary(row.items);
+      const evidence = getRouteEvidenceFromItems(row.items);
       const importePlanificado = row.items.reduce((sum, item) => sum + getOperationalAmount(item), 0);
       const importeReal = row.items.reduce((sum, item) => {
         const requested = item.cantidadSolicitada || 0;
@@ -3247,17 +3486,33 @@
         fecha: row.fecha,
         rutaId: (routeCfg && routeCfg.id) || row.rutaNombre,
         rutaNombre: row.rutaNombre,
+        camion: row.camion,
         coste,
         costePendienteConfig: !routeCfg || coste <= 0,
         costeAlerta: !routeCfg ? 'Ruta no existe en Configuración' : (coste <= 0 ? 'Coste de ruta en cero' : ''),
         fuenteControlDiario: APP.importFiles.control || '',
         pedidosAsociados: uniqueTexts(row.items.map(item => item.pedidoCliente)),
         cumplimiento: summary.pct,
+        precintoDespacho: evidence.precintoDespacho,
+        comentarioRuta: evidence.comentarioRuta,
+        fotoCamionAdjunta: !!evidence.fotoCamion,
+        fotoCamionNombre: evidence.fotoCamionNombre,
         importePlanificado,
         importeReal,
         diferencia: importePlanificado - importeReal
       };
     });
+  }
+
+  function getRouteEvidenceFromItems(items) {
+    const first = (items || []).find(item => item.precintoDespacho || item.comentarioRuta || item.fotoCamion || item.fotoCamionNombre) || {};
+    return {
+      precintoDespacho: first.precintoDespacho || '',
+      comentarioRuta: first.comentarioRuta || '',
+      fotoCamion: first.fotoCamion || '',
+      fotoCamionNombre: first.fotoCamionNombre || '',
+      fechaCierreRuta: first.fechaCierreRuta || ''
+    };
   }
 
   function normalizeRouteCostRow(row) {
@@ -3268,6 +3523,7 @@
     return {
       ...row,
       rutaId: (routeCfg && routeCfg.id) || row.rutaId || row.rutaNombre || '',
+      camion: row.camion || '',
       coste,
       costePendienteConfig: !routeCfg || coste <= 0,
       costeAlerta: !routeCfg ? 'Ruta no existe en Configuración' : (coste <= 0 ? 'Coste de ruta en cero' : ''),
@@ -3279,9 +3535,14 @@
 
   function refreshRouteCostHistoryFromSchedule() {
     const rows = buildRouteCostRowsFromSchedule(APP.lineItems || []);
-    const keys = new Set(rows.map(row => [row.fecha, row.rutaNombre].join('|')));
+    const keys = new Set(rows.map(row => [row.fecha, row.rutaNombre, row.camion || ''].join('|')));
+    const routeDateKeys = new Set(rows.map(row => [row.fecha, row.rutaNombre].join('|')));
     APP.routeCostHistory = [
-      ...(APP.routeCostHistory || []).map(normalizeRouteCostRow).filter(row => !keys.has([row.fecha, row.rutaNombre].join('|'))),
+      ...(APP.routeCostHistory || []).map(normalizeRouteCostRow).filter(row => {
+        const exactKey = [row.fecha, row.rutaNombre, row.camion || ''].join('|');
+        const legacyKey = [row.fecha, row.rutaNombre].join('|');
+        return !keys.has(exactKey) && !routeDateKeys.has(legacyKey);
+      }),
       ...rows
     ];
     return rows;
@@ -3389,13 +3650,17 @@
         <div class="card-title">Gasto teórico / real de rutas</div>
         <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:10px;">Planificado usa el monto operativo: confirmado no entregado + entregado no facturado. Real estima la porción entregada usando ese mismo monto y el avance facturado por línea.</div>
         ${routeHistory.length ? `<div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Fecha</th><th>Ruta</th><th>Coste</th><th>Estado coste</th><th>Cumplimiento</th><th>Planificado</th><th>Real</th><th>Diferencia</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Ruta</th><th>Camión</th><th>Coste</th><th>Estado coste</th><th>Cumplimiento</th><th>Precinto</th><th>Comentario</th><th>Foto</th><th>Planificado</th><th>Real</th><th>Diferencia</th></tr></thead>
           <tbody>${routeHistory.map(row => `<tr>
             <td>${row.fecha}</td>
             <td>${row.rutaNombre}</td>
+            <td>${getTruckLabel(row.camion)}</td>
             <td>${formatMonto(row.coste)}</td>
             <td>${row.costePendienteConfig ? `<span class="badge badge-warn">${row.costeAlerta}</span>` : '<span class="badge badge-ok">Configurado</span>'}</td>
             <td>${row.cumplimiento}%</td>
+            <td>${row.precintoDespacho || '—'}</td>
+            <td>${row.comentarioRuta || '—'}</td>
+            <td>${row.fotoCamionAdjunta ? (row.fotoCamionNombre || 'Adjunta') : '—'}</td>
             <td>${formatMonto(row.importePlanificado)}</td>
             <td>${formatMonto(row.importeReal)}</td>
             <td>${formatMonto(row.diferencia)}</td>
@@ -3429,7 +3694,20 @@
 
   window.exportarReporteExcel = function exportarReporteExcelV2() {
     const wb = XLSX.utils.book_new();
-    const wsRoutes = XLSX.utils.json_to_sheet(APP.routeCostHistory);
+    const wsRoutes = XLSX.utils.json_to_sheet((APP.routeCostHistory || []).map(row => ({
+      Fecha: row.fecha,
+      Ruta: row.rutaNombre,
+      Camion: getTruckLabel(row.camion),
+      Coste: row.coste,
+      EstadoCoste: row.costeAlerta || 'Configurado',
+      Cumplimiento: row.cumplimiento,
+      Precinto: row.precintoDespacho || '',
+      ComentarioRuta: row.comentarioRuta || '',
+      FotoCamion: row.fotoCamionAdjunta ? (row.fotoCamionNombre || 'Adjunta') : '',
+      Planificado: row.importePlanificado,
+      Real: row.importeReal,
+      Diferencia: row.diferencia
+    })));
     const wsWarehouse = XLSX.utils.json_to_sheet(APP.solicitudesHistory);
     XLSX.utils.book_append_sheet(wb, wsRoutes, 'Rutas');
     XLSX.utils.book_append_sheet(wb, wsWarehouse, 'Almacen');
@@ -3457,7 +3735,10 @@
         'Líneas': group.items.length,
         'Solicitada': group.cantidadSolicitada,
         'Facturada': group.cantidadFacturada,
-        'Pendiente': group.cantidadPendiente
+        'Pendiente': group.cantidadPendiente,
+        'Precinto': group.precintoDespacho || '',
+        'Comentario cierre': group.comentarioRuta || '',
+        'Foto camión': group.fotoCamionNombre || (group.fotoCamion ? 'Adjunta' : '')
       }));
       if (!rows.length) return;
       summaryRows.push({
@@ -4037,6 +4318,7 @@
     button.className = 'btn btn-outline btn-sm';
     const syncButton = () => { button.textContent = APP.camionExtraEnabled ? 'Quitar camión adicional' : 'Agregar camión adicional'; };
     button.onclick = function () {
+      pushUndoState(APP.camionExtraEnabled ? 'quitar camión adicional' : 'agregar camión adicional');
       APP.camionExtraEnabled = !APP.camionExtraEnabled;
       if (!APP.camionExtraEnabled) {
         APP.lineItems.forEach(item => {
@@ -4212,11 +4494,14 @@
     style.textContent = `
       .form-row { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
       .form-control { padding:8px 10px; border:1px solid var(--border); border-radius:8px; }
+      #undoStateBtn { border:1px solid var(--border); background:#fff; color:var(--primary); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:800; cursor:pointer; }
+      #undoStateBtn:disabled { opacity:.45; cursor:not-allowed; }
       .queue-card { border:1px solid var(--border); border-radius:10px; padding:12px; background:#fff; margin-bottom:10px; }
       .queue-route-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
       .queue-route-header .btn { background:rgba(255,255,255,0.92); color:var(--primary); border-color:rgba(255,255,255,0.7); }
       .queue-card-title { font-weight:700; color:var(--primary); font-size:13px; }
       .queue-card-meta { font-size:11px; color:var(--muted); }
+      .route-evidence-line { font-size:10px; color:#166534; font-weight:800; margin-top:5px; overflow-wrap:anywhere; }
       .badge-primary { background: var(--primary); color: #fff; }
       .badge-outline { background: #fff; color: var(--muted); border: 1px solid var(--border); }
       .config-help-note { color:var(--muted); font-size:12px; line-height:1.45; border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#F8FAFC; }
@@ -4625,6 +4910,7 @@
     initRouteFilterOptions();
     updateSolicitudesImportStatus();
     actualizarEstadoBanner();
+    updateUndoButton();
   }
 
   window.addEventListener('DOMContentLoaded', function () {

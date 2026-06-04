@@ -755,6 +755,7 @@ body {
   <span class="logo">→</span>
   <h1>TMS - ALVAREZ</h1>
   <button id="saveStateBtn" onclick="guardarEnSupabase()">Guardar cambios</button>
+  <button id="undoStateBtn" onclick="revertirUltimoCambio()" disabled>Revertir último cambio</button>
   <span id="sapHeaderInfo" style="display:none;"></span>
   <div id="userBadge">
     <span id="userEmail" style="opacity:0.8;"></span>
@@ -1307,12 +1308,22 @@ body {
 <!-- MODAL: NOTA / INCIDENCIA -->
 <div id="notaModal" class="modal-overlay">
   <div class="modal-box">
-    <div class="modal-title">📝 Nota / Incidencia</div>
+    <div class="modal-title">📝 Nota / Evidencia</div>
     <div id="notaModalNombre" style="font-weight:600;margin-bottom:12px;font-size:14px;"></div>
     <label class="modal-label">Nota</label>
     <textarea id="notaInput" class="nota-input" placeholder="Escribe una nota..."></textarea>
     <label class="modal-label" style="margin-top:8px;">Incidencia</label>
     <textarea id="incidenciaInput" class="nota-input" placeholder="Describe la incidencia (si aplica)..."></textarea>
+    <label class="modal-label" style="margin-top:8px;">Número de precinto</label>
+    <input id="precintoInput" class="form-control" placeholder="Precinto usado en despacho">
+    <label class="modal-label" style="margin-top:8px;">Comentario de cierre</label>
+    <textarea id="comentarioRutaInput" class="nota-input" placeholder="Comentario operativo del despacho..."></textarea>
+    <label class="modal-label" style="margin-top:8px;">Foto del camión</label>
+    <input id="fotoCamionInput" class="form-control" type="file" accept="image/*" onchange="previsualizarFotoCamion(this.files[0])">
+    <div id="fotoCamionPreviewWrap" style="display:none;margin-top:8px;">
+      <img id="fotoCamionPreview" alt="Foto del camión" style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border);object-fit:cover;">
+      <div id="fotoCamionNombre" style="font-size:11px;color:var(--muted);margin-top:4px;"></div>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-outline" onclick="document.getElementById('notaModal').classList.remove('show')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarNota()">Guardar</button>
