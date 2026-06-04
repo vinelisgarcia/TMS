@@ -162,6 +162,28 @@
     return camion || 'Sin camión';
   }
 
+  function formatLoadQty(value) {
+    const qty = num(value);
+    return new Intl.NumberFormat('es-DO', {
+      maximumFractionDigits: qty % 1 === 0 ? 0 : 2
+    }).format(qty);
+  }
+
+  function getTruckLoadSummary(groups) {
+    const source = groups || [];
+    const pedidos = source.reduce((sum, group) => sum + num(group.cantidadSolicitada), 0);
+    const solicitudes = source.reduce((sum, group) => sum + num(group.cargaSolicitudes), 0);
+    const montoSolicitudes = source.reduce((sum, group) => sum + num(group.montoSolicitudes), 0);
+    const rutas = uniqueTexts(source.map(group => group.rutaNombre || group.zona));
+    return {
+      pedidos,
+      solicitudes,
+      montoSolicitudes,
+      rutas,
+      total: pedidos + solicitudes
+    };
+  }
+
   function getTruckBadgeClass(camion) {
     if (camion === 'CAMION 1') return 'badge-c1';
     if (camion === 'CAMION 2') return 'badge-c2';
@@ -1233,6 +1255,9 @@
           cantidadSolicitada: 0,
           cantidadFacturada: 0,
           cantidadPendiente: 0,
+          cargaSolicitudes: 0,
+          cargaTotal: 0,
+          montoSolicitudes: 0,
           totalPendiente: 0,
           items: [],
           cumplida: false,
@@ -1258,6 +1283,11 @@
       group.cantidadSolicitada += item.cantidadSolicitada || 0;
       group.cantidadFacturada += item.cantidadFacturada || 0;
       group.cantidadPendiente += item.cantidadPendiente || 0;
+      group.cargaSolicitudes += item.cantidadAlmacenSolicitada || 0;
+      group.cargaTotal = group.cantidadSolicitada + group.cargaSolicitudes;
+      if (item.solicitudAlmacen || item.cantidadAlmacenSolicitada) {
+        group.montoSolicitudes += getOperationalAmount(item);
+      }
       group.totalPendiente += getOperationalAmount(item);
       group.cumplida = group.items.every(current => deriveItemStatus(current) === 'entregado');
       group.nota = group.nota || item.observaciones || '';
@@ -1514,11 +1544,16 @@
             return [group.nombre, group.codigo, group.pedidoCliente, group.zona]
               .some(value => text(value).toLowerCase().includes(search));
           });
+          const load = getTruckLoadSummary(groups);
+          const loadText = `Carga: ${formatLoadQty(load.total)} uds${load.solicitudes ? ` · Sol: ${formatLoadQty(load.solicitudes)} uds · Monto sol: ${formatMonto(load.montoSolicitudes)}` : ''}`;
           html.push(`<div class="cal-carril"
             ondragover="event.preventDefault();this.classList.add('drag-over')"
             ondragleave="this.classList.remove('drag-over')"
             ondrop="onDropCal(event,'${fecha}','${camion}',this)">
-            <span class="cal-carril-header ${truckClass}">${getTruckLabel(camion)} ${groups.length ? '(' + groups.length + ')' : ''}</span>`);
+            <span class="cal-carril-header ${truckClass}">
+              <span>${getTruckLabel(camion)} ${groups.length ? '(' + groups.length + ')' : ''}${load.rutas.length ? ` · ${load.rutas.join(', ')}` : ''}</span>
+              <small>${loadText}</small>
+            </span>`);
 
           groups.forEach(group => {
             const realIdx = (dayRoutes[camion] || []).indexOf(group);
@@ -1543,7 +1578,7 @@
               </div>
               <div class="cal-card-name">${group.nombre}</div>
               <div class="queue-card-meta">${group.codigo} · ${group.cantidadPedidos || 1} pedidos: ${group.pedidoCliente}</div>
-              <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · ${formatMonto(group.totalPendiente)}</div>
+              <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · Carga ${formatLoadQty(group.cargaTotal)} uds${group.montoSolicitudes ? ` · Monto sol ${formatMonto(group.montoSolicitudes)}` : ''} · ${formatMonto(group.totalPendiente)}</div>
               ${evidenceHtml}
               ${alertHtml}
               <div class="cal-card-actions">
@@ -4493,10 +4528,10 @@
     style.id = 'tmsV2Styles';
     style.textContent = `
       .form-row { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
-      .form-control { padding:8px 10px; border:1px solid var(--border); border-radius:8px; }
-      #undoStateBtn { border:1px solid var(--border); background:#fff; color:var(--primary); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:800; cursor:pointer; }
+      .form-control { padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface, #fff); }
+      #undoStateBtn { border:1px solid rgba(255,255,255,0.32); background:rgba(255,255,255,0.14); color:#fff; border-radius:8px; padding:8px 12px; font-size:12px; font-weight:800; cursor:pointer; }
       #undoStateBtn:disabled { opacity:.45; cursor:not-allowed; }
-      .queue-card { border:1px solid var(--border); border-radius:10px; padding:12px; background:#fff; margin-bottom:10px; }
+      .queue-card { border:1px solid var(--border); border-radius:8px; padding:12px; background:var(--surface, #fff); margin-bottom:10px; box-shadow:var(--shadow-sm, 0 1px 2px rgba(15,23,42,0.05)); }
       .queue-route-header { display:flex; align-items:center; justify-content:space-between; gap:8px; }
       .queue-route-header .btn { background:rgba(255,255,255,0.92); color:var(--primary); border-color:rgba(255,255,255,0.7); }
       .queue-card-title { font-weight:700; color:var(--primary); font-size:13px; }
@@ -4504,7 +4539,7 @@
       .route-evidence-line { font-size:10px; color:#166534; font-weight:800; margin-top:5px; overflow-wrap:anywhere; }
       .badge-primary { background: var(--primary); color: #fff; }
       .badge-outline { background: #fff; color: var(--muted); border: 1px solid var(--border); }
-      .config-help-note { color:var(--muted); font-size:12px; line-height:1.45; border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#F8FAFC; }
+      .config-help-note { color:var(--muted); font-size:12px; line-height:1.45; border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--surface-2, #F8FAFC); }
       .route-add-form { display:grid; grid-template-columns:minmax(180px, 1fr) minmax(110px, 160px) auto; gap:8px; align-items:center; margin-bottom:12px; }
       .role-permission-toolbar { display:grid; grid-template-columns:minmax(180px, 240px) minmax(180px, 1fr) auto auto; gap:10px; align-items:end; margin-bottom:12px; }
       .role-permission-table th,
@@ -4513,7 +4548,7 @@
       .role-permission-table td:first-child { text-align:left; }
       .role-permission-table input[type="checkbox"] { width:16px; height:16px; }
       .permission-guide { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px; margin-top:12px; }
-      .permission-guide-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#F8FAFC; }
+      .permission-guide-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--surface-2, #F8FAFC); }
       .permission-guide-item strong { display:block; font-size:13px; color:var(--text); }
       .permission-guide-item span { display:block; font-size:11px; font-weight:800; color:var(--primary); text-transform:uppercase; margin-top:2px; }
       .permission-guide-item p { color:var(--muted); font-size:12px; line-height:1.35; margin-top:6px; }
@@ -4531,13 +4566,13 @@
       .import-table-mode > #sapEstadoBanner,
       .import-table-mode > .card:not(#importExcelTableCard) { display:none !important; }
       .import-table-mode > #importExcelTableCard { display:block !important; width:100%; }
-      .import-excel-card { border:1px solid var(--border) !important; box-shadow:none; padding:0; overflow:hidden; }
-      .import-excel-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid var(--border); background:#fff; }
+      .import-excel-card { border:1px solid var(--border) !important; box-shadow:var(--shadow-sm, 0 1px 2px rgba(15,23,42,0.05)); padding:0; overflow:hidden; background:var(--surface, #fff); }
+      .import-excel-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid var(--border); background:var(--surface, #fff); }
       .import-excel-subtitle { font-size:12px; color:var(--muted); margin-top:2px; }
-      .import-excel-meta { font-size:11px; font-weight:800; color:var(--primary); border:1px solid var(--border); border-radius:999px; padding:5px 10px; background:#F8FAFC; white-space:nowrap; }
+      .import-excel-meta { font-size:11px; font-weight:800; color:var(--primary); border:1px solid var(--border); border-radius:999px; padding:5px 10px; background:var(--surface-2, #F8FAFC); white-space:nowrap; }
       .import-excel-wrap { overflow-x:auto; }
       .import-excel-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:12px; }
-      .import-excel-table th { text-align:left; background:#F8FAFC; color:#334155; font-size:10px; letter-spacing:0; text-transform:uppercase; padding:9px 10px; border-bottom:1px solid var(--border); }
+      .import-excel-table th { text-align:left; background:var(--surface-2, #F8FAFC); color:#334155; font-size:10px; letter-spacing:0; text-transform:uppercase; padding:9px 10px; border-bottom:1px solid var(--border); }
       .import-excel-table th:nth-child(1), .import-excel-table td:nth-child(1) { width:28%; }
       .import-excel-table th:nth-child(2), .import-excel-table td:nth-child(2) { width:28%; }
       .import-excel-table th:nth-child(3), .import-excel-table td:nth-child(3) { width:28%; }
@@ -4553,7 +4588,7 @@
       .import-table-badge.info { color:#1D4ED8; background:#EFF6FF; border-color:#BFDBFE; }
       .import-table-actions { display:flex; gap:5px; flex-wrap:wrap; }
       .import-table-actions .btn, .import-excel-table td:nth-child(4) .btn { width:100%; justify-content:center; padding:6px 8px; font-size:11px; }
-      .import-excel-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 16px; background:#F8FAFC; border-top:1px solid var(--border); font-size:12px; color:var(--muted); flex-wrap:wrap; }
+      .import-excel-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 16px; background:var(--surface-2, #F8FAFC); border-top:1px solid var(--border); font-size:12px; color:var(--muted); flex-wrap:wrap; }
       .import-excel-foot span:first-child { color:#C2410C; font-weight:800; }
       @media (max-width: 900px) {
         .import-excel-header { align-items:flex-start; flex-direction:column; }
@@ -4570,12 +4605,12 @@
       .calendar-selection-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
       .calendar-month-label { font-size:13px; font-weight:700; color:var(--muted); margin-right:4px; align-self:center; }
       .month-filter { border-radius:12px; padding:8px 16px; font-size:13px; }
-      .cal-month-section { margin-bottom:18px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:#fff; }
+      .cal-month-section { margin-bottom:18px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface, #fff); box-shadow:var(--shadow-sm, 0 1px 2px rgba(15,23,42,0.05)); }
       .cal-week-title { background:var(--primary); color:#fff; font-size:14px; font-weight:800; padding:9px 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
       .cal-week-title span { font-size:12px; font-weight:700; opacity:.9; }
       .cal-month-section .cal-semana { margin:0; padding:0; gap:0; }
       .cal-month-section .cal-dia-col { border-right:1px solid var(--border); padding:0 6px 10px; }
-      .cal-month-section .cal-dia-header { background:var(--soft, #F8FAFC); color:var(--text); border-bottom:1px solid var(--border); padding:7px 6px; display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:34px; }
+      .cal-month-section .cal-dia-header { background:var(--surface-2, #F8FAFC); color:var(--text); border-bottom:1px solid var(--border); padding:7px 6px; display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:34px; }
       .cal-month-section .cal-dia-header strong { font-size:12px; }
       .cal-month-section .cal-dia-header small { font-size:10px; color:var(--muted); font-weight:600; }
       .cal-month-section .cal-dia-col:last-child { border-right:none; }
@@ -4641,7 +4676,7 @@
       }
       .cal-card-check input { accent-color: var(--primary); }
       .cal-card-selected {
-        background: linear-gradient(180deg, #fff, #eef4fb);
+        background: #EEF4FB;
         box-shadow: 0 0 0 2px rgba(27,79,114,0.16);
       }
       .commercial-toolbar {
@@ -4666,7 +4701,8 @@
         border:1px solid var(--border);
         border-radius:10px;
         overflow:hidden;
-        background:#fff;
+        background:var(--surface, #fff);
+        box-shadow:var(--shadow-sm, 0 1px 2px rgba(15,23,42,0.05));
       }
       .commercial-day-head {
         display:flex;
@@ -4681,14 +4717,14 @@
       }
       .commercial-day-head span { display:block; font-size:11px; font-weight:500; opacity:.86; margin-top:2px; }
       .commercial-client-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:10px; padding:10px; }
-      .commercial-client-card { border:1px solid var(--border); border-radius:8px; background:#fff; overflow:hidden; }
+      .commercial-client-card { border:1px solid var(--border); border-radius:8px; background:var(--surface, #fff); overflow:hidden; box-shadow:var(--shadow-sm, 0 1px 2px rgba(15,23,42,0.05)); }
       .commercial-client-head {
         display:flex;
         align-items:flex-start;
         justify-content:space-between;
         gap:10px;
         padding:10px 12px;
-        background:#F8FAFC;
+        background:var(--surface-2, #F8FAFC);
         border-bottom:1px solid var(--border);
         font-size:12px;
       }
@@ -4963,6 +4999,9 @@
         --soft:#F8FAFC;
         --header:#123F5D;
         --icon:#17212B;
+        --surface:#FFFFFF;
+        --surface-2:#F8FAFC;
+        --shadow-sm:0 1px 2px rgba(15,23,42,0.05);
       }
       body.theme-dark {
         --primary:#D7E7F5;
@@ -4977,6 +5016,9 @@
         --soft:#111820;
         --header:#101820;
         --icon:#F8FAFC;
+        --surface:#171E26;
+        --surface-2:#111820;
+        --shadow-sm:0 1px 2px rgba(0,0,0,0.22);
       }
       body.theme-brand {
         --primary:#161616;
@@ -4991,9 +5033,21 @@
         --soft:#FFF7D6;
         --header:#F4C900;
         --icon:#111111;
+        --surface:#FFFFFF;
+        --surface-2:#FFFDF3;
+        --shadow-sm:0 1px 2px rgba(85,70,0,0.08);
+      }
+      body.theme-light {
+        background:var(--bg);
+      }
+      body.theme-dark {
+        background:var(--bg);
+      }
+      body.theme-brand {
+        background:var(--bg);
       }
       body.theme-dark,
-      body.theme-dark #content { background:var(--bg); color:var(--text); }
+      body.theme-dark #content { color:var(--text); }
       body.theme-dark .card,
       body.theme-dark .stat-box,
       body.theme-dark .kpi-card,
@@ -5004,7 +5058,8 @@
       body.theme-dark .commercial-client-card,
       body.theme-dark .config-client-list,
       body.theme-dark .config-client-item,
-      body.theme-dark .import-excel-header { background:var(--card) !important; color:var(--text); border-color:var(--border) !important; }
+      body.theme-dark .import-excel-card,
+      body.theme-dark .import-excel-header { background:var(--surface) !important; color:var(--text); border-color:var(--border) !important; }
       body.theme-dark .search-input,
       body.theme-dark .form-control,
       body.theme-dark .nota-input,
@@ -5013,14 +5068,14 @@
       body.theme-dark textarea { background:#111820 !important; color:var(--text) !important; border-color:var(--border) !important; }
       body.theme-dark .data-table td,
       body.theme-dark .commercial-detail-table td,
-      body.theme-dark .import-excel-table td { background:var(--card); color:var(--text); border-color:var(--border); }
+      body.theme-dark .import-excel-table td { background:rgba(23,30,38,0.62); color:var(--text); border-color:var(--border); }
       body.theme-dark .data-table th,
       body.theme-dark .commercial-detail-table th,
       body.theme-dark .import-excel-table th,
       body.theme-dark .com-th { background:#222C36 !important; color:#F8FAFC !important; }
       body.theme-dark .cal-month-section,
       body.theme-dark .cal-dia-col,
-      body.theme-dark .cal-card { background:var(--card) !important; border-color:var(--border) !important; color:var(--text); }
+      body.theme-dark .cal-card { background:var(--surface) !important; border-color:var(--border) !important; color:var(--text); }
       body.theme-dark .cal-dia-header,
       body.theme-dark .commercial-day-head { background:#111820 !important; color:var(--text); border-color:var(--border); }
       body.theme-brand #appHeader { background:var(--header); color:#111; border-bottom:1px solid #D7B400; }
@@ -5036,16 +5091,15 @@
       body.theme-brand .kpi-val,
       body.theme-brand .card-title,
       body.theme-brand .view-title { color:#161616; }
-      body.theme-dark #appHeader,
-      body.theme-dark #sidebar { background:var(--header); color:var(--text); border-color:var(--border); }
+      body.theme-dark #appHeader { background:var(--header); color:var(--text); border-color:var(--border); }
+      body.theme-dark #sidebar { background:var(--surface); color:var(--text); border-color:var(--border); }
       body.theme-dark .nav-btn { color:var(--text); }
       body.theme-dark .nav-btn:hover { background:#1D2630; }
       body.theme-dark .nav-btn.active { background:#E7EDF3; color:#101820; }
       body.theme-dark .btn-outline { background:#111820; color:var(--text); border-color:var(--border); }
-      body.theme-light #appHeader,
-      body.theme-dark #appHeader { background:var(--header); }
+      body.theme-light #appHeader { background:var(--header); }
       body.theme-light #sidebar,
-      body.theme-brand #sidebar { background:#fff; }
+      body.theme-brand #sidebar { background:var(--surface); }
       .nav-icon {
         width:22px;
         display:inline-flex;
@@ -5067,7 +5121,7 @@
       .theme-settings-sub { color:var(--muted); font-size:12px; margin-top:-6px; }
       .theme-option-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; }
       .theme-option {
-        background:var(--card);
+        background:var(--surface);
         border:1px solid var(--border);
         color:var(--text);
         border-radius:10px;
@@ -5076,6 +5130,7 @@
         cursor:pointer;
         display:grid;
         gap:5px;
+        box-shadow:var(--shadow-sm);
       }
       .theme-option:hover, .theme-option.active { border-color:var(--primary); box-shadow:0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent); }
       .theme-option strong { font-size:13px; }
