@@ -37,6 +37,8 @@ body {
   overflow: hidden;
 }
 
+html { -webkit-text-size-adjust: 100%; }
+
 /* HEADER */
 #appHeader {
   background: var(--primary);
@@ -443,10 +445,190 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
-  #sidebar { width: 56px; }
+  body { height: auto; min-height: 100vh; overflow: auto; }
+  #appHeader {
+    height: auto;
+    min-height: 56px;
+    padding: 10px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  #appHeader .logo { font-size: 18px; }
+  #appHeader h1 {
+    font-size: 16px;
+    flex: 1 1 auto;
+    min-width: 150px;
+  }
+  #saveStateBtn,
+  #undoStateBtn,
+  #logoutBtn {
+    padding: 7px 9px;
+    font-size: 11px;
+    min-height: 34px;
+  }
+  #sapHeaderInfo {
+    order: 5;
+    flex: 1 1 100%;
+    margin-left: 0;
+    white-space: normal;
+    line-height: 1.35;
+  }
+  #userBadge {
+    margin-left: 0 !important;
+    gap: 6px !important;
+    max-width: 100%;
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+  #userEmail {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #mainLayout {
+    display: block;
+    overflow: visible;
+    padding-bottom: 74px;
+  }
+  #sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 64px;
+    z-index: 900;
+    flex-direction: row;
+    gap: 6px;
+    padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+    border-right: none;
+    border-top: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    box-shadow: 0 -8px 24px rgba(15,23,42,.08);
+  }
+  .nav-btn {
+    flex: 0 0 64px;
+    justify-content: center;
+    padding: 8px 6px;
+    min-height: 48px;
+  }
   .nav-btn span.nav-label { display: none; }
+  .nav-btn .nav-icon { font-size: 18px; }
+  #content { overflow: visible; }
+  .view { padding: 14px 10px; }
+  .view-title { font-size: 16px; margin-bottom: 12px; }
+  .card {
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .card-title { font-size: 14px; }
+  .view-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .view-toolbar > *,
+  .search-input,
+  .btn,
+  select,
+  input {
+    max-width: 100%;
+  }
+  .view-toolbar .btn,
+  .view-toolbar .search-input,
+  .view-toolbar select {
+    width: 100%;
+    justify-content: center;
+  }
   .rutas-grid { grid-template-columns: 1fr; }
-  .stats { grid-template-columns: 1fr 1fr; }
+  .stats,
+  .report-kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-box,
+  .kpi-card { padding: 12px; }
+  .stat-value,
+  .kpi-val { font-size: 18px; }
+  .table-wrap {
+    margin-left: -2px;
+    margin-right: -2px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .data-table { min-width: 680px; font-size: 12px; }
+  .data-table th,
+  .data-table td { padding: 8px 9px; }
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .modal-box {
+    width: 100%;
+    max-width: 100%;
+    max-height: 88vh;
+    overflow-y: auto;
+    border-radius: 14px 14px 0 0;
+    padding: 16px;
+  }
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--card);
+    padding-top: 10px;
+    margin-top: 12px;
+  }
+  .modal-actions .btn { flex: 1; justify-content: center; }
+}
+
+@media (max-width: 480px) {
+  .stats,
+  .report-kpi-grid { grid-template-columns: 1fr; }
+  #saveStateBtn,
+  #undoStateBtn { flex: 1 1 calc(50% - 6px); }
+  #appHeader h1 { min-width: 120px; }
+  .empty-state { padding: 36px 12px; }
+}
+
+@media (max-width: 768px) {
+  .prog-row {
+    grid-template-columns: 1fr !important;
+    gap: 6px;
+  }
+  .prog-bar-bg {
+    min-width: 0;
+    width: 100%;
+  }
+  #sapLoading [style*="width:300px"],
+  #ctrlLoading [style*="width:300px"] {
+    width: 100% !important;
+  }
+  #repSearch,
+  #dashSearch,
+  #calSearch,
+  #almSearch,
+  #configSearch,
+  #solSearch {
+    max-width: none !important;
+    width: 100%;
+  }
+  #calMesActualLabel {
+    min-width: 0 !important;
+    width: 100%;
+    text-align: left !important;
+  }
+  .config-layout,
+  .config-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .upload-options {
+    grid-template-columns: 1fr !important;
+  }
+  .stat-grid,
+  .sector-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* SUCCESS BANNER */

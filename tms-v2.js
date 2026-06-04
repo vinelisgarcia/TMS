@@ -4751,6 +4751,205 @@
         color:var(--muted);
         font-size:12px;
       }
+      @media (max-width: 760px) {
+        #calMesNav {
+          display:flex;
+          gap:6px;
+          overflow-x:auto;
+          flex-wrap:nowrap;
+          padding-bottom:6px;
+          -webkit-overflow-scrolling:touch;
+        }
+        #calMesNav .month-filter,
+        #calMesNav .filter-btn {
+          flex:0 0 auto;
+          white-space:nowrap;
+          padding:7px 10px;
+          font-size:12px;
+        }
+        .calendar-topbar {
+          align-items:stretch;
+          flex-direction:column;
+          gap:8px;
+          margin-left:0;
+        }
+        .calendar-selection-bar {
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:8px;
+        }
+        .calendar-selection-bar .badge {
+          grid-column:1 / -1;
+          text-align:center;
+          padding:6px 8px;
+        }
+        .calendar-selection-bar .btn {
+          width:100%;
+          justify-content:center;
+        }
+        .cal-month-section {
+          border-radius:8px;
+          overflow:hidden;
+          margin-bottom:14px;
+        }
+        .cal-week-title {
+          align-items:flex-start;
+          flex-direction:column;
+          gap:2px;
+          font-size:13px;
+        }
+        .cal-month-section .cal-semana {
+          display:grid !important;
+          grid-template-columns:1fr !important;
+        }
+        .cal-month-section .cal-dia-col {
+          border-right:none !important;
+          border-bottom:1px solid var(--border);
+          padding:0 8px 10px;
+        }
+        .cal-month-section .cal-dia-col:last-child { border-bottom:none; }
+        .cal-month-section .cal-dia-header {
+          position:sticky;
+          top:0;
+          z-index:2;
+          margin:0 -8px 8px;
+          padding:8px 10px;
+        }
+        .cal-carril {
+          margin-top:8px;
+          border:1px solid var(--border);
+          border-radius:8px;
+          padding:8px;
+          background:#fff;
+        }
+        .cal-carril-header {
+          display:block;
+          text-align:center;
+          margin:-8px -8px 8px;
+          border-radius:8px 8px 0 0;
+          padding:7px 8px;
+        }
+        .cal-card {
+          min-height:0;
+          padding:10px !important;
+          margin-top:8px;
+          border-radius:8px;
+        }
+        .cal-card-name {
+          font-size:13px;
+          line-height:1.25;
+          overflow-wrap:anywhere;
+        }
+        .cal-card-actions {
+          display:grid;
+          grid-template-columns:1fr 1fr 44px;
+          gap:6px;
+          align-items:center;
+        }
+        .cal-card-actions .btn {
+          width:100%;
+          justify-content:center;
+        }
+        .queue-route-header,
+        .import-excel-header,
+        .commercial-toolbar,
+        .commercial-quick,
+        .commercial-actions,
+        .theme-settings-head {
+          align-items:stretch;
+          flex-direction:column;
+        }
+        .queue-route-header .btn,
+        .commercial-actions .btn,
+        .commercial-quick .filter-btn {
+          width:100%;
+          justify-content:center;
+        }
+        .queue-card {
+          border-radius:8px;
+          padding:10px;
+        }
+        .route-add-form,
+        .role-permission-toolbar,
+        .commercial-filter-grid {
+          grid-template-columns:1fr !important;
+        }
+        .data-table input.form-control,
+        .data-table select.form-control {
+          min-width:120px !important;
+        }
+        .role-permission-table {
+          min-width:520px;
+        }
+        .permission-chip {
+          white-space:normal;
+          overflow-wrap:anywhere;
+        }
+        .import-excel-table {
+          min-width:0;
+          table-layout:auto;
+        }
+        .import-excel-table thead { display:none; }
+        .import-excel-table,
+        .import-excel-table tbody,
+        .import-excel-table tr,
+        .import-excel-table td {
+          display:block;
+          width:100% !important;
+        }
+        .import-excel-table tr {
+          border-bottom:1px solid var(--border);
+          padding:8px 0;
+        }
+        .import-excel-table td {
+          border-bottom:none;
+          padding:7px 10px;
+        }
+        .import-excel-table td:nth-child(4) .btn,
+        .import-table-actions .btn {
+          width:100%;
+        }
+        .commercial-client-grid {
+          grid-template-columns:1fr;
+          padding:8px;
+        }
+        .commercial-day-head,
+        .commercial-client-head {
+          align-items:flex-start;
+          flex-direction:column;
+        }
+        .commercial-client-head > div:last-child {
+          text-align:left;
+          white-space:normal;
+        }
+        .commercial-table-wrap {
+          margin-left:-8px;
+          margin-right:-8px;
+          -webkit-overflow-scrolling:touch;
+        }
+        .commercial-detail-table {
+          min-width:680px;
+        }
+        .route-cost-alert-list {
+          grid-template-columns:1fr;
+        }
+        .theme-option-grid {
+          grid-template-columns:1fr !important;
+        }
+      }
+      @media (max-width: 420px) {
+        .calendar-selection-bar,
+        .cal-card-actions {
+          grid-template-columns:1fr;
+        }
+        .cal-card-actions span {
+          text-align:center;
+        }
+        .commercial-detail-table,
+        .data-table {
+          min-width:620px;
+        }
+      }
       body.theme-light {
         --primary:#123F5D;
         --secondary:#166534;
