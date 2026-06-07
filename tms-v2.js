@@ -21,6 +21,7 @@
     deliveryGroups: [],
     routeConfigs: APP.routeConfigs || [],
     routeCostHistory: APP.routeCostHistory || [],
+    controlHistory: APP.controlHistory || [],
     solicitudesHistory: APP.solicitudesHistory || [],
     solicitudesPlanAlmacen: APP.solicitudesPlanAlmacen || [],
     solicitudesControlAlmacen: APP.solicitudesControlAlmacen || [],
@@ -76,6 +77,7 @@
     calendario: 'Calendario',
     reportes: 'Reportes',
     comercial: 'Comercial',
+    rutas: 'Rutas',
     configuracion: 'Configuración',
     solicitudesAlmacen: 'Solicitudes almacén',
     almacen: 'Almacén'
@@ -174,11 +176,13 @@
     const pedidos = source.reduce((sum, group) => sum + num(group.cantidadSolicitada), 0);
     const solicitudes = source.reduce((sum, group) => sum + num(group.cargaSolicitudes), 0);
     const montoSolicitudes = source.reduce((sum, group) => sum + num(group.montoSolicitudes), 0);
+    const valorTransportado = source.reduce((sum, group) => sum + num(group.totalPendiente), 0);
     const rutas = uniqueTexts(source.map(group => group.rutaNombre || group.zona));
     return {
       pedidos,
       solicitudes,
       montoSolicitudes,
+      valorTransportado,
       rutas,
       total: pedidos + solicitudes
     };
@@ -369,6 +373,7 @@
       calendario: { ver: true, editar: true },
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: true },
+      rutas: { ver: true, editar: true },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -392,7 +397,13 @@
       APP.rolePermissions[role] = APP.rolePermissions[role] || defaults[role];
     });
     Object.keys(APP.rolePermissions).forEach(role => {
-      APP.rolePermissions[role] = normalizePermissions(APP.rolePermissions[role]);
+      const normalized = normalizePermissions(APP.rolePermissions[role]);
+      const defaultPerms = defaults[role] || {};
+      Object.keys(MODULE_LABELS).forEach(module => {
+        const current = APP.rolePermissions[role] && APP.rolePermissions[role][module];
+        if (!current && defaultPerms[module]) normalized[module] = safeClone(defaultPerms[module]);
+      });
+      APP.rolePermissions[role] = normalized;
     });
     APP.userProfiles.forEach(profile => {
       profile.permisosPorModulo = safeClone(APP.rolePermissions[profile.rol] || APP.rolePermissions['Solo lectura'] || defaults['Solo lectura']);
@@ -443,8 +454,8 @@
     ensureRolePermissions();
     APP.currentUserProfile =
       APP.userProfiles.find(profile => text(profile.email).toLowerCase() === fallbackEmail.toLowerCase()) ||
-      adminProfile ||
-      APP.userProfiles[0];
+      (userEmail ? null : adminProfile) ||
+      null;
   }
 
   function getSessionInfo() {
@@ -475,6 +486,7 @@
     'solicitudesCompare',
     'routeConfigs',
     'routeCostHistory',
+    'controlHistory',
     'solicitudesHistory',
     'warehouseSettings',
     'userProfiles',
@@ -534,6 +546,7 @@
       if (typeof window.actualizarDashboard === 'function') window.actualizarDashboard();
       renderCalendario();
       renderRutas();
+      renderRouteCatalog();
       renderComercial();
       renderConfigClientes();
       renderConfigAuxSections();
@@ -787,11 +800,81 @@
     }));
   }
 
+  function moduleFromViewId(viewId) {
+    return {
+      importar: 'importar',
+      dashboard: 'dashboard',
+      calendario: 'calendario',
+      comercial: 'comercial',
+      rutas: 'rutas',
+      configClientes: 'configuracion',
+      solicitudesAlmacen: 'solicitudesAlmacen',
+      almacen: 'almacen',
+      reportes: 'reportes'
+    }[viewId] || viewId;
+  }
+
   function hasPermission(moduleName, action) {
     const profile = APP.currentUserProfile;
-    if (!profile || profile.rol === 'Admin') return true;
-    const perms = getPermissionsForRole(profile.rol);
+    if (profile && profile.rol === 'Admin') return true;
+    const role = profile && profile.rol ? profile.rol : 'Solo lectura';
+    const perms = getPermissionsForRole(role);
     return !!(perms && perms[moduleName] && perms[moduleName][action]);
+  }
+
+  function getFirstAllowedView() {
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'solicitudesAlmacen', 'almacen', 'configClientes'];
+    return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || 'comercial';
+  }
+
+  function enforceCurrentViewPermission() {
+    const active = document.querySelector('.view.active');
+    const activeId = active && active.id;
+    if (!activeId || hasPermission(moduleFromViewId(activeId), 'ver')) return;
+    const nextView = getFirstAllowedView();
+    const nextBtn = document.getElementById('nav-' + nextView);
+    if (typeof window.cambiarVista === 'function') window.cambiarVista(nextView, nextBtn);
+  }
+
+  function applyPermissionUi() {
+    const navMap = {
+      importar: 'importar',
+      dashboard: 'dashboard',
+      calendario: 'calendario',
+      comercial: 'comercial',
+      rutas: 'rutas',
+      configClientes: 'configuracion',
+      solicitudesAlmacen: 'solicitudesAlmacen',
+      almacen: 'almacen'
+    };
+    Object.entries(navMap).forEach(([viewId, moduleName]) => {
+      const btn = document.getElementById('nav-' + viewId);
+      if (btn) btn.style.display = hasPermission(moduleName, 'ver') ? '' : 'none';
+    });
+    const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
+    document.body.classList.toggle('role-readonly', !hasPermission(activeModule, 'editar'));
+    const badge = document.getElementById('userEmail');
+    if (badge && APP.currentUserProfile && APP.currentUserProfile.rol) {
+      const email = text(APP.currentUserProfile.email || badge.textContent).split(' · ')[0];
+      badge.textContent = `${email} · ${APP.currentUserProfile.rol}`;
+    }
+    enforceCurrentViewPermission();
+  }
+
+  const originalCambiarVista = window.cambiarVista;
+  if (typeof originalCambiarVista === 'function' && !window.__tmsPermissionNavPatched) {
+    window.__tmsPermissionNavPatched = true;
+    window.cambiarVista = function cambiarVistaConPermisos(id, btn) {
+      const moduleName = moduleFromViewId(id);
+      if (!hasPermission(moduleName, 'ver')) {
+        alert('Tu rol no tiene acceso a esta vista.');
+        applyPermissionUi();
+        return;
+      }
+      originalCambiarVista(id, btn);
+      if (id === 'rutas') renderRouteCatalog();
+      applyPermissionUi();
+    };
   }
 
   function isHoliday(fechaStr) {
@@ -1165,12 +1248,14 @@
         lineItems: APP.lineItems,
         planLineItems: APP.planLineItems,
       controlLineItems: APP.controlLineItems,
+      controlHistory: APP.controlHistory,
       solicitudesAlmacen: APP.solicitudesAlmacen,
       solicitudesPlanAlmacen: APP.solicitudesPlanAlmacen,
       solicitudesControlAlmacen: APP.solicitudesControlAlmacen,
       solicitudesCompare: APP.solicitudesCompare,
       routeConfigs: APP.routeConfigs,
         routeCostHistory: APP.routeCostHistory,
+        controlHistory: APP.controlHistory,
         solicitudesHistory: APP.solicitudesHistory,
         warehouseSettings: APP.warehouseSettings,
         userProfiles: APP.userProfiles,
@@ -1197,6 +1282,7 @@
     Object.assign(APP, safeClone(payload));
     APP.planLineItems = APP.planLineItems || APP.lineItems.map(item => ({ ...item }));
     APP.controlLineItems = APP.controlLineItems || [];
+    APP.controlHistory = APP.controlHistory || [];
     APP.solicitudesPlanAlmacen = APP.solicitudesPlanAlmacen || [];
     APP.solicitudesControlAlmacen = APP.solicitudesControlAlmacen || [];
     APP.solicitudesAlmacen = APP.solicitudesAlmacen || APP.solicitudesPlanAlmacen;
@@ -1545,7 +1631,7 @@
               .some(value => text(value).toLowerCase().includes(search));
           });
           const load = getTruckLoadSummary(groups);
-          const loadText = `Carga: ${formatLoadQty(load.total)} uds${load.solicitudes ? ` · Sol: ${formatLoadQty(load.solicitudes)} uds · Monto sol: ${formatMonto(load.montoSolicitudes)}` : ''}`;
+          const loadText = `Carga: ${formatLoadQty(load.total)} uds · Valor transportado: ${formatMonto(load.valorTransportado)}${load.solicitudes ? ` · Sol: ${formatLoadQty(load.solicitudes)} uds · Valor sol: ${formatMonto(load.montoSolicitudes)}` : ''}`;
           html.push(`<div class="cal-carril"
             ondragover="event.preventDefault();this.classList.add('drag-over')"
             ondragleave="this.classList.remove('drag-over')"
@@ -1578,7 +1664,7 @@
               </div>
               <div class="cal-card-name">${group.nombre}</div>
               <div class="queue-card-meta">${group.codigo} · ${group.cantidadPedidos || 1} pedidos: ${group.pedidoCliente}</div>
-              <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · Carga ${formatLoadQty(group.cargaTotal)} uds${group.montoSolicitudes ? ` · Monto sol ${formatMonto(group.montoSolicitudes)}` : ''} · ${formatMonto(group.totalPendiente)}</div>
+              <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · Carga ${formatLoadQty(group.cargaTotal)} uds · Valor ${formatMonto(group.totalPendiente)}${group.montoSolicitudes ? ` · Valor sol ${formatMonto(group.montoSolicitudes)}` : ''}</div>
               ${evidenceHtml}
               ${alertHtml}
               <div class="cal-card-actions">
@@ -1607,6 +1693,144 @@
     if (!APP.calMeses || !APP.calMeses.length) return;
     APP.calMesIdx = Math.max(0, Math.min(APP.calMeses.length - 1, (APP.calMesIdx || 0) + delta));
     renderCalendario();
+  };
+
+
+  function getRouteCatalogClients() {
+    const map = new Map();
+    const add = (codigo, nombre) => {
+      const code = text(codigo);
+      if (!code) return;
+      const current = map.get(code) || { codigo: code, nombre: text(nombre) || code };
+      if (!current.nombre || current.nombre === code) current.nombre = text(nombre) || current.nombre;
+      map.set(code, current);
+    };
+    Object.values(APP.clienteConfig || {}).forEach(cfg => add(cfg.codigoCliente || cfg.codigo, cfg.nombreCliente));
+    [...(APP.lineItems || []), ...(APP.planLineItems || []), ...(APP.controlLineItems || [])].forEach(item => add(item.clienteId, item.clienteNombre));
+    [...(APP.solicitudesAlmacen || []), ...(APP.solicitudesPlanAlmacen || []), ...(APP.solicitudesControlAlmacen || [])].forEach(item => add(item.codigo, item.cliente));
+    return [...map.values()].map(client => {
+      const cfg = getClienteConfigV2(client.codigo, client.nombre);
+      const route = text(cfg.rutaAsignada || inferRouteName(client.nombre, client.codigo));
+      const complete = !!(cfg.configuracionCompleta && cfg.rutaAsignada);
+      const orders = (APP.lineItems || []).filter(item => item.clienteId === client.codigo);
+      return {
+        ...client,
+        ruta: route || 'Pendiente de configurar',
+        cfg,
+        complete,
+        orders,
+        monto: orders.reduce((sum, item) => sum + getOperationalAmount(item), 0),
+        lineas: orders.length
+      };
+    }).sort((a, b) => text(a.ruta).localeCompare(text(b.ruta), 'es') || text(a.nombre).localeCompare(text(b.nombre), 'es'));
+  }
+
+  function routeCatalogGroups() {
+    const groups = {};
+    const routes = uniqueTexts([...(APP.routeConfigs || []).map(route => route.nombre || route.zona), 'Pendiente de configurar']);
+    routes.forEach(route => { groups[route || 'Pendiente de configurar'] = []; });
+    getRouteCatalogClients().forEach(client => {
+      const key = client.complete && client.cfg.rutaAsignada ? client.cfg.rutaAsignada : 'Pendiente de configurar';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(client);
+    });
+    return groups;
+  }
+
+  window.renderRouteCatalog = function renderRouteCatalog() {
+    const cont = document.getElementById('routeCatalogContainer');
+    if (!cont) return;
+    const summary = document.getElementById('routeCatalogSummary');
+    const q = text((document.getElementById('routeCatalogSearch') || {}).value).toLowerCase();
+    const groups = routeCatalogGroups();
+    const routeNames = Object.keys(groups).sort((a, b) => (a === 'Pendiente de configurar' ? -1 : b === 'Pendiente de configurar' ? 1 : a.localeCompare(b, 'es')));
+    const total = routeNames.reduce((sum, route) => sum + groups[route].length, 0);
+    const pending = (groups['Pendiente de configurar'] || []).length;
+    if (summary) summary.textContent = `${total} clientes · ${pending} pendientes`;
+    if (!total) {
+      cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🧭</div><p>Carga una planificación o configuración para ver clientes por ruta.</p></div>';
+      return;
+    }
+    cont.innerHTML = `<div class="route-catalog-board">${routeNames.map(routeName => {
+      const clients = groups[routeName].filter(client => {
+        if (!q) return true;
+        return [client.codigo, client.nombre, client.ruta, client.cfg.observaciones, client.cfg.condicionesEspeciales].some(value => text(value).toLowerCase().includes(q));
+      });
+      const isPending = routeName === 'Pendiente de configurar';
+      return `<section class="route-catalog-col ${isPending ? 'pending' : ''}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="moverClienteCatalogoRuta('${jsString(routeName)}')">
+        <div class="route-catalog-head"><strong>${routeName}</strong><span>${clients.length} clientes</span></div>
+        <div class="route-catalog-body">
+          ${clients.length ? clients.map(client => `<button type="button" class="route-client-card ${client.complete ? '' : 'pending'}" draggable="true" ondragstart="APP.routeCatalogDragCode='${jsString(client.codigo)}'" onclick="abrirDetalleRutaCliente('${jsString(client.codigo)}')">
+            <span><strong>${client.nombre}</strong><small>${client.codigo} · ${client.lineas} líneas · ${formatMonto(client.monto)}</small></span>
+            <em>${client.complete ? 'Config.' : 'Pendiente'}</em>
+          </button>`).join('') : '<div class="route-catalog-empty">Sin clientes.</div>'}
+        </div>
+      </section>`;
+    }).join('')}</div>`;
+  };
+
+  window.moverClienteCatalogoRuta = function moverClienteCatalogoRuta(routeName) {
+    const codigo = APP.routeCatalogDragCode;
+    APP.routeCatalogDragCode = '';
+    if (!codigo || routeName === 'Pendiente de configurar') return;
+    const client = getRouteCatalogClients().find(item => item.codigo === codigo);
+    if (!client) return;
+    pushUndoState('mover cliente de ruta');
+    const cfg = getClienteConfigV2(client.codigo, client.nombre);
+    cfg.codigoCliente = client.codigo;
+    cfg.nombreCliente = client.nombre;
+    cfg.rutaAsignada = routeName;
+    cfg.configuracionCompleta = !!(cfg.rutaAsignada && (cfg.diasRecepcion || []).length && text(cfg.horarioAlmacen));
+    APP.clienteConfig[client.codigo] = cfg;
+    ensureRouteConfig(routeName);
+    APP.lineItems.forEach(item => {
+      if (item.clienteId === client.codigo) {
+        item.rutaNombre = routeName;
+        item.zona = routeName;
+      }
+    });
+    rebuildDerivedState();
+    renderRouteCatalog();
+    renderConfigClientes();
+    renderCalendario();
+    renderRutas();
+    renderComercial();
+    scheduleAutoSave();
+  };
+
+  window.abrirDetalleRutaCliente = function abrirDetalleRutaCliente(codigo) {
+    const client = getRouteCatalogClients().find(item => item.codigo === codigo);
+    if (!client) return;
+    const cfg = client.cfg || {};
+    const lines = [
+      `Cliente: ${client.nombre}`,
+      `Código: ${client.codigo}`,
+      `Ruta asignada: ${cfg.rutaAsignada || 'Pendiente de configurar'}`,
+      `Días recepción: ${(cfg.diasRecepcion || []).join(', ') || 'No definidos'}`,
+      `Horario almacén: ${cfg.horarioAlmacen || 'No definido'}`,
+      `Contacto: ${cfg.contacto || 'No definido'}`,
+      `Observaciones: ${cfg.observaciones || 'Sin observaciones'}`,
+      `Condiciones especiales: ${cfg.condicionesEspeciales || 'Sin condiciones especiales'}`
+    ];
+    alert(lines.join('\n'));
+  };
+
+  window.exportarRouteCatalogExcel = function exportarRouteCatalogExcel() {
+    const rows = getRouteCatalogClients().map(client => ({
+      'Ruta': client.complete && client.cfg.rutaAsignada ? client.cfg.rutaAsignada : 'Pendiente de configurar',
+      'Código': client.codigo,
+      'Cliente': client.nombre,
+      'Configuración completa': client.complete ? 'Sí' : 'No',
+      'Días recepción': (client.cfg.diasRecepcion || []).join(', '),
+      'Horario almacén': client.cfg.horarioAlmacen || '',
+      'Contacto': client.cfg.contacto || '',
+      'Observaciones': client.cfg.observaciones || '',
+      'Condiciones especiales': client.cfg.condicionesEspeciales || ''
+    }));
+    if (!rows.length) return alert('No hay clientes para exportar.');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Rutas clientes');
+    XLSX.writeFile(wb, 'TMS_Rutas_Clientes.xlsx');
   };
 
   window.renderRutas = function renderRutasV2() {
@@ -2178,6 +2402,89 @@
     APP.routeCostHistory = dedupeBy(merged, row => [row.fecha, row.rutaNombre].join('|'));
   }
 
+
+  function registerControlHistorySnapshot(controlDate, fileName) {
+    const fecha = controlDate || APP.controlFecha || fechaToStr(new Date());
+    const items = APP.controlLineItems || [];
+    if (!fecha || !items.length) return;
+    const row = {
+      fecha,
+      archivo: fileName || APP.importFiles.control || '',
+      lineas: items.length,
+      clientes: new Set(items.map(item => item.clienteId).filter(Boolean)).size,
+      pedidos: new Set(items.map(item => [item.clienteId, item.pedidoCliente].join('|')).filter(Boolean)).size,
+      cantidadSolicitada: items.reduce((sum, item) => sum + num(item.cantidadSolicitada), 0),
+      cantidadFacturada: items.reduce((sum, item) => sum + num(item.cantidadFacturada), 0),
+      cantidadPendiente: items.reduce((sum, item) => sum + num(item.cantidadPendiente), 0),
+      confirmadoNoEntregado: items.reduce((sum, item) => sum + getConfirmedUndeliveredAmount(item), 0),
+      entregadoNoFacturado: items.reduce((sum, item) => sum + getDeliveredNotInvoicedAmount(item), 0),
+      montoOperativo: items.reduce((sum, item) => sum + getOperationalAmount(item), 0),
+      creadoEn: nowIso()
+    };
+    APP.controlHistory = [
+      ...(APP.controlHistory || []).filter(item => item.fecha !== fecha),
+      row
+    ].sort((a, b) => fechaToDate(a.fecha) - fechaToDate(b.fecha));
+  }
+
+  function initControlHistoryPanel() {
+    const grid = document.querySelector('#dashboard .dash-charts-grid');
+    if (!grid || document.getElementById('controlHistoryPanel')) return;
+    grid.insertAdjacentHTML('afterend', `
+      <div class="chart-card control-history-panel" id="controlHistoryPanel">
+        <div class="control-history-head">
+          <div>
+            <div class="chart-card-title">Histórico del control diario</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="exportarControlHistoryExcel()">Excel</button>
+        </div>
+        <div class="chart-canvas-wrap" style="height:220px;"><canvas id="chartControlHistory"></canvas></div>
+        <div id="controlHistoryTable"></div>
+      </div>
+    `);
+  }
+
+  function renderControlHistoryPanel() {
+    initControlHistoryPanel();
+    const table = document.getElementById('controlHistoryTable');
+    const canvas = document.getElementById('chartControlHistory');
+    const rows = [...(APP.controlHistory || [])].sort((a, b) => fechaToDate(a.fecha) - fechaToDate(b.fecha));
+    if (table) {
+      table.innerHTML = rows.length ? `<div class="table-wrap"><table class="data-table control-history-table">
+        <thead><tr><th>Fecha</th><th>Clientes</th><th>Líneas</th><th>Conf. no entr.</th><th>Ent. no fact.</th><th>Total</th></tr></thead>
+        <tbody>${rows.slice(-8).reverse().map(row => `<tr>
+          <td>${row.fecha}</td><td>${row.clientes}</td><td>${row.lineas}</td><td>${formatMonto(row.confirmadoNoEntregado)}</td><td>${formatMonto(row.entregadoNoFacturado)}</td><td><strong>${formatMonto(row.montoOperativo)}</strong></td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<div class="empty-state" style="padding:18px;"><p>Sube controles diarios para ver la evolución histórica.</p></div>';
+    }
+    if (!canvas || typeof Chart === 'undefined') return;
+    const labels = rows.map(row => row.fecha);
+    const datasets = [
+      { label: 'Total operativo', data: rows.map(row => num(row.montoOperativo)), borderColor: '#111827', backgroundColor: 'rgba(17,24,39,.08)', tension: .28, fill: true },
+      { label: 'Conf. no entregado', data: rows.map(row => num(row.confirmadoNoEntregado)), borderColor: '#00A676', backgroundColor: 'rgba(0,166,118,.08)', tension: .28 },
+      { label: 'Ent. no facturado', data: rows.map(row => num(row.entregadoNoFacturado)), borderColor: '#F5C542', backgroundColor: 'rgba(245,197,66,.12)', tension: .28 }
+    ];
+    if (APP.controlHistoryChart) APP.controlHistoryChart.destroy();
+    APP.controlHistoryChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: { y: { ticks: { callback: value => formatMonto(value).replace('RD$ ', '') } } }
+      }
+    });
+  }
+
+  window.exportarControlHistoryExcel = function exportarControlHistoryExcel() {
+    const rows = APP.controlHistory || [];
+    if (!rows.length) return alert('No hay histórico de control diario para exportar.');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Histórico control');
+    XLSX.writeFile(wb, 'TMS_Historico_Control_Diario.xlsx');
+  };
+
   function matchWarehouseToOrders() {
     const warehouseItems = [
       ...(APP.solicitudesPlanAlmacen || []),
@@ -2309,10 +2616,14 @@
 
         matchWarehouseToOrders();
         rebuildDerivedState();
-        if (!isPlan) registerRouteCostSnapshot(APP.controlFecha);
+        if (!isPlan) {
+          registerRouteCostSnapshot(APP.controlFecha);
+          registerControlHistorySnapshot(APP.controlFecha, file.name);
+        }
         actualizarDashboard();
         renderCalendario();
         renderRutas();
+        renderRouteCatalog();
         renderComercial();
         renderAlmacen();
         renderSolicitudesAlmacen();
@@ -2635,15 +2946,23 @@
     }).join('');
   };
 
+  function getCommercialWarehouseQty(item) {
+    const requested = num(item.cantidadAlmacenSolicitada);
+    const processed = num(item.cantidadAlmacenProcesada);
+    return requested > 0 ? requested : processed;
+  }
+
   function getCommercialLineAmount(item) {
-    return getOperationalAmount(item);
+    const orderQty = num(item.cantidadSolicitada);
+    const warehouseQty = getCommercialWarehouseQty(item);
+    const amount = getOperationalAmount(item);
+    if (warehouseQty <= 0) return 0;
+    if (orderQty > 0 && warehouseQty < orderQty) return amount * (warehouseQty / orderQty);
+    return amount;
   }
 
   function getCommercialPlannedQty(item) {
-    const pending = num(item.cantidadPendiente);
-    const requested = num(item.cantidadSolicitada);
-    if (pending > 0) return pending;
-    return requested;
+    return getCommercialWarehouseQty(item);
   }
 
   function getCommercialDateRange() {
@@ -2669,21 +2988,45 @@
   }
 
   function commercialRowsFromItems(items) {
-    return items.map(item => ({
-      fecha: item.fechaPlanificada || '',
-      cliente: item.clienteNombre || '',
-      codigoCliente: item.clienteId || '',
-      ruta: item.rutaNombre || item.zona || '',
-      camion: getTruckLabel(item.camionAsignado || ''),
-      pedido: item.pedidoCliente || '',
-      referencia: item.articulo || '',
-      descripcion: item.descripcionArticulo || '',
-      cantidadPedida: num(item.cantidadSolicitada),
-      cantidadPlanificada: getCommercialPlannedQty(item),
-      cantidadFacturada: num(item.cantidadFacturada),
-      monto: getCommercialLineAmount(item),
-      estado: deriveItemStatus(item)
-    }));
+    return items.map(item => {
+      const warehouseQty = getCommercialWarehouseQty(item);
+      const section = warehouseQty > 0 ? 'en_ruta' : 'no_considerado';
+      return {
+        fecha: item.fechaPlanificada || '',
+        cliente: item.clienteNombre || '',
+        codigoCliente: item.clienteId || '',
+        ruta: item.rutaNombre || item.zona || '',
+        camion: getTruckLabel(item.camionAsignado || ''),
+        pedido: item.pedidoCliente || '',
+        referencia: item.articulo || '',
+        descripcion: item.descripcionArticulo || '',
+        solicitud: item.solicitudAlmacen || '',
+        cantidadPedida: num(item.cantidadSolicitada),
+        cantidadPlanificada: warehouseQty,
+        cantidadFacturada: num(item.cantidadFacturada),
+        monto: getCommercialLineAmount(item),
+        estado: section === 'en_ruta' ? text(item.estadoAlmacen || deriveItemStatus(item)) : 'No considerado en ruta',
+        section
+      };
+    });
+  }
+
+  function renderCommercialRowsTable(rows, extraClass) {
+    return `<div class="commercial-table-wrap ${extraClass || ''}">
+      <table class="commercial-detail-table">
+        <thead><tr><th>Pedido</th><th>Solicitud</th><th>Ref.</th><th>Descripción</th><th>Pedida</th><th>En ruta</th><th>Fact.</th><th>Monto</th></tr></thead>
+        <tbody>${rows.map(row => `<tr>
+          <td>${row.pedido || '—'}</td>
+          <td>${row.solicitud || '—'}</td>
+          <td>${row.referencia || '—'}</td>
+          <td>${row.descripcion || '—'}</td>
+          <td>${row.cantidadPedida}</td>
+          <td>${row.cantidadPlanificada}</td>
+          <td>${row.cantidadFacturada}</td>
+          <td>${formatMonto(row.monto)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
   }
 
   function getCommercialFilteredItems() {
@@ -2702,7 +3045,9 @@
       if (startDate && itemDate < startDate) return false;
       if (endDate && itemDate > endDate) return false;
       if (routeFilter && !text(item.rutaNombre || item.zona || item.camionAsignado).toLowerCase().includes(routeFilter)) return false;
-      if (stateFilter && !text(deriveItemStatus(item)).toLowerCase().includes(stateFilter)) return false;
+      const warehouseQty = getCommercialWarehouseQty(item);
+      const commercialState = warehouseQty > 0 ? text(item.estadoAlmacen || deriveItemStatus(item)) : 'No considerado en ruta';
+      if (stateFilter && !commercialState.toLowerCase().includes(stateFilter)) return false;
       return true;
     }).sort((a, b) => fechaToDate(a.fechaPlanificada) - fechaToDate(b.fechaPlanificada) || text(a.clienteNombre).localeCompare(text(b.clienteNombre)) || text(a.pedidoCliente).localeCompare(text(b.pedidoCliente)));
   }
@@ -2749,22 +3094,26 @@
     if (!mount) return;
     const items = getCommercialFilteredItems();
     const rows = commercialRowsFromItems(items);
-    const totalMonto = rows.reduce((sum, row) => sum + row.monto, 0);
-    const totalPlanificada = rows.reduce((sum, row) => sum + row.cantidadPlanificada, 0);
-    const totalFacturada = rows.reduce((sum, row) => sum + row.cantidadFacturada, 0);
-    const pedidos = new Set(rows.map(row => row.pedido).filter(Boolean));
+    const deliveryRows = rows.filter(row => row.section === 'en_ruta');
+    const totalMonto = deliveryRows.reduce((sum, row) => sum + row.monto, 0);
+    const totalPlanificada = deliveryRows.reduce((sum, row) => sum + row.cantidadPlanificada, 0);
+    const totalFacturada = deliveryRows.reduce((sum, row) => sum + row.cantidadFacturada, 0);
+    const pedidos = new Set(deliveryRows.map(row => row.pedido).filter(Boolean));
 
     const ck1 = document.getElementById('ck1');
     const ck2 = document.getElementById('ck2');
     const ck3 = document.getElementById('ck3');
     const ck4 = document.getElementById('ck4');
-    if (ck1) ck1.textContent = new Set(rows.map(row => row.codigoCliente)).size;
+    if (ck1) ck1.textContent = new Set(deliveryRows.map(row => row.codigoCliente)).size;
     if (ck2) ck2.textContent = pedidos.size;
     if (ck3) ck3.textContent = totalPlanificada;
     if (ck4) ck4.textContent = formatMonto(totalMonto);
 
-    if (!rows.length) {
-      mount.innerHTML = '<div class="empty-state"><div class="empty-icon">👔</div><p>No hay entregas comerciales para los filtros aplicados.</p></div>';
+    if (!rows.length || !deliveryRows.length) {
+      const message = APP.solicitudesLoaded
+        ? 'No hay productos con cantidad solicitada al almacén para los filtros aplicados.'
+        : 'Carga primero las solicitudes realizadas al almacén para construir la vista comercial.';
+      mount.innerHTML = `<div class="empty-state"><div class="empty-icon">👔</div><p>${message}</p></div>`;
       return;
     }
 
@@ -2795,27 +3144,19 @@
             <div class="commercial-client-grid">
               ${Object.keys(byClient).sort().map(key => {
                 const clientRows = byClient[key];
-                const clientMonto = clientRows.reduce((sum, row) => sum + row.monto, 0);
-                const clientPedidos = new Set(clientRows.map(row => row.pedido).filter(Boolean)).size;
+                const routeRows = clientRows.filter(row => row.section === 'en_ruta');
+                const excludedRows = clientRows.filter(row => row.section !== 'en_ruta');
+                const visibleRows = routeRows.length ? routeRows : clientRows;
+                const clientMonto = routeRows.reduce((sum, row) => sum + row.monto, 0);
+                const clientPedidos = new Set(routeRows.map(row => row.pedido).filter(Boolean)).size;
                 return `<article class="commercial-client-card">
                   <div class="commercial-client-head">
-                    <div><strong>${clientRows[0].cliente}</strong><span>${clientRows[0].codigoCliente} · ${clientRows[0].ruta || 'Sin ruta'} · ${clientRows[0].camion || 'Sin camión'}</span></div>
+                    <div><strong>${visibleRows[0].cliente}</strong><span>${visibleRows[0].codigoCliente} · ${visibleRows[0].ruta || 'Sin ruta'} · ${visibleRows[0].camion || 'Sin camión'}</span></div>
                     <div>${clientPedidos} pedidos<br>${formatMonto(clientMonto)}</div>
                   </div>
-                  <div class="commercial-table-wrap">
-                    <table class="commercial-detail-table">
-                      <thead><tr><th>Pedido</th><th>Ref.</th><th>Descripción</th><th>Pedida</th><th>Plan.</th><th>Fact.</th><th>Monto</th></tr></thead>
-                      <tbody>${clientRows.map(row => `<tr>
-                        <td>${row.pedido || '—'}</td>
-                        <td>${row.referencia || '—'}</td>
-                        <td>${row.descripcion || '—'}</td>
-                        <td>${row.cantidadPedida}</td>
-                        <td>${row.cantidadPlanificada}</td>
-                        <td>${row.cantidadFacturada}</td>
-                        <td>${formatMonto(row.monto)}</td>
-                      </tr>`).join('')}</tbody>
-                    </table>
-                  </div>
+                  <div class="commercial-section-label">En ruta según solicitudes a almacén</div>
+                  ${renderCommercialRowsTable(routeRows, '')}
+                  ${excludedRows.length ? `<div class="commercial-section-label muted">No considerado en ruta</div>${renderCommercialRowsTable(excludedRows, 'commercial-muted-table')}` : ''}
                 </article>`;
               }).join('')}
             </div>
@@ -2836,10 +3177,12 @@
       'Referencia': row.referencia,
       'Descripción': row.descripcion,
       'Cantidad pedida': row.cantidadPedida,
+      'Solicitud almacén': row.solicitud,
       'Cantidad planificada entrega': row.cantidadPlanificada,
       'Cantidad facturada': row.cantidadFacturada,
       'Monto': row.monto,
-      'Estado': row.estado
+      'Estado': row.estado,
+      'Sección': row.section === 'en_ruta' ? 'En ruta' : 'No considerado en ruta'
     }));
     if (!data.length) {
       alert('No hay datos comerciales para exportar.');
@@ -3259,6 +3602,9 @@
     APP.selectedRolePermission = role;
     renderConfigAuxSections();
     scheduleAutoSave();
+    if (authNeedsConfirmation) {
+      alert('Usuario creado, pero Supabase puede requerir confirmación del correo antes de que la contraseña funcione.');
+    }
   };
 
   window.guardarPermisosRol = function guardarPermisosRol() {
@@ -3390,12 +3736,13 @@
     if (scope === 'commercial') {
       return {
         importar: { ver: false, editar: false, importar: false },
-        dashboard: { ver: true, editar: false },
-        calendario: { ver: true, editar: false },
-        reportes: { ver: true, editar: false },
-        comercial: { ver: true, editar: true },
+        dashboard: { ver: false, editar: false },
+        calendario: { ver: false, editar: false },
+        reportes: { ver: false, editar: false },
+        comercial: { ver: true, editar: false },
+        rutas: { ver: false, editar: false },
         configuracion: { ver: false, editar: false, importar: false },
-        solicitudesAlmacen: { ver: true, editar: false },
+        solicitudesAlmacen: { ver: false, editar: false },
         almacen: { ver: false, editar: false }
       };
     }
@@ -3406,6 +3753,7 @@
         calendario: { ver: true, editar: false },
         reportes: { ver: true, editar: false },
         comercial: { ver: false, editar: false },
+        rutas: { ver: false, editar: false },
         configuracion: { ver: false, editar: false, importar: false },
         solicitudesAlmacen: { ver: true, editar: true },
         almacen: { ver: true, editar: true }
@@ -3417,6 +3765,7 @@
       calendario: { ver: true, editar: true },
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: false },
+      rutas: { ver: true, editar: true },
       configuracion: { ver: false, editar: false, importar: false },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -3442,7 +3791,10 @@
       });
     }
     if (error) throw error;
-    return (data && data.user && data.user.id) || '';
+    return {
+      userId: (data && data.user && data.user.id) || '',
+      needsConfirmation: !!(data && data.user && !data.session)
+    };
   }
 
   window.crearUsuarioPerfil = async function crearUsuarioPerfil() {
@@ -3463,8 +3815,11 @@
       return;
     }
     let authUserId = '';
+    let authNeedsConfirmation = false;
     try {
-      authUserId = await createAuthUserForProfile(email, password, nombre, rol);
+      const authResult = await createAuthUserForProfile(email, password, nombre, rol);
+      authUserId = authResult.userId || '';
+      authNeedsConfirmation = !!authResult.needsConfirmation;
     } catch (error) {
       console.error('No se pudo crear el acceso del usuario:', error);
       alert('No se pudo crear el acceso con esa contraseña: ' + (error.message || error));
@@ -3478,12 +3833,16 @@
       email,
       rol,
       permisosPorModulo: getPermissionsForRole(rol),
-      passwordConfigured: true
+      passwordConfigured: !authNeedsConfirmation,
+      authNeedsConfirmation
     });
     const passwordInput = document.getElementById('userPasswordInput');
     if (passwordInput) passwordInput.value = '';
     renderConfigAuxSections();
     scheduleAutoSave();
+    if (authNeedsConfirmation) {
+      alert('Usuario creado, pero Supabase puede requerir confirmación del correo antes de que la contraseña funcione.');
+    }
   };
 
   window.eliminarUsuarioPerfil = function eliminarUsuarioPerfil(index) {
@@ -3830,6 +4189,7 @@
     if (confirmedEl) confirmedEl.textContent = formatMonto(confirmedTotal);
     if (pendingEl) pendingEl.textContent = formatMonto(deliveredPendingTotal);
     if (totalEl) totalEl.textContent = formatMonto(operationalTotal);
+    renderControlHistoryPanel();
     const topDiv = document.getElementById('dashTopClientes');
     if (topDiv) {
       const top10 = [...clients]
@@ -3862,11 +4222,20 @@
       ensureAdminProfile();
       if (!client || !user) {
         if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
+          APP.currentUserProfile = {
+            userId: 'local-readonly',
+            nombre: 'Usuario local',
+            email: (user && user.email) || '',
+            rol: 'Solo lectura',
+            permisosPorModulo: getPermissionsForRole('Solo lectura'),
+            activo: true
+          };
           updateSolicitudesImportStatus();
           actualizarEstadoBanner();
           actualizarDashboard();
           renderCalendario();
           renderRutas();
+          renderRouteCatalog();
           renderComercial();
           renderConfigClientes();
           renderSolicitudesAlmacen();
@@ -3951,6 +4320,7 @@
         APP.camionExtraEnabled = !!settingsMap.app_state.camionExtraEnabled;
         APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
         APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
+        APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
         APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
         applyVisualTheme(APP.visualTheme, true);
       }
@@ -4012,9 +4382,15 @@
       ensureAdminProfile();
       APP.currentUserProfile =
         APP.userProfiles.find(profile => text(profile.email).toLowerCase() === text(user.email).toLowerCase()) ||
-        APP.userProfiles.find(profile => profile.rol === 'Admin') ||
-        APP.userProfiles[0] ||
-        null;
+        {
+          userId: user.id || 'unprofiled-user',
+          authUserId: user.id || '',
+          nombre: user.email || 'Usuario sin perfil',
+          email: (user && user.email) || '',
+          rol: 'Solo lectura',
+          permisosPorModulo: getPermissionsForRole('Solo lectura'),
+          activo: true
+        };
 
       rebuildDerivedState();
       updateSolicitudesImportStatus();
@@ -4026,6 +4402,7 @@
       renderConfigClientes();
       renderSolicitudesAlmacen();
       renderAlmacen();
+      applyPermissionUi();
       saveLocalSnapshot();
     } catch (error) {
       console.warn('Fallo la carga remota, usando respaldo local si existe:', error);
@@ -4035,6 +4412,7 @@
         actualizarDashboard();
         renderCalendario();
         renderRutas();
+        renderRouteCatalog();
         renderComercial();
         renderConfigClientes();
         renderSolicitudesAlmacen();
@@ -4074,10 +4452,17 @@
       if (!client || !user) throw new Error('No hay sesión autenticada para guardar en Supabase.');
       ensureAdminProfile();
       APP.currentUserProfile =
-        APP.currentUserProfile ||
         APP.userProfiles.find(profile => text(profile.email).toLowerCase() === text(user.email).toLowerCase()) ||
-        APP.userProfiles.find(profile => profile.rol === 'Admin') ||
-        null;
+        APP.currentUserProfile ||
+        {
+          userId: user.id || 'unprofiled-user',
+          authUserId: user.id || '',
+          nombre: user.email || 'Usuario sin perfil',
+          email: (user && user.email) || '',
+          rol: 'Solo lectura',
+          permisosPorModulo: getPermissionsForRole('Solo lectura'),
+          activo: true
+        };
 
       const settingsRows = [
         { clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) },
@@ -4094,6 +4479,7 @@
             camionExtraEnabled: !!APP.camionExtraEnabled,
             feriadosRD: APP.feriadosRD || [],
             importFiles: APP.importFiles || {},
+            controlHistory: APP.controlHistory || [],
             visualTheme: APP.visualTheme || 'light'
           })
         }
@@ -4415,6 +4801,7 @@
           <option value="pendiente">Pendiente</option>
           <option value="parcial">Parcial</option>
           <option value="entregado">Entregado</option>
+          <option value="no considerado">No considerado</option>
         </select>
       </div>
       <input id="cfcol_fecha" type="hidden">
@@ -4676,8 +5063,8 @@
       }
       .cal-card-check input { accent-color: var(--primary); }
       .cal-card-selected {
-        background: #EEF4FB;
-        box-shadow: 0 0 0 2px rgba(27,79,114,0.16);
+        background: #FFF8D8;
+        box-shadow: 0 0 0 2px rgba(245,197,66,0.55);
       }
       .commercial-toolbar {
         display:flex;
@@ -4736,8 +5123,12 @@
       .commercial-detail-table th { background:#F8FAFC; color:#334155; text-align:left; padding:7px 8px; border-bottom:1px solid var(--border); font-size:10px; text-transform:uppercase; }
       .commercial-detail-table td { padding:7px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
       .commercial-detail-table tr:last-child td { border-bottom:none; }
-      .commercial-detail-table th:nth-child(3),
-      .commercial-detail-table td:nth-child(3) { min-width:260px; }
+      .commercial-detail-table th:nth-child(4),
+      .commercial-detail-table td:nth-child(4) { min-width:260px; }
+      .commercial-section-label { padding:8px 12px; font-size:11px; font-weight:800; text-transform:uppercase; color:#166534; background:#F0FDF4; border-bottom:1px solid var(--border); }
+      .commercial-section-label.muted { color:#6B7280; background:#F8FAFC; border-top:1px solid var(--border); }
+      .commercial-muted-table { opacity:.74; }
+      .commercial-muted-table .commercial-detail-table td { color:var(--muted); }
       .commercial-pdf-stage {
         position:fixed;
         left:-10000px;
@@ -4776,6 +5167,28 @@
         .commercial-client-head { align-items:flex-start; flex-direction:column; }
         .commercial-client-head > div:last-child { text-align:left; }
       }
+
+      .route-catalog-board { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; align-items:start; }
+      .route-catalog-col { border:1px solid var(--border); border-radius:8px; background:var(--surface, #fff); overflow:hidden; min-height:140px; box-shadow:var(--shadow-sm); }
+      .route-catalog-col.drag-over { box-shadow:0 0 0 2px rgba(0,166,118,.25); border-color:var(--secondary); }
+      .route-catalog-col.pending { border-color:#FDE68A; }
+      .route-catalog-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding:10px 12px; background:var(--primary); color:#fff; }
+      .route-catalog-head strong { font-size:13px; overflow-wrap:anywhere; }
+      .route-catalog-head span { font-size:11px; font-weight:700; opacity:.86; white-space:nowrap; }
+      .route-catalog-col.pending .route-catalog-head { background:#92400E; }
+      .route-catalog-body { display:grid; gap:8px; padding:10px; }
+      .route-client-card { width:100%; border:1px solid var(--border); background:var(--surface, #fff); border-radius:8px; padding:9px 10px; display:flex; justify-content:space-between; gap:10px; text-align:left; cursor:pointer; color:var(--text); }
+      .route-client-card:hover { border-color:var(--secondary); box-shadow:0 1px 4px rgba(15,23,42,.10); }
+      .route-client-card span { min-width:0; }
+      .route-client-card strong { display:block; font-size:12px; overflow-wrap:anywhere; }
+      .route-client-card small { display:block; color:var(--muted); font-size:11px; margin-top:3px; }
+      .route-client-card em { align-self:flex-start; border-radius:999px; padding:3px 7px; font-size:10px; font-style:normal; font-weight:800; background:#F0FDF4; color:#166534; white-space:nowrap; }
+      .route-client-card.pending { background:#FFFBEB; border-color:#FDE68A; }
+      .route-client-card.pending em { background:#FEF3C7; color:#92400E; }
+      .route-catalog-empty { color:var(--muted); font-size:12px; padding:8px; text-align:center; }
+      .control-history-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; }
+      .control-history-panel { margin-bottom:16px; }
+      .control-history-table { min-width:720px; }
       .routes-view-shell #rutasContainer::before {
         content: 'Exporta la fecha activa a Excel con un resumen por carril y el detalle por ruta.';
         display:block;
@@ -4964,7 +5377,21 @@
           -webkit-overflow-scrolling:touch;
         }
         .commercial-detail-table {
-          min-width:680px;
+          min-width:760px;
+        }
+        #sidebar {
+          height:72px !important;
+          min-height:72px;
+        }
+        .nav-btn {
+          flex:0 0 72px !important;
+          min-width:72px;
+          min-height:54px !important;
+          padding:8px 6px !important;
+          font-size:12px !important;
+        }
+        .nav-icon::before {
+          font-size:19px !important;
         }
         .route-cost-alert-list {
           grid-template-columns:1fr;
@@ -4983,21 +5410,21 @@
         }
         .commercial-detail-table,
         .data-table {
-          min-width:620px;
+          min-width:760px;
         }
       }
       body.theme-light {
-        --primary:#123F5D;
-        --secondary:#166534;
-        --warning:#9A6700;
+        --primary:#111827;
+        --secondary:#00A676;
+        --warning:#F5C542;
         --danger:#B42318;
-        --bg:#F5F6F8;
+        --bg:#EEF2F6;
         --card:#FFFFFF;
-        --border:#DDE3EA;
+        --border:#D6DEE8;
         --text:#17212B;
         --muted:#667085;
         --soft:#F8FAFC;
-        --header:#123F5D;
+        --header:#0B1220;
         --icon:#17212B;
         --surface:#FFFFFF;
         --surface-2:#F8FAFC;
@@ -5098,7 +5525,10 @@
       body.theme-dark .nav-btn.active { background:#E7EDF3; color:#101820; }
       body.theme-dark .btn-outline { background:#111820; color:var(--text); border-color:var(--border); }
       body.theme-light #appHeader { background:var(--header); }
-      body.theme-light #sidebar,
+      body.theme-light #sidebar { background:#0F172A; border-color:#1E293B; }
+      body.theme-light .nav-btn { color:#D7DEE8; }
+      body.theme-light .nav-btn:hover { background:#182235; color:#fff; }
+      body.theme-light .nav-btn.active { background:var(--warning); color:#111827; }
       body.theme-brand #sidebar { background:var(--surface); }
       .nav-icon {
         width:22px;
@@ -5113,6 +5543,7 @@
       #nav-dashboard .nav-icon::before { content:'▥'; }
       #nav-calendario .nav-icon::before { content:'□'; }
       #nav-comercial .nav-icon::before { content:'$'; }
+      #nav-rutas .nav-icon::before { content:'⇄'; }
       #nav-configClientes .nav-icon::before { content:'⚙'; }
       #nav-solicitudesAlmacen .nav-icon::before { content:'▤'; }
       #nav-almacen .nav-icon::before { content:'▦'; }
@@ -5158,13 +5589,17 @@
     initCalendarActions();
     initCommercialMount();
     initReportFilters();
+    initControlHistoryPanel();
     initThemeSettings();
     initConfigExtras();
     syncMoveOptions();
     initRouteFilterOptions();
+    renderRouteCatalog();
+    renderControlHistoryPanel();
     updateSolicitudesImportStatus();
     actualizarEstadoBanner();
     updateUndoButton();
+    applyPermissionUi();
   }
 
   window.addEventListener('DOMContentLoaded', function () {
@@ -5175,6 +5610,7 @@
       renderSolicitudesAlmacen();
       renderAlmacen();
       renderConfigClientes();
+      renderRouteCatalog();
     }
   });
 

@@ -10,19 +10,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
-  --primary:   #1B4F72;
-  --secondary: #1D6A3A;
-  --warning:   #B7770D;
+  --primary:   #111827;
+  --secondary: #00A676;
+  --warning:   #F5C542;
   --danger:    #922B21;
-  --bg:        #F5F7FA;
+  --bg:        #EEF2F6;
   --card:      #FFFFFF;
-  --border:    #E2E6EA;
+  --border:    #D6DEE8;
   --text:      #1A202C;
   --muted:     #6B7280;
-  --c1:        #1B4F72;
-  --c2:        #1D6A3A;
-  --c3:        #7D3C98;
-  --calmacen:  #B7770D;
+  --c1:        #111827;
+  --c2:        #00A676;
+  --c3:        #6D5DFB;
+  --calmacen:  #F5C542;
   --surface:    #FFFFFF;
   --surface-2:  #F8FAFC;
   --shadow-sm:  0 1px 2px rgba(15,23,42,0.05);
@@ -44,7 +44,7 @@ html { -webkit-text-size-adjust: 100%; }
 
 /* HEADER */
 #appHeader {
-  background: var(--primary);
+  background: #0B1220;
   color: #fff;
   display: flex;
   align-items: center;
@@ -89,8 +89,8 @@ html { -webkit-text-size-adjust: 100%; }
 /* SIDEBAR */
 #sidebar {
   width: 200px;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: #0F172A;
+  border-right: 1px solid #1E293B;
   display: flex;
   flex-direction: column;
   padding: 12px 8px;
@@ -109,16 +109,16 @@ html { -webkit-text-size-adjust: 100%; }
   border-radius: 8px;
   cursor: pointer;
   font-size: 14px;
-  color: var(--text);
+  color: #D7DEE8;
   text-align: left;
   width: 100%;
   font-weight: 500;
   transition: background 0.15s;
 }
-.nav-btn:hover { background: var(--surface-2); }
+.nav-btn:hover { background: #182235; color:#fff; }
 .nav-btn.active {
-  background: var(--primary);
-  color: #fff;
+  background: var(--warning);
+  color: #111827;
   box-shadow: none;
 }
 .nav-btn .nav-icon { font-size: 16px; }
@@ -137,16 +137,19 @@ html { -webkit-text-size-adjust: 100%; }
 /* CARDS */
 .card {
   background: var(--surface);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 20px;
   border: 1px solid var(--border);
   margin-bottom: 16px;
   box-shadow: var(--shadow-sm);
+  border-top: 3px solid var(--primary);
 }
 .card-title {
   font-size: 15px;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0;
   margin-bottom: 14px;
 }
 
@@ -1011,6 +1014,9 @@ html { -webkit-text-size-adjust: 100%; }
     <button class="nav-btn" id="nav-comercial" onclick="cambiarVista('comercial',this)">
       <span class="nav-icon">👔</span><span class="nav-label">Vista Comercial</span>
     </button>
+    <button class="nav-btn" id="nav-rutas" onclick="cambiarVista('rutas',this)">
+      <span class="nav-icon">🧭</span><span class="nav-label">Rutas</span>
+    </button>
     <button class="nav-btn" id="nav-configClientes" onclick="cambiarVista('configClientes',this)">
       <span class="nav-icon">⚙️</span><span class="nav-label">Config. Clientes</span>
     </button>
@@ -1460,7 +1466,25 @@ html { -webkit-text-size-adjust: 100%; }
       </div>
     </div>
 
-    <!-- ========== VISTA 8: CONFIGURACIÓN CLIENTES ========== -->
+
+    <!-- ========== VISTA 8: RUTAS ========== -->
+    <div id="rutas" class="view">
+      <div class="view-title">Rutas</div>
+      <div class="card" style="padding:14px 16px;">
+        <div class="view-toolbar" style="justify-content:space-between;">
+          <input type="text" id="routeCatalogSearch" class="search-input" placeholder="Buscar ruta, cliente o código..." oninput="renderRouteCatalog()" style="max-width:320px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <span id="routeCatalogSummary" class="badge badge-pend">0 clientes</span>
+            <button class="btn btn-success btn-sm" onclick="exportarRouteCatalogExcel()">Excel</button>
+          </div>
+        </div>
+      </div>
+      <div id="routeCatalogContainer">
+        <div class="empty-state"><div class="empty-icon">🧭</div><p>Carga una planificación o configuración para ver clientes por ruta.</p></div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 9: CONFIGURACIÓN CLIENTES ========== -->
     <div id="configClientes" class="view">
       <div class="view-title">Configuración de Clientes</div>
 
