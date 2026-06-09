@@ -56,6 +56,33 @@
     return String(value == null ? '' : value).trim();
   }
 
+  function isValidLoginEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text(value));
+  }
+
+  function getProfileAccountMeta(profile) {
+    const perms = profile && profile.permisosPorModulo;
+    const meta = perms && perms.__account ? perms.__account : {};
+    return {
+      passwordChangeRequired: !!(profile && (profile.passwordChangeRequired || meta.passwordChangeRequired)),
+      authNeedsConfirmation: !!(profile && (profile.authNeedsConfirmation || meta.authNeedsConfirmation)),
+      passwordConfigured: profile && profile.passwordConfigured !== undefined ? !!profile.passwordConfigured : meta.passwordConfigured !== false,
+      accountStatus: text((profile && profile.accountStatus) || meta.accountStatus || '')
+    };
+  }
+
+  function permissionsPayloadForProfile(profile) {
+    const payload = getPermissionsForRole((profile && profile.rol) || 'Solo lectura');
+    const meta = getProfileAccountMeta(profile || {});
+    payload.__account = {
+      passwordChangeRequired: !!meta.passwordChangeRequired,
+      authNeedsConfirmation: !!meta.authNeedsConfirmation,
+      passwordConfigured: !!meta.passwordConfigured,
+      accountStatus: meta.accountStatus || (meta.authNeedsConfirmation ? 'Pendiente de confirmar correo' : 'Activo')
+    };
+    return payload;
+  }
+
   function jsString(value) {
     return String(value == null ? '' : value)
       .replace(/\\/g, '\\\\')
@@ -406,7 +433,12 @@
       APP.rolePermissions[role] = normalized;
     });
     APP.userProfiles.forEach(profile => {
+      const account = getProfileAccountMeta(profile);
       profile.permisosPorModulo = safeClone(APP.rolePermissions[profile.rol] || APP.rolePermissions['Solo lectura'] || defaults['Solo lectura']);
+      profile.passwordChangeRequired = !!account.passwordChangeRequired;
+      profile.authNeedsConfirmation = !!account.authNeedsConfirmation;
+      profile.passwordConfigured = !!account.passwordConfigured;
+      profile.accountStatus = account.accountStatus || '';
     });
   }
 
@@ -822,6 +854,27 @@
     return !!(perms && perms[moduleName] && perms[moduleName][action]);
   }
 
+  function isAdminUser() {
+    return !!(APP.currentUserProfile && APP.currentUserProfile.rol === 'Admin');
+  }
+
+  function requireAdminUser(actionLabel) {
+    if (isAdminUser()) return true;
+    alert((actionLabel || 'Esta acción') + ' solo puede realizarla un administrador.');
+    return false;
+  }
+
+  function userProfileDbPayload(profile, authUserId) {
+    return {
+      auth_user_id: authUserId || (isUuid(profile.authUserId) ? profile.authUserId : null),
+      nombre: profile.nombre || '',
+      email: profile.email || '',
+      rol: profile.rol || 'Solo lectura',
+      permisos_por_modulo: permissionsPayloadForProfile(profile),
+      activo: profile.activo !== false
+    };
+  }
+
   function getFirstAllowedView() {
     const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'solicitudesAlmacen', 'almacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || 'comercial';
@@ -853,6 +906,8 @@
     });
     const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
     document.body.classList.toggle('role-readonly', !hasPermission(activeModule, 'editar'));
+    const saveBtn = document.getElementById('saveStateBtn');
+    if (saveBtn) saveBtn.title = isAdminUser() ? 'Guardar cambios globales' : 'Guardar cambios operativos; usuarios y roles solo Admin';
     const badge = document.getElementById('userEmail');
     if (badge && APP.currentUserProfile && APP.currentUserProfile.rol) {
       const email = text(APP.currentUserProfile.email || badge.textContent).split(' · ')[0];
@@ -1710,8 +1765,8 @@
     [...(APP.solicitudesAlmacen || []), ...(APP.solicitudesPlanAlmacen || []), ...(APP.solicitudesControlAlmacen || [])].forEach(item => add(item.codigo, item.cliente));
     return [...map.values()].map(client => {
       const cfg = getClienteConfigV2(client.codigo, client.nombre);
-      const route = text(cfg.rutaAsignada || inferRouteName(client.nombre, client.codigo));
-      const complete = !!(cfg.configuracionCompleta && cfg.rutaAsignada);
+      const route = text(cfg.rutaAsignada);
+      const complete = !!(cfg.configuracionCompleta && cfg.rutaAsignada && (cfg.diasRecepcion || []).length && text(cfg.horarioAlmacen));
       const orders = (APP.lineItems || []).filter(item => item.clienteId === client.codigo);
       return {
         ...client,
@@ -3445,6 +3500,11 @@
             condicionesEspeciales: text(pickField(row, ['Condiciones especiales'])),
             configuracionCompleta: true
           };
+          APP.clienteConfig[codigo].configuracionCompleta = !!(
+            APP.clienteConfig[codigo].rutaAsignada &&
+            (APP.clienteConfig[codigo].diasRecepcion || []).length &&
+            text(APP.clienteConfig[codigo].horarioAlmacen)
+          );
           ensureRouteConfig(APP.clienteConfig[codigo].rutaAsignada);
           if (exists) updated += 1;
           else created += 1;
@@ -3543,15 +3603,21 @@
           <button class="btn btn-primary btn-sm" onclick="crearUsuarioPerfil()">Crear usuario</button>
         </div>
         <div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Permisos efectivos</th><th>Detalle</th><th>Acciones</th></tr></thead>
-          <tbody>${APP.userProfiles.map((profile, index) => `<tr>
+          <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado acceso</th><th>Permisos efectivos</th><th>Detalle</th><th>Acciones</th></tr></thead>
+          <tbody>${APP.userProfiles.map((profile, index) => {
+            const account = getProfileAccountMeta(profile);
+            const statusLabel = account.authNeedsConfirmation ? 'Pendiente correo' : account.passwordChangeRequired ? 'Cambio requerido' : 'Activo';
+            const statusClass = account.authNeedsConfirmation || account.passwordChangeRequired ? 'badge-warn' : 'badge-ok';
+            return `<tr>
             <td>${profile.nombre}</td>
             <td>${profile.email || '—'}</td>
             <td>${profile.rol}</td>
+            <td><span class="badge ${statusClass}">${statusLabel}</span></td>
             <td>${profile.rol === 'Admin' ? 'Acceso total' : summarizePermissions(getPermissionsForRole(profile.rol))}</td>
             <td>${renderPermissionChips(getPermissionsForRole(profile.rol))}</td>
-            <td>${profile.rol === 'Admin' ? '<span class="badge badge-ok">Base</span>' : `<button class="btn btn-outline btn-sm" onclick="eliminarUsuarioPerfil(${index})">Eliminar</button>`}</td>
-          </tr>`).join('')}</tbody>
+            <td>${profile.rol === 'Admin' ? '<span class="badge badge-ok">Base</span>' : `<button class="btn btn-outline btn-sm" onclick="enviarResetPasswordUsuario(${index})">Enviar reset</button> <button class="btn btn-outline btn-sm" onclick="eliminarUsuarioPerfil(${index})">Eliminar</button>`}</td>
+          </tr>`;
+          }).join('')}</tbody>
         </table></div>
       </div>
       <div class="card">
@@ -3602,12 +3668,10 @@
     APP.selectedRolePermission = role;
     renderConfigAuxSections();
     scheduleAutoSave();
-    if (authNeedsConfirmation) {
-      alert('Usuario creado, pero Supabase puede requerir confirmación del correo antes de que la contraseña funcione.');
-    }
   };
 
   window.guardarPermisosRol = function guardarPermisosRol() {
+    if (!requireAdminUser('Guardar permisos')) return;
     const role = text((document.getElementById('rolePermissionSelect') || {}).value) || APP.selectedRolePermission;
     if (!role) return;
     pushUndoState('guardar permisos de rol');
@@ -3725,6 +3789,7 @@
       calendario: { ver: true, editar: true },
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: true },
+      rutas: { ver: true, editar: true },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -3798,12 +3863,17 @@
   }
 
   window.crearUsuarioPerfil = async function crearUsuarioPerfil() {
+    if (!requireAdminUser('Crear usuarios')) return;
     const nombre = text(document.getElementById('userNameInput').value);
     const email = text(document.getElementById('userEmailInput').value);
     const password = String((document.getElementById('userPasswordInput') || {}).value || '');
     const rol = text(document.getElementById('userRoleInput').value) || 'Operaciones';
     if (!nombre || !email || !password) {
       alert('Completa nombre, email y contraseña para crear el usuario.');
+      return;
+    }
+    if (!isValidLoginEmail(email)) {
+      alert('Escribe un correo completo y válido. Ejemplo: usuario@hbyalvarez.com');
       return;
     }
     if (password.length < 6) {
@@ -3822,7 +3892,7 @@
       authNeedsConfirmation = !!authResult.needsConfirmation;
     } catch (error) {
       console.error('No se pudo crear el acceso del usuario:', error);
-      alert('No se pudo crear el acceso con esa contraseña: ' + (error.message || error));
+      alert('No se pudo crear el acceso. Revisa que el correo no exista ya en Supabase Auth y que la contraseña cumpla las reglas. Detalle: ' + (error.message || error));
       return;
     }
     pushUndoState('crear usuario');
@@ -3834,18 +3904,39 @@
       rol,
       permisosPorModulo: getPermissionsForRole(rol),
       passwordConfigured: !authNeedsConfirmation,
-      authNeedsConfirmation
+      authNeedsConfirmation,
+      passwordChangeRequired: !authNeedsConfirmation,
+      accountStatus: authNeedsConfirmation ? 'Pendiente de confirmar correo' : 'Contraseña temporal'
     });
     const passwordInput = document.getElementById('userPasswordInput');
     if (passwordInput) passwordInput.value = '';
     renderConfigAuxSections();
     scheduleAutoSave();
-    if (authNeedsConfirmation) {
-      alert('Usuario creado, pero Supabase puede requerir confirmación del correo antes de que la contraseña funcione.');
+    alert(authNeedsConfirmation
+      ? 'Usuario creado. Debe confirmar el correo antes de acceder con la contraseña temporal.'
+      : 'Usuario creado. Al primer acceso tendrá que cambiar la contraseña temporal.');
+  };
+
+  window.enviarResetPasswordUsuario = async function enviarResetPasswordUsuario(index) {
+    if (!requireAdminUser('Enviar reset de contraseña')) return;
+    const profile = APP.userProfiles[index];
+    if (!profile || !profile.email) return;
+    const client = getSupabaseClient();
+    if (!client || !client.auth) return alert('No hay conexión de autenticación disponible.');
+    try {
+      const { error } = await client.auth.resetPasswordForEmail(profile.email, {
+        redirectTo: window.location.origin + window.location.pathname
+      });
+      if (error) throw error;
+      alert('Se envió un correo de recuperación a ' + profile.email + '.');
+    } catch (error) {
+      console.error('No se pudo enviar recuperación:', error);
+      alert('No se pudo enviar el correo de recuperación: ' + (error.message || error));
     }
   };
 
   window.eliminarUsuarioPerfil = function eliminarUsuarioPerfil(index) {
+    if (!requireAdminUser('Eliminar usuarios')) return;
     const profile = APP.userProfiles[index];
     if (!profile || profile.rol === 'Admin') return;
     pushUndoState('eliminar usuario');
@@ -4215,6 +4306,42 @@
     }
   };
 
+
+  async function enforcePasswordChangeIfNeeded() {
+    const profile = APP.currentUserProfile;
+    if (!profile || !getProfileAccountMeta(profile).passwordChangeRequired) return;
+    const client = getSupabaseClient();
+    if (!client || !client.auth) return;
+    let nextPassword = '';
+    let confirmPassword = '';
+    while (true) {
+      nextPassword = window.prompt('Debes cambiar tu contraseña temporal. Escribe una nueva contraseña de al menos 6 caracteres:') || '';
+      if (!nextPassword) {
+        await client.auth.signOut();
+        alert('Debes cambiar la contraseña para acceder al sistema.');
+        location.reload();
+        return;
+      }
+      confirmPassword = window.prompt('Confirma la nueva contraseña:') || '';
+      if (nextPassword.length < 6) alert('La contraseña debe tener al menos 6 caracteres.');
+      else if (nextPassword !== confirmPassword) alert('Las contraseñas no coinciden.');
+      else break;
+    }
+    const { error } = await client.auth.updateUser({ password: nextPassword });
+    if (error) {
+      alert('No se pudo cambiar la contraseña: ' + error.message);
+      await client.auth.signOut();
+      location.reload();
+      return;
+    }
+    profile.passwordChangeRequired = false;
+    profile.passwordConfigured = true;
+    profile.authNeedsConfirmation = false;
+    profile.accountStatus = 'Activo';
+    alert('Contraseña actualizada. Ya puedes usar el sistema.');
+    await window.guardarEnSupabase();
+  }
+
   window.cargarDesdeSupabase = async function cargarDesdeSupabaseV2() {
     try {
       const client = getSupabaseClient();
@@ -4296,15 +4423,22 @@
         observaciones: row.observaciones || ''
       }));
 
-      APP.userProfiles = userProfileRows.map(row => ({
-        userId: row.id,
-        authUserId: row.auth_user_id || '',
-        nombre: row.nombre,
-        email: row.email,
-        rol: row.rol,
-        permisosPorModulo: row.permisos_por_modulo || buildPermissions('read_only', row.rol),
-        activo: row.activo !== false
-      }));
+      APP.userProfiles = userProfileRows.map(row => {
+        const account = row.permisos_por_modulo && row.permisos_por_modulo.__account ? row.permisos_por_modulo.__account : {};
+        return {
+          userId: row.id,
+          authUserId: row.auth_user_id || '',
+          nombre: row.nombre,
+          email: row.email,
+          rol: row.rol,
+          permisosPorModulo: row.permisos_por_modulo || buildPermissions('read_only', row.rol),
+          activo: row.activo !== false,
+          passwordChangeRequired: !!account.passwordChangeRequired,
+          authNeedsConfirmation: !!account.authNeedsConfirmation,
+          passwordConfigured: account.passwordConfigured !== false,
+          accountStatus: account.accountStatus || ''
+        };
+      });
 
       const settingsMap = Object.fromEntries(settingsRows.map(row => [row.clave, row.valor || {}]));
       APP.warehouseSettings = settingsMap.warehouse || { costoSolicitud: 0 };
@@ -4393,6 +4527,7 @@
         };
 
       rebuildDerivedState();
+      await enforcePasswordChangeIfNeeded();
       updateSolicitudesImportStatus();
       actualizarEstadoBanner();
       actualizarDashboard();
@@ -4464,9 +4599,10 @@
           activo: true
         };
 
+      const adminCanManageUsers = isAdminUser();
       const settingsRows = [
         { clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) },
-        { clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) },
+        ...(adminCanManageUsers ? [{ clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) }] : []),
         {
           clave: 'app_state',
           valor: safeClone({
@@ -4485,14 +4621,13 @@
         }
       ];
 
-      const userRows = APP.userProfiles.map(profile => ({
-        auth_user_id: text(profile.email).toLowerCase() === text(user.email).toLowerCase() ? user.id : (isUuid(profile.authUserId) ? profile.authUserId : null),
-        nombre: profile.nombre || '',
-        email: profile.email || '',
-        rol: profile.rol || 'Solo lectura',
-        permisos_por_modulo: getPermissionsForRole(profile.rol || 'Solo lectura'),
-        activo: profile.activo !== false
-      }));
+      const userRows = APP.userProfiles.map(profile => userProfileDbPayload(
+        profile,
+        text(profile.email).toLowerCase() === text(user.email).toLowerCase() ? user.id : null
+      ));
+      const currentUserProfileRow = APP.currentUserProfile && APP.currentUserProfile.email
+        ? userProfileDbPayload(APP.currentUserProfile, user.id)
+        : null;
 
       const routeRows = APP.routeConfigs.map(route => {
         const payload = {
@@ -4561,7 +4696,11 @@
       })).filter(row => row.fecha && row.cliente_id);
 
       await runSupabaseQuery(client.from('tms_settings').upsert(settingsRows, { onConflict: 'clave' }), 'No se pudieron guardar los ajustes');
-      await replaceSupabaseTable('tms_user_profiles', userRows);
+      if (adminCanManageUsers) {
+        await replaceSupabaseTable('tms_user_profiles', userRows);
+      } else if (currentUserProfileRow) {
+        await runSupabaseQuery(client.from('tms_user_profiles').upsert(currentUserProfileRow, { onConflict: 'email' }), 'No se pudo actualizar tu estado de acceso');
+      }
       await replaceSupabaseTable('tms_route_configs', routeRows);
       await replaceSupabaseTable('tms_client_configs', clientRows);
       await replaceSupabaseTable('tms_order_lines', orderRows);
