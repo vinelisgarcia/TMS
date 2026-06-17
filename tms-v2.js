@@ -1751,6 +1751,35 @@
   };
 
 
+  function applyClientRouteToLineItems(codigo, routeName) {
+    const code = text(codigo);
+    const route = text(routeName);
+    if (!code) return;
+    [APP.lineItems, APP.planLineItems, APP.controlLineItems].forEach(list => {
+      (list || []).forEach(item => {
+        if (item.clienteId !== code) return;
+        item.rutaNombre = route;
+        item.zona = route;
+        item.fechaActualizacion = nowIso();
+      });
+    });
+  }
+
+  function setClienteRutaAsignada(codigo, nombre, routeName) {
+    const code = text(codigo);
+    const route = text(routeName);
+    if (!code) return null;
+    const cfg = getClienteConfigV2(code, nombre);
+    cfg.codigoCliente = code;
+    cfg.nombreCliente = text(nombre) || cfg.nombreCliente || code;
+    cfg.rutaAsignada = route;
+    cfg.configuracionCompleta = !!(cfg.rutaAsignada && (cfg.diasRecepcion || []).length && text(cfg.horarioAlmacen));
+    APP.clienteConfig[code] = cfg;
+    if (route) ensureRouteConfig(route);
+    applyClientRouteToLineItems(code, route);
+    return cfg;
+  }
+
   function getRouteCatalogClients() {
     const map = new Map();
     const add = (codigo, nombre) => {
@@ -1780,12 +1809,32 @@
     }).sort((a, b) => text(a.ruta).localeCompare(text(b.ruta), 'es') || text(a.nombre).localeCompare(text(b.nombre), 'es'));
   }
 
+  function getRouteAssignmentOptions() {
+    const names = uniqueTexts([
+      ...(APP.routeConfigs || []).map(route => route.nombre || route.zona),
+      ...Object.values(APP.clienteConfig || {}).map(cfg => cfg.rutaAsignada),
+      ...(APP.lineItems || []).map(item => item.rutaNombre || item.zona),
+      ...(APP.planLineItems || []).map(item => item.rutaNombre || item.zona)
+    ]).filter(route => route && route !== 'Pendiente de configurar');
+    return names.sort((a, b) => text(a).localeCompare(text(b), 'es'));
+  }
+
+  function routeAssignmentSelectHtml(client) {
+    const options = getRouteAssignmentOptions();
+    const current = text(client && client.cfg && client.cfg.rutaAsignada);
+    const optionHtml = options.map(route => `<option value="${jsString(route)}" ${route === current ? 'selected' : ''}>${route}</option>`).join('');
+    return `<select class="route-assign-select" onclick="event.stopPropagation()" onchange="asignarClienteRutaRapida('${jsString(client.codigo)}', this.value)">
+      <option value="">Sin ruta</option>
+      ${optionHtml}
+    </select>`;
+  }
+
   function routeCatalogGroups() {
     const groups = {};
     const routes = uniqueTexts([...(APP.routeConfigs || []).map(route => route.nombre || route.zona), 'Pendiente de configurar']);
     routes.forEach(route => { groups[route || 'Pendiente de configurar'] = []; });
     getRouteCatalogClients().forEach(client => {
-      const key = client.complete && client.cfg.rutaAsignada ? client.cfg.rutaAsignada : 'Pendiente de configurar';
+      const key = client.cfg.rutaAsignada ? client.cfg.rutaAsignada : 'Pendiente de configurar';
       if (!groups[key]) groups[key] = [];
       groups[key].push(client);
     });
@@ -1807,43 +1856,34 @@
       return;
     }
     cont.innerHTML = `<div class="route-catalog-board">${routeNames.map(routeName => {
-      const clients = groups[routeName].filter(client => {
+      const allClients = groups[routeName] || [];
+      const clients = allClients.filter(client => {
         if (!q) return true;
         return [client.codigo, client.nombre, client.ruta, client.cfg.observaciones, client.cfg.condicionesEspeciales].some(value => text(value).toLowerCase().includes(q));
       });
       const isPending = routeName === 'Pendiente de configurar';
-      return `<section class="route-catalog-col ${isPending ? 'pending' : ''}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="moverClienteCatalogoRuta('${jsString(routeName)}')">
-        <div class="route-catalog-head"><strong>${routeName}</strong><span>${clients.length} clientes</span></div>
+      const countLabel = q && clients.length !== allClients.length ? `${clients.length}/${allClients.length} clientes` : `${allClients.length} clientes`;
+      return `<section class="route-catalog-col ${isPending ? 'pending' : ''}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="moverClienteCatalogoRuta(event,'${jsString(routeName)}')">
+        <div class="route-catalog-head"><strong>${routeName}</strong><span>${countLabel}</span></div>
         <div class="route-catalog-body">
-          ${clients.length ? clients.map(client => `<button type="button" class="route-client-card ${client.complete ? '' : 'pending'}" draggable="true" ondragstart="APP.routeCatalogDragCode='${jsString(client.codigo)}'" onclick="abrirDetalleRutaCliente('${jsString(client.codigo)}')">
+          ${clients.length ? clients.map(client => `<article class="route-client-card ${client.complete ? '' : 'pending'}" draggable="true" ondragstart="onDragStartRouteCatalog(event,'${jsString(client.codigo)}')" onclick="abrirDetalleRutaCliente('${jsString(client.codigo)}')">
             <span><strong>${client.nombre}</strong><small>${client.codigo} · ${client.lineas} líneas · ${formatMonto(client.monto)}</small></span>
-            <em>${client.complete ? 'Config.' : 'Pendiente'}</em>
-          </button>`).join('') : '<div class="route-catalog-empty">Sin clientes.</div>'}
+            <div class="route-card-actions" onclick="event.stopPropagation()">
+              <em>${client.complete ? 'Config.' : 'Pendiente'}</em>
+              ${routeAssignmentSelectHtml(client)}
+            </div>
+          </article>`).join('') : '<div class="route-catalog-empty">Sin clientes.</div>'}
         </div>
       </section>`;
     }).join('')}</div>`;
   };
 
-  window.moverClienteCatalogoRuta = function moverClienteCatalogoRuta(routeName) {
-    const codigo = APP.routeCatalogDragCode;
-    APP.routeCatalogDragCode = '';
-    if (!codigo || routeName === 'Pendiente de configurar') return;
-    const client = getRouteCatalogClients().find(item => item.codigo === codigo);
+  function commitClienteRutaAssignment(codigo, routeName, label) {
+    const route = text(routeName);
+    const client = getRouteCatalogClients().find(item => item.codigo === text(codigo));
     if (!client) return;
-    pushUndoState('mover cliente de ruta');
-    const cfg = getClienteConfigV2(client.codigo, client.nombre);
-    cfg.codigoCliente = client.codigo;
-    cfg.nombreCliente = client.nombre;
-    cfg.rutaAsignada = routeName;
-    cfg.configuracionCompleta = !!(cfg.rutaAsignada && (cfg.diasRecepcion || []).length && text(cfg.horarioAlmacen));
-    APP.clienteConfig[client.codigo] = cfg;
-    ensureRouteConfig(routeName);
-    APP.lineItems.forEach(item => {
-      if (item.clienteId === client.codigo) {
-        item.rutaNombre = routeName;
-        item.zona = routeName;
-      }
-    });
+    pushUndoState(label || 'asignar cliente a ruta');
+    setClienteRutaAsignada(client.codigo, client.nombre, route);
     rebuildDerivedState();
     renderRouteCatalog();
     renderConfigClientes();
@@ -1851,6 +1891,26 @@
     renderRutas();
     renderComercial();
     scheduleAutoSave();
+  }
+
+  window.onDragStartRouteCatalog = function onDragStartRouteCatalog(event, codigo) {
+    APP.routeCatalogDragCode = text(codigo);
+    if (event && event.dataTransfer) {
+      event.dataTransfer.setData('text/plain', APP.routeCatalogDragCode);
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  };
+
+  window.moverClienteCatalogoRuta = function moverClienteCatalogoRuta(event, routeName) {
+    if (event && event.preventDefault) event.preventDefault();
+    const codigo = (event && event.dataTransfer && event.dataTransfer.getData('text/plain')) || APP.routeCatalogDragCode;
+    APP.routeCatalogDragCode = '';
+    if (!codigo || routeName === 'Pendiente de configurar') return;
+    commitClienteRutaAssignment(codigo, routeName, 'mover cliente de ruta');
+  };
+
+  window.asignarClienteRutaRapida = function asignarClienteRutaRapida(codigo, routeName) {
+    commitClienteRutaAssignment(codigo, routeName, 'asignar ruta desde tablero');
   };
 
   window.abrirDetalleRutaCliente = function abrirDetalleRutaCliente(codigo) {
@@ -1872,7 +1932,7 @@
 
   window.exportarRouteCatalogExcel = function exportarRouteCatalogExcel() {
     const rows = getRouteCatalogClients().map(client => ({
-      'Ruta': client.complete && client.cfg.rutaAsignada ? client.cfg.rutaAsignada : 'Pendiente de configurar',
+      'Ruta': client.cfg.rutaAsignada || 'Pendiente de configurar',
       'Código': client.codigo,
       'Cliente': client.nombre,
       'Configuración completa': client.complete ? 'Sí' : 'No',
@@ -3001,16 +3061,47 @@
     }).join('');
   };
 
+  function getCommercialWarehouseSource() {
+    const planRequests = APP.solicitudesPlanAlmacen || [];
+    const activeRequests = APP.solicitudesAlmacen || [];
+    return planRequests.length ? planRequests : activeRequests;
+  }
+
+  function findOrderLineForWarehouseItem(item) {
+    const targetKey = [
+      item.pedidoCliente || '',
+      item.lineaPedidoCliente || '',
+      item.articulo || '',
+      item.codigo || item.clienteId || ''
+    ].map(normKey).join('|');
+    const candidates = [...(APP.lineItems || []), ...(APP.planLineItems || []), ...(APP.controlLineItems || [])];
+    return candidates.find(line => {
+      const lineKey = [
+        line.pedidoCliente || '',
+        line.lineaPedidoCliente || '',
+        line.articulo || '',
+        line.clienteId || ''
+      ].map(normKey).join('|');
+      return lineKey === targetKey;
+    }) || candidates.find(line =>
+      normKey(line.pedidoCliente) === normKey(item.pedidoCliente) &&
+      normKey(line.articulo) === normKey(item.articulo) &&
+      normKey(line.clienteId) === normKey(item.codigo || item.clienteId)
+    ) || null;
+  }
+
   function getCommercialWarehouseQty(item) {
-    const requested = num(item.cantidadAlmacenSolicitada);
-    const processed = num(item.cantidadAlmacenProcesada);
+    const requested = num(item.cantidadAlmacenSolicitada !== undefined ? item.cantidadAlmacenSolicitada : item.cantidadSolicitada);
+    const processed = num(item.cantidadAlmacenProcesada !== undefined ? item.cantidadAlmacenProcesada : item.cantidadCompletada);
     return requested > 0 ? requested : processed;
   }
 
   function getCommercialLineAmount(item) {
-    const orderQty = num(item.cantidadSolicitada);
+    const orderLine = item.clienteId ? item : findOrderLineForWarehouseItem(item);
+    if (!orderLine) return 0;
+    const orderQty = num(orderLine.cantidadSolicitada);
     const warehouseQty = getCommercialWarehouseQty(item);
-    const amount = getOperationalAmount(item);
+    const amount = getOperationalAmount(orderLine);
     if (warehouseQty <= 0) return 0;
     if (orderQty > 0 && warehouseQty < orderQty) return amount * (warehouseQty / orderQty);
     return amount;
@@ -3021,7 +3112,7 @@
   }
 
   function getCommercialDateRange() {
-    const dates = APP.lineItems.map(item => item.fechaPlanificada).filter(Boolean).sort((a, b) => fechaToDate(a) - fechaToDate(b));
+    const dates = getCommercialWarehouseSource().map(item => item.fechaEnvio || item.fechaLiberacion).filter(Boolean).sort((a, b) => fechaToDate(a) - fechaToDate(b));
     return { first: dates[0] || '', last: dates[dates.length - 1] || '' };
   }
 
@@ -3044,23 +3135,27 @@
 
   function commercialRowsFromItems(items) {
     return items.map(item => {
+      const orderLine = item.clienteId ? item : findOrderLineForWarehouseItem(item);
+      const cfg = getClienteConfigV2(item.codigo || item.clienteId, item.cliente || item.clienteNombre || '');
       const warehouseQty = getCommercialWarehouseQty(item);
       const section = warehouseQty > 0 ? 'en_ruta' : 'no_considerado';
+      const routeName = (orderLine && (orderLine.rutaNombre || orderLine.zona)) || cfg.rutaAsignada || '';
+      const truckName = (orderLine && orderLine.camionAsignado) || cfg.camionPermitido || '';
       return {
-        fecha: item.fechaPlanificada || '',
-        cliente: item.clienteNombre || '',
-        codigoCliente: item.clienteId || '',
-        ruta: item.rutaNombre || item.zona || '',
-        camion: getTruckLabel(item.camionAsignado || ''),
+        fecha: item.fechaEnvio || item.fechaLiberacion || (orderLine && orderLine.fechaPlanificada) || '',
+        cliente: item.cliente || item.clienteNombre || '',
+        codigoCliente: item.codigo || item.clienteId || '',
+        ruta: routeName,
+        camion: getTruckLabel(truckName || ''),
         pedido: item.pedidoCliente || '',
         referencia: item.articulo || '',
         descripcion: item.descripcionArticulo || '',
-        solicitud: item.solicitudAlmacen || '',
-        cantidadPedida: num(item.cantidadSolicitada),
+        solicitud: item.solicitud || item.solicitudAlmacen || '',
+        cantidadPedida: orderLine ? num(orderLine.cantidadSolicitada) : num(item.cantidadSolicitadaOriginal || item.cantidadSolicitada),
         cantidadPlanificada: warehouseQty,
-        cantidadFacturada: num(item.cantidadFacturada),
+        cantidadFacturada: orderLine ? num(orderLine.cantidadFacturada) : num(item.cantidadCompletada),
         monto: getCommercialLineAmount(item),
-        estado: section === 'en_ruta' ? text(item.estadoAlmacen || deriveItemStatus(item)) : 'No considerado en ruta',
+        estado: section === 'en_ruta' ? text(item.estado || item.estadoAlmacen || deriveItemStatus(item)) : 'No considerado en ruta',
         section
       };
     });
@@ -3091,20 +3186,24 @@
     const dateEnd = text((document.getElementById('cfComFechaFin') || {}).value);
     const routeFilter = text((document.getElementById('cfComRuta') || {}).value).toLowerCase();
     const stateFilter = text((document.getElementById('cfComEstado') || {}).value).toLowerCase();
-    return APP.lineItems.filter(item => {
-      const itemDate = fechaToDate(item.fechaPlanificada || '');
+    return getCommercialWarehouseSource().filter(item => {
+      const orderLine = item.clienteId ? item : findOrderLineForWarehouseItem(item);
+      const cfg = getClienteConfigV2(item.codigo || item.clienteId, item.cliente || item.clienteNombre || '');
+      const itemDateText = item.fechaEnvio || item.fechaLiberacion || (orderLine && orderLine.fechaPlanificada) || '';
+      const itemDate = fechaToDate(itemDateText || '');
+      const routeName = (orderLine && (orderLine.rutaNombre || orderLine.zona || orderLine.camionAsignado)) || cfg.rutaAsignada || cfg.camionPermitido || '';
       const startDate = commercialFilterDateToDate(dateStart);
       const endDate = commercialFilterDateToDate(dateEnd);
-      if (clientFilter && ![item.clienteNombre, item.clienteId, item.pedidoCliente, item.articulo, item.descripcionArticulo].some(value => text(value).toLowerCase().includes(clientFilter))) return false;
-      if (quickDate && !text(item.fechaPlanificada).includes(quickDate)) return false;
+      if (clientFilter && ![item.cliente || item.clienteNombre, item.codigo || item.clienteId, item.pedidoCliente, item.solicitud, item.articulo, item.descripcionArticulo].some(value => text(value).toLowerCase().includes(clientFilter))) return false;
+      if (quickDate && !text(itemDateText).includes(quickDate)) return false;
       if (startDate && itemDate < startDate) return false;
       if (endDate && itemDate > endDate) return false;
-      if (routeFilter && !text(item.rutaNombre || item.zona || item.camionAsignado).toLowerCase().includes(routeFilter)) return false;
+      if (routeFilter && !text(routeName).toLowerCase().includes(routeFilter)) return false;
       const warehouseQty = getCommercialWarehouseQty(item);
-      const commercialState = warehouseQty > 0 ? text(item.estadoAlmacen || deriveItemStatus(item)) : 'No considerado en ruta';
+      const commercialState = warehouseQty > 0 ? text(item.estado || item.estadoAlmacen || deriveItemStatus(item)) : 'No considerado en ruta';
       if (stateFilter && !commercialState.toLowerCase().includes(stateFilter)) return false;
       return true;
-    }).sort((a, b) => fechaToDate(a.fechaPlanificada) - fechaToDate(b.fechaPlanificada) || text(a.clienteNombre).localeCompare(text(b.clienteNombre)) || text(a.pedidoCliente).localeCompare(text(b.pedidoCliente)));
+    }).sort((a, b) => fechaToDate(a.fechaEnvio || a.fechaLiberacion) - fechaToDate(b.fechaEnvio || b.fechaLiberacion) || text(a.cliente || a.clienteNombre).localeCompare(text(b.cliente || b.clienteNombre)) || text(a.pedidoCliente).localeCompare(text(b.pedidoCliente)));
   }
 
   function setCommercialFilterDates(start, end) {
@@ -3120,7 +3219,7 @@
     const active = document.getElementById('cf_' + mode);
     if (active) active.classList.add('active');
     const range = getCommercialDateRange();
-    const dates = [...new Set(APP.lineItems.map(item => item.fechaPlanificada).filter(Boolean))].sort((a, b) => fechaToDate(a) - fechaToDate(b));
+    const dates = [...new Set(getCommercialWarehouseSource().map(item => item.fechaEnvio || item.fechaLiberacion).filter(Boolean))].sort((a, b) => fechaToDate(a) - fechaToDate(b));
     const routeEl = document.getElementById('cfComRuta');
     if (routeEl && !['c1', 'c2'].includes(mode)) routeEl.value = '';
     if (mode === 'todas') setCommercialFilterDates('', '');
@@ -3406,17 +3505,14 @@
       condicionesEspeciales: text(document.getElementById('cfgCondiciones').value),
       configuracionCompleta: !!(rutaAsignada && diasRecepcion.length && text(document.getElementById('cfgHorario').value))
     };
-    ensureRouteConfig(rutaAsignada);
-    APP.lineItems.forEach(item => {
-      if (item.clienteId !== codigo) return;
-      item.rutaNombre = rutaAsignada || item.rutaNombre;
-      item.zona = rutaAsignada || item.zona;
-      item.fechaActualizacion = nowIso();
-    });
+    if (rutaAsignada) ensureRouteConfig(rutaAsignada);
+    applyClientRouteToLineItems(codigo, rutaAsignada);
     rebuildDerivedState();
     refreshRouteCostHistoryFromSchedule();
     renderConfigClientes();
+    renderRouteCatalog();
     renderCalendario();
+    renderRutas();
     renderComercial();
     scheduleAutoSave();
   };
@@ -3424,8 +3520,15 @@
   window.limpiarConfigCliente = function limpiarConfigClienteV2() {
     if (!APP.configClienteSel) return;
     pushUndoState('limpiar configuración de cliente');
-    delete APP.clienteConfig[APP.configClienteSel];
+    const code = APP.configClienteSel;
+    applyClientRouteToLineItems(code, '');
+    delete APP.clienteConfig[code];
+    rebuildDerivedState();
     renderConfigClientes();
+    renderRouteCatalog();
+    renderCalendario();
+    renderRutas();
+    renderComercial();
     scheduleAutoSave();
   };
 
@@ -3505,11 +3608,17 @@
             (APP.clienteConfig[codigo].diasRecepcion || []).length &&
             text(APP.clienteConfig[codigo].horarioAlmacen)
           );
-          ensureRouteConfig(APP.clienteConfig[codigo].rutaAsignada);
+          if (APP.clienteConfig[codigo].rutaAsignada) ensureRouteConfig(APP.clienteConfig[codigo].rutaAsignada);
+          applyClientRouteToLineItems(codigo, APP.clienteConfig[codigo].rutaAsignada);
           if (exists) updated += 1;
           else created += 1;
         });
+        rebuildDerivedState();
         renderConfigClientes();
+        renderRouteCatalog();
+        renderCalendario();
+        renderRutas();
+        renderComercial();
         alert(`Importación completada.\nNuevos: ${created}\nActualizados: ${updated}\nFilas con error: ${errors.length}`);
         scheduleAutoSave();
       } catch (error) {
@@ -3540,10 +3649,10 @@
     mount.innerHTML = `
       <div class="card" style="margin-top:16px;">
         <div class="view-toolbar" style="justify-content:space-between;">
-          <div class="card-title" style="margin-bottom:0;">Rutas / zonas</div>
+          <div class="card-title" style="margin-bottom:0;">Catálogo de rutas y costos</div>
           <button class="btn btn-primary btn-sm" onclick="guardarConfigRutas()">Guardar cambios de rutas</button>
         </div>
-        <div class="config-help-note" style="margin-bottom:12px;">Agrega aquí una ruta nueva cuando todavía no exista en la importación, por ejemplo <strong>Exportacion</strong>. Luego podrás asignarla a clientes y definir su coste.</div>
+        <div class="config-help-note" style="margin-bottom:12px;">Aquí se crean rutas, días de operación y costos. La asignación diaria de clientes a rutas se hace más rápido en la vista Rutas.</div>
         <div class="route-add-form">
           <input id="newRouteNameInput" class="form-control" placeholder="Nueva ruta / zona">
           <input id="newRouteCostInput" class="form-control" type="number" step="0.01" min="0" placeholder="Coste">
@@ -3590,7 +3699,10 @@
             <input id="userEmailInput" class="form-control" type="email" placeholder="correo@empresa.com">
           </label>
           <label class="form-row">Contraseña inicial
-            <input id="userPasswordInput" class="form-control" type="password" minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+            <span class="password-field-wrap">
+              <input id="userPasswordInput" class="form-control" type="password" minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+              <button type="button" class="btn btn-outline btn-sm" onclick="toggleUserPasswordVisibility()">Ver</button>
+            </span>
           </label>
           <label class="form-row">Rol
             <select id="userRoleInput" class="form-control">
@@ -3598,7 +3710,7 @@
             </select>
           </label>
         </div>
-        <div class="config-help-note" style="margin-bottom:12px;">La contraseña se usa para crear el acceso en Supabase Auth y no se guarda en la configuración visible.</div>
+        <div class="config-help-note" style="margin-bottom:12px;">La contraseña inicial se envía a Supabase Auth al crear el acceso. Para usuarios existentes, usa reset de contraseña; por seguridad Supabase no permite editar contraseñas de otros usuarios desde esta pantalla sin backend administrativo.</div>
         <div style="margin-bottom:12px;">
           <button class="btn btn-primary btn-sm" onclick="crearUsuarioPerfil()">Crear usuario</button>
         </div>
@@ -3637,6 +3749,13 @@
   window.sincronizarPermisosPorRol = function sincronizarPermisosPorRol() {
     const role = text((document.getElementById('userRoleInput') || {}).value);
     return getPermissionsForRole(role);
+  };
+
+
+  window.toggleUserPasswordVisibility = function toggleUserPasswordVisibility() {
+    const input = document.getElementById('userPasswordInput');
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
   };
 
   function renderRolePermissionRows(role) {
@@ -3768,6 +3887,7 @@
     });
     rebuildDerivedState();
     renderConfigClientes();
+    renderRouteCatalog();
     renderCalendario();
     renderRutas();
     scheduleAutoSave();
@@ -4600,10 +4720,17 @@
         };
 
       const adminCanManageUsers = isAdminUser();
+      const canWriteImports = adminCanManageUsers || hasPermission('importar', 'editar') || hasPermission('importar', 'importar');
+      const canWriteRoutes = adminCanManageUsers || hasPermission('rutas', 'editar');
+      const canWriteConfig = adminCanManageUsers || hasPermission('configuracion', 'editar') || hasPermission('configuracion', 'importar');
+      const canWriteWarehousePlan = adminCanManageUsers || canWriteImports || hasPermission('solicitudesAlmacen', 'editar');
+      const canWriteWarehouseControl = adminCanManageUsers || canWriteImports || hasPermission('almacen', 'editar');
+      const canWriteWarehouseHistory = adminCanManageUsers || hasPermission('solicitudesAlmacen', 'editar') || hasPermission('almacen', 'editar');
+      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes;
       const settingsRows = [
-        { clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) },
+        ...((adminCanManageUsers || canWriteWarehouseHistory) ? [{ clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) }] : []),
         ...(adminCanManageUsers ? [{ clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) }] : []),
-        {
+        ...(canWriteAppState ? [{
           clave: 'app_state',
           valor: safeClone({
             planLoaded: !!APP.planLoaded,
@@ -4618,7 +4745,7 @@
             controlHistory: APP.controlHistory || [],
             visualTheme: APP.visualTheme || 'light'
           })
-        }
+        }] : [])
       ];
 
       const userRows = APP.userProfiles.map(profile => userProfileDbPayload(
@@ -4695,19 +4822,21 @@
         fuente: row.fuente || ''
       })).filter(row => row.fecha && row.cliente_id);
 
-      await runSupabaseQuery(client.from('tms_settings').upsert(settingsRows, { onConflict: 'clave' }), 'No se pudieron guardar los ajustes');
+      if (settingsRows.length) {
+        await runSupabaseQuery(client.from('tms_settings').upsert(settingsRows, { onConflict: 'clave' }), 'No se pudieron guardar los ajustes');
+      }
       if (adminCanManageUsers) {
         await replaceSupabaseTable('tms_user_profiles', userRows);
       } else if (currentUserProfileRow) {
         await runSupabaseQuery(client.from('tms_user_profiles').upsert(currentUserProfileRow, { onConflict: 'email' }), 'No se pudo actualizar tu estado de acceso');
       }
-      await replaceSupabaseTable('tms_route_configs', routeRows);
-      await replaceSupabaseTable('tms_client_configs', clientRows);
-      await replaceSupabaseTable('tms_order_lines', orderRows);
-      await replaceSupabaseTable('tms_route_cost_history', routeHistoryRows);
-      await replaceSupabaseTable('tms_warehouse_plan', warehousePlanRows);
-      await replaceSupabaseTable('tms_warehouse_control', warehouseControlRows);
-      await replaceSupabaseTable('tms_warehouse_history', warehouseHistoryRows);
+      if (adminCanManageUsers || canWriteConfig || canWriteRoutes) await replaceSupabaseTable('tms_route_configs', routeRows);
+      if (adminCanManageUsers || canWriteConfig) await replaceSupabaseTable('tms_client_configs', clientRows);
+      if (adminCanManageUsers || canWriteImports || hasPermission('calendario', 'editar') || canWriteRoutes) await replaceSupabaseTable('tms_order_lines', orderRows);
+      if (adminCanManageUsers || canWriteRoutes) await replaceSupabaseTable('tms_route_cost_history', routeHistoryRows);
+      if (canWriteWarehousePlan) await replaceSupabaseTable('tms_warehouse_plan', warehousePlanRows);
+      if (canWriteWarehouseControl) await replaceSupabaseTable('tms_warehouse_control', warehouseControlRows);
+      if (canWriteWarehouseHistory) await replaceSupabaseTable('tms_warehouse_history', warehouseHistoryRows);
 
       if (btn) {
         btn.textContent = 'Guardado en nube';
@@ -5079,6 +5208,9 @@
       .permission-guide-item span { display:block; font-size:11px; font-weight:800; color:var(--primary); text-transform:uppercase; margin-top:2px; }
       .permission-guide-item p { color:var(--muted); font-size:12px; line-height:1.35; margin-top:6px; }
       .permission-chip { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:3px 7px; margin:2px; font-size:10px; font-weight:800; white-space:nowrap; }
+      .password-field-wrap { display:flex; gap:8px; align-items:center; }
+      .password-field-wrap .form-control { min-width:0; flex:1; }
+      .password-field-wrap .btn { flex:0 0 auto; }
       .permission-chip.edit { background:#EAF7EF; color:#166534; border-color:#B7E4C7; }
       .permission-chip.view { background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE; }
       .permission-chip.off,
@@ -5322,6 +5454,8 @@
       .route-client-card strong { display:block; font-size:12px; overflow-wrap:anywhere; }
       .route-client-card small { display:block; color:var(--muted); font-size:11px; margin-top:3px; }
       .route-client-card em { align-self:flex-start; border-radius:999px; padding:3px 7px; font-size:10px; font-style:normal; font-weight:800; background:#F0FDF4; color:#166534; white-space:nowrap; }
+      .route-card-actions { display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex:0 0 150px; }
+      .route-assign-select { width:150px; max-width:100%; border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:11px; background:var(--surface, #fff); color:var(--text); }
       .route-client-card.pending { background:#FFFBEB; border-color:#FDE68A; }
       .route-client-card.pending em { background:#FEF3C7; color:#92400E; }
       .route-catalog-empty { color:var(--muted); font-size:12px; padding:8px; text-align:center; }
@@ -5518,19 +5652,44 @@
         .commercial-detail-table {
           min-width:760px;
         }
+        html,
+        body {
+          width:100%;
+          max-width:100%;
+          overflow-x:hidden;
+        }
+        #mainLayout,
+        #content,
+        .view,
+        .card {
+          min-width:0;
+          max-width:100%;
+        }
         #sidebar {
-          height:72px !important;
-          min-height:72px;
+          height:88px !important;
+          min-height:88px;
         }
         .nav-btn {
-          flex:0 0 72px !important;
-          min-width:72px;
-          min-height:54px !important;
-          padding:8px 6px !important;
-          font-size:12px !important;
+          flex:0 0 112px !important;
+          min-width:112px;
+          min-height:68px !important;
+          padding:8px 8px !important;
+          font-size:11px !important;
+          flex-direction:column;
+          gap:4px;
+          text-align:center;
+          white-space:normal;
+        }
+        .nav-btn span.nav-label {
+          display:block !important;
+          line-height:1.12;
         }
         .nav-icon::before {
-          font-size:19px !important;
+          font-size:20px !important;
+        }
+        .password-field-wrap {
+          display:grid;
+          grid-template-columns:1fr auto;
         }
         .route-cost-alert-list {
           grid-template-columns:1fr;
@@ -5549,7 +5708,7 @@
         }
         .commercial-detail-table,
         .data-table {
-          min-width:760px;
+          min-width:680px;
         }
       }
       body.theme-light {
