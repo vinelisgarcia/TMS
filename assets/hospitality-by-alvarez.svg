@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 220" role="img" aria-labelledby="title desc">
+  <title id="title">Hospitality by Alvarez</title>
+  <desc id="desc">Logotipo de Hospitality by Alvarez en negro sobre blanco.</desc>
+  <rect width="920" height="220" fill="#fff"/>
+  <g fill="#050505">
+    <text x="38" y="132" font-family="Arial, Helvetica, sans-serif" font-size="82" font-weight="400" letter-spacing="2">HOSPITALITY</text>
+    <text x="566" y="178" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" letter-spacing="10">BY ALVAREZ</text>
+  </g>
+</svg>

@@ -71,6 +71,10 @@
     };
   }
 
+  function getBrandLogoSrc() {
+    return './assets/hospitality-by-alvarez.svg';
+  }
+
   function permissionsPayloadForProfile(profile) {
     const payload = getPermissionsForRole((profile && profile.rol) || 'Solo lectura');
     const meta = getProfileAccountMeta(profile || {});
@@ -116,6 +120,19 @@
     });
     const label = document.getElementById('themeCurrentLabel');
     if (label) label.textContent = getThemeLabel(APP.visualTheme);
+  }
+
+  function applyBrandLogo() {
+    const loginLogo = document.querySelector('.login-logo .login-icon');
+    if (loginLogo && !loginLogo.querySelector('img')) {
+      loginLogo.classList.add('brand-login-logo');
+      loginLogo.innerHTML = `<img src="${getBrandLogoSrc()}" alt="Hospitality by Alvarez">`;
+    }
+    const headerLogo = document.querySelector('#appHeader .logo');
+    if (headerLogo && !headerLogo.querySelector('img')) {
+      headerLogo.classList.add('brand-header-logo');
+      headerLogo.innerHTML = `<img src="${getBrandLogoSrc()}" alt="Hospitality by Alvarez">`;
+    }
   }
 
   function applyVisualTheme(theme, persist) {
@@ -625,12 +642,37 @@
     return data || [];
   }
 
+  function describeSupabaseSaveError(error) {
+    const message = text(error && error.message ? error.message : error);
+    if (!message) return 'No se pudo guardar en la nube. Los cambios quedaron solo en este dispositivo.';
+    if (/permission|policy|rls|denied|permis/i.test(message)) {
+      return 'No se pudo guardar en la nube por permisos del rol. Los cambios quedaron solo en este dispositivo. Detalle: ' + message;
+    }
+    if (/network|fetch|failed|timeout|resolve|connection|conex/i.test(message)) {
+      return 'No se pudo conectar con Supabase. Los cambios quedaron solo en este dispositivo. Detalle: ' + message;
+    }
+    return 'No se pudo guardar en la nube. Los cambios quedaron solo en este dispositivo. Detalle: ' + message;
+  }
+
+  function notifyCloudSaveError(error) {
+    const detail = describeSupabaseSaveError(error);
+    if (typeof actualizarEstadoBanner === 'function') {
+      const banner = document.getElementById('sapEstadoBanner');
+      if (banner) {
+        banner.style.display = 'block';
+        banner.innerHTML = '<strong>Guardado local pendiente de nube.</strong><br>' + detail;
+      }
+    }
+    alert(detail);
+  }
+
   async function replaceSupabaseTable(tableName, rows) {
     const client = getSupabaseClient();
-    await runSupabaseQuery(client.from(tableName).delete().not('id', 'is', null), 'No se pudo limpiar ' + tableName);
-    for (const chunk of chunkRows(rows, 200)) {
-      await runSupabaseQuery(client.from(tableName).insert(chunk), 'No se pudo guardar ' + tableName);
-    }
+    if (!client || typeof client.rpc !== 'function') throw new Error('No hay cliente Supabase para guardar ' + tableName);
+    await runSupabaseQuery(
+      client.rpc('tms_replace_table', { p_table_name: tableName, p_rows: rows || [] }),
+      'No se pudo guardar ' + tableName + ' de forma transaccional'
+    );
   }
 
   function mapDbOrderLine(row) {
@@ -1371,7 +1413,7 @@
     if (window._autoSaveTimer) clearTimeout(window._autoSaveTimer);
     window._autoSaveTimer = setTimeout(() => {
       saveLocalSnapshot();
-      window.guardarEnSupabase().catch(e => console.warn('AutoSave error:', e));
+      window.guardarEnSupabase({ silent: true }).catch(e => console.warn('AutoSave error:', e));
     }, 1200);
   };
 
@@ -1814,7 +1856,8 @@
       ...(APP.routeConfigs || []).map(route => route.nombre || route.zona),
       ...Object.values(APP.clienteConfig || {}).map(cfg => cfg.rutaAsignada),
       ...(APP.lineItems || []).map(item => item.rutaNombre || item.zona),
-      ...(APP.planLineItems || []).map(item => item.rutaNombre || item.zona)
+      ...(APP.planLineItems || []).map(item => item.rutaNombre || item.zona),
+      ...(APP.controlLineItems || []).map(item => item.rutaNombre || item.zona)
     ]).filter(route => route && route !== 'Pendiente de configurar');
     return names.sort((a, b) => text(a).localeCompare(text(b), 'es'));
   }
@@ -3116,6 +3159,32 @@
     return { first: dates[0] || '', last: dates[dates.length - 1] || '' };
   }
 
+  function getCommercialRouteOptions() {
+    const warehouseRouteNames = getCommercialWarehouseSource().map(item => {
+      const orderLine = item.clienteId ? item : findOrderLineForWarehouseItem(item);
+      const cfg = getClienteConfigV2(item.codigo || item.clienteId, item.cliente || item.clienteNombre || '');
+      return (orderLine && (orderLine.rutaNombre || orderLine.zona || orderLine.camionAsignado)) || cfg.rutaAsignada || cfg.camionPermitido || '';
+    });
+    return [...new Set([
+      ...warehouseRouteNames,
+      ...APP.lineItems.map(item => item.rutaNombre || item.zona),
+      ...APP.planLineItems.map(item => item.rutaNombre || item.zona),
+      ...APP.controlLineItems.map(item => item.rutaNombre || item.zona),
+      ...APP.lineItems.map(item => item.camionAsignado),
+      ...Object.values(APP.clienteConfig || {}).map(cfg => cfg.rutaAsignada),
+      ...APP.routeConfigs.map(route => route.nombre || route.zona)
+    ].filter(Boolean))].sort();
+  }
+
+  function syncCommercialRouteFilterOptions() {
+    const select = document.getElementById('cfComRuta');
+    if (!select) return;
+    const current = select.value;
+    const options = getCommercialRouteOptions();
+    select.innerHTML = '<option value="">Todas las rutas/camiones</option>' + options.map(route => `<option value="${route}">${route}</option>`).join('');
+    if (current && options.includes(current)) select.value = current;
+  }
+
   function isoToFechaInput(value) {
     if (!value) return '';
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -3246,6 +3315,7 @@
   window.renderComercial = function renderComercialV2() {
     const mount = document.getElementById('comercialV2Mount');
     if (!mount) return;
+    syncCommercialRouteFilterOptions();
     const items = getCommercialFilteredItems();
     const rows = commercialRowsFromItems(items);
     const deliveryRows = rows.filter(row => row.section === 'en_ruta');
@@ -3959,26 +4029,23 @@
 
   async function createAuthUserForProfile(email, password, nombre, rol) {
     const client = getSupabaseClient();
-    if (!client || !client.auth) throw new Error('No hay conexión de autenticación disponible.');
-    const current = await client.auth.getSession();
-    const currentSession = current && current.data && current.data.session;
-    const { data, error } = await client.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { nombre, rol }
+    if (!client || !client.functions) {
+      throw new Error('No hay función administrativa disponible para crear usuarios. Despliega supabase/functions/admin-create-user.');
+    }
+    const { data, error } = await client.functions.invoke('admin-create-user', {
+      body: {
+        email,
+        password,
+        nombre,
+        rol,
+        permisosPorModulo: getPermissionsForRole(rol)
       }
     });
-    if (currentSession && data && data.session) {
-      await client.auth.setSession({
-        access_token: currentSession.access_token,
-        refresh_token: currentSession.refresh_token
-      });
-    }
     if (error) throw error;
+    if (data && data.error) throw new Error(data.error);
     return {
-      userId: (data && data.user && data.user.id) || '',
-      needsConfirmation: !!(data && data.user && !data.session)
+      userId: (data && data.userId) || '',
+      needsConfirmation: !!(data && data.needsConfirmation)
     };
   }
 
@@ -4012,7 +4079,7 @@
       authNeedsConfirmation = !!authResult.needsConfirmation;
     } catch (error) {
       console.error('No se pudo crear el acceso del usuario:', error);
-      alert('No se pudo crear el acceso. Revisa que el correo no exista ya en Supabase Auth y que la contraseña cumpla las reglas. Detalle: ' + (error.message || error));
+      alert('No se pudo crear el acceso real en Supabase Auth. No se guardó un perfil incompleto. Detalle: ' + (error.message || error));
       return;
     }
     pushUndoState('crear usuario');
@@ -4602,6 +4669,7 @@
         fecha: isoToFechaStr(row.fecha),
         rutaId: row.ruta_id || '',
         rutaNombre: row.ruta_nombre || '',
+        camion: row.camion || '',
         coste: num(row.coste),
         fuenteControlDiario: row.fuente_control_diario || '',
         pedidosAsociados: row.pedidos_asociados || [],
@@ -4653,6 +4721,7 @@
       actualizarDashboard();
       renderCalendario();
       renderRutas();
+      renderRouteCatalog();
       renderComercial();
       renderConfigClientes();
       renderSolicitudesAlmacen();
@@ -4686,6 +4755,7 @@
       actualizarDashboard();
       renderCalendario();
       renderRutas();
+      renderRouteCatalog();
       renderComercial();
       renderConfigClientes();
       renderSolicitudesAlmacen();
@@ -4693,7 +4763,8 @@
     }
   };
 
-  window.guardarEnSupabase = async function guardarEnSupabaseV2() {
+  window.guardarEnSupabase = async function guardarEnSupabaseV2(options) {
+    const silent = !!(options && options.silent);
     saveLocalSnapshot();
     const client = getSupabaseClient();
     const user = await getAuthenticatedUser();
@@ -4794,6 +4865,7 @@
         fecha: fechaStrToISO(row.fecha),
         ruta_id: isUuid(row.rutaId) ? row.rutaId : null,
         ruta_nombre: row.rutaNombre || '',
+        camion: row.camion || '',
         coste: num(row.coste),
         fuente_control_diario: row.fuenteControlDiario || '',
         pedidos_asociados: safeClone(row.pedidosAsociados || []),
@@ -4845,6 +4917,7 @@
     } catch (error) {
       console.error('Error guardando en Supabase:', error);
       if (btn) btn.textContent = '⚠️ Guardado local';
+      if (!silent) notifyCloudSaveError(error);
       throw error;
     } finally {
       if (btn) {
@@ -5035,10 +5108,7 @@
     if (kpis[2]) kpis[2].textContent = 'Cant. planificada';
     if (kpis[3]) kpis[3].textContent = 'Monto';
 
-    const routeOptions = [...new Set([
-      ...APP.lineItems.map(item => item.rutaNombre || item.zona),
-      ...APP.lineItems.map(item => item.camionAsignado)
-    ].filter(Boolean))].sort();
+    const routeOptions = getCommercialRouteOptions();
     card.innerHTML = `
       <div class="commercial-toolbar">
         <div class="commercial-quick">
@@ -5215,6 +5285,41 @@
       .permission-chip.view { background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE; }
       .permission-chip.off,
       .permission-chip.muted { background:#F3F4F6; color:#6B7280; border-color:#E5E7EB; }
+      .brand-login-logo {
+        display:block;
+        margin:0 auto 12px;
+        font-size:0 !important;
+      }
+      .brand-login-logo img {
+        display:block;
+        width:min(300px, 82vw);
+        height:auto;
+        margin:0 auto;
+      }
+      .brand-header-logo {
+        display:inline-flex !important;
+        align-items:center;
+        justify-content:center;
+        width:176px;
+        min-width:142px;
+        height:38px;
+        padding:4px 8px;
+        border-radius:6px;
+        background:#fff;
+        overflow:hidden;
+      }
+      .brand-header-logo img {
+        display:block;
+        width:100%;
+        height:100%;
+        object-fit:contain;
+      }
+      #appHeader {
+        min-height:62px;
+      }
+      #appHeader h1 {
+        white-space:nowrap;
+      }
       .route-cost-alert { border-left:4px solid var(--warning); }
       .route-cost-alert-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
       .route-cost-alert-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#FFF8EC; }
@@ -5666,15 +5771,30 @@
           max-width:100%;
         }
         #sidebar {
-          height:88px !important;
-          min-height:88px;
+          position:fixed !important;
+          left:0 !important;
+          right:0 !important;
+          bottom:0 !important;
+          width:100% !important;
+          height:92px !important;
+          min-height:92px !important;
+          max-height:92px !important;
+          display:flex !important;
+          flex-direction:row !important;
+          gap:8px !important;
+          padding:8px 10px calc(8px + env(safe-area-inset-bottom)) !important;
+          overflow-x:auto !important;
+          overflow-y:hidden !important;
+          -webkit-overflow-scrolling:touch;
         }
         .nav-btn {
-          flex:0 0 112px !important;
-          min-width:112px;
-          min-height:68px !important;
+          flex:0 0 118px !important;
+          min-width:118px !important;
+          width:118px !important;
+          min-height:70px !important;
+          height:70px !important;
           padding:8px 8px !important;
-          font-size:11px !important;
+          font-size:12px !important;
           flex-direction:column;
           gap:4px;
           text-align:center;
@@ -5686,6 +5806,23 @@
         }
         .nav-icon::before {
           font-size:20px !important;
+        }
+        .brand-header-logo {
+          width:154px;
+          min-width:132px;
+          height:34px;
+          order:0;
+        }
+        #appHeader h1 {
+          font-size:15px;
+          min-width:0;
+        }
+        #mainLayout {
+          padding-bottom:104px !important;
+        }
+        #content,
+        .view.active {
+          min-height:calc(100vh - 170px);
         }
         .password-field-wrap {
           display:grid;
@@ -5879,6 +6016,7 @@
   function initV2UI() {
     ensureAdminProfile();
     injectV2Styles();
+    applyBrandLogo();
     applyVisualTheme(APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light', true);
     initUiLabels();
     enhanceImportUi();

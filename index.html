@@ -58,6 +58,16 @@ html { -webkit-text-size-adjust: 100%; }
 }
 #appHeader h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
 #appHeader .logo { font-size: 22px; }
+#appHeader .logo img {
+  display: block;
+  width: 164px;
+  max-width: 32vw;
+  height: 34px;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
 #sapHeaderInfo {
   margin-left: auto;
   font-size: 12px;
@@ -930,6 +940,12 @@ html { -webkit-text-size-adjust: 100%; }
 }
 .login-logo { text-align: center; margin-bottom: 24px; }
 .login-logo .login-icon { font-size: 44px; display: block; margin-bottom: 8px; }
+.login-logo .login-icon img {
+  display: block;
+  width: min(300px, 82vw);
+  height: auto;
+  margin: 0 auto 10px;
+}
 .login-logo h2 { font-size: 22px; font-weight: 800; color: var(--primary); }
 .login-logo p { font-size: 13px; color: var(--muted); margin-top: 2px; }
 .login-field { margin-bottom: 14px; }
@@ -965,7 +981,7 @@ html { -webkit-text-size-adjust: 100%; }
 <div id="loginScreen">
   <div class="login-card">
     <div class="login-logo">
-      <span class="login-icon">🚚</span>
+      <span class="login-icon"><img src="./assets/hospitality-by-alvarez.svg" alt="Hospitality by Alvarez"></span>
       <h2>TMS - ALVAREZ</h2>
       <p>Gestión Logística · República Dominicana</p>
     </div>
@@ -986,7 +1002,7 @@ html { -webkit-text-size-adjust: 100%; }
 
 <!-- HEADER -->
 <div id="appHeader" style="display:none;">
-  <span class="logo">→</span>
+  <span class="logo"><img src="./assets/hospitality-by-alvarez.svg" alt="Hospitality by Alvarez"></span>
   <h1>TMS - ALVAREZ</h1>
   <button id="saveStateBtn" onclick="guardarEnSupabase()">Guardar cambios</button>
   <button id="undoStateBtn" onclick="revertirUltimoCambio()" disabled>Revertir último cambio</button>
@@ -4475,6 +4491,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260617-cloud-route-save"></script>
+<script src="./tms-v2.js?v=20260617-audit-fixes"></script>
 </body>
 </html>
