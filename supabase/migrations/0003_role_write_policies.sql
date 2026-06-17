@@ -111,12 +111,12 @@ to authenticated
 using (
   public.tms_current_role() = 'Admin'
   or (clave = 'warehouse' and public.tms_can_edit('almacen'))
-  or (clave = 'app_state' and (public.tms_can_edit('importar') or public.tms_can_edit('solicitudesAlmacen') or public.tms_can_edit('almacen') or public.tms_can_edit('configuracion')))
+  or (clave = 'app_state' and (public.tms_can_edit('importar') or public.tms_can_edit('solicitudesAlmacen') or public.tms_can_edit('almacen') or public.tms_can_edit('configuracion') or public.tms_can_edit('rutas')))
 )
 with check (
   public.tms_current_role() = 'Admin'
   or (clave = 'warehouse' and public.tms_can_edit('almacen'))
-  or (clave = 'app_state' and (public.tms_can_edit('importar') or public.tms_can_edit('solicitudesAlmacen') or public.tms_can_edit('almacen') or public.tms_can_edit('configuracion')))
+  or (clave = 'app_state' and (public.tms_can_edit('importar') or public.tms_can_edit('solicitudesAlmacen') or public.tms_can_edit('almacen') or public.tms_can_edit('configuracion') or public.tms_can_edit('rutas')))
 );
 
 drop policy if exists "authenticated users can write tms_route_configs" on public.tms_route_configs;
@@ -130,8 +130,8 @@ drop policy if exists "authenticated users can write tms_client_configs" on publ
 create policy "roles can write client configs"
 on public.tms_client_configs for all
 to authenticated
-using (public.tms_current_role() = 'Admin' or public.tms_can_edit('configuracion'))
-with check (public.tms_current_role() = 'Admin' or public.tms_can_edit('configuracion'));
+using (public.tms_current_role() = 'Admin' or public.tms_can_edit('configuracion') or public.tms_can_edit('rutas'))
+with check (public.tms_current_role() = 'Admin' or public.tms_can_edit('configuracion') or public.tms_can_edit('rutas'));
 
 drop policy if exists "authenticated users can write tms_order_lines" on public.tms_order_lines;
 create policy "roles can write order lines"
