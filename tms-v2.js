@@ -666,13 +666,49 @@
     alert(detail);
   }
 
+  function isMissingRpcError(error) {
+    const message = text(error && error.message ? error.message : error);
+    return /PGRST202|Could not find the function|schema cache|tms_replace_table/i.test(message);
+  }
+
+  function markCloudMigrationPending() {
+    APP.cloudMigrationPending = true;
+    const banner = document.getElementById('sapEstadoBanner');
+    if (banner) {
+      banner.style.display = 'block';
+      banner.innerHTML = '<strong>Migración de nube pendiente.</strong><br>El sistema guardó en modo compatibilidad. Para guardado transaccional completo falta aplicar supabase/migrations/0004_atomic_replace_and_route_history.sql en Supabase.';
+    }
+  }
+
+  async function legacyReplaceSupabaseTable(tableName, rows) {
+    const client = getSupabaseClient();
+    const safeRows = tableName === 'tms_route_cost_history'
+      ? (rows || []).map(row => {
+        const copy = { ...row };
+        delete copy.camion;
+        return copy;
+      })
+      : (rows || []);
+    await runSupabaseQuery(client.from(tableName).delete().not('id', 'is', null), 'No se pudo limpiar ' + tableName);
+    for (const chunk of chunkRows(safeRows, 200)) {
+      await runSupabaseQuery(client.from(tableName).insert(chunk), 'No se pudo guardar ' + tableName);
+    }
+  }
+
   async function replaceSupabaseTable(tableName, rows) {
     const client = getSupabaseClient();
     if (!client || typeof client.rpc !== 'function') throw new Error('No hay cliente Supabase para guardar ' + tableName);
-    await runSupabaseQuery(
-      client.rpc('tms_replace_table', { p_table_name: tableName, p_rows: rows || [] }),
-      'No se pudo guardar ' + tableName + ' de forma transaccional'
-    );
+    try {
+      await runSupabaseQuery(
+        client.rpc('tms_replace_table', { p_table_name: tableName, p_rows: rows || [] }),
+        'No se pudo guardar ' + tableName + ' de forma transaccional'
+      );
+    } catch (error) {
+      if (!isMissingRpcError(error)) throw error;
+      markCloudMigrationPending();
+      console.warn('Migración 0004 pendiente; guardando en modo compatibilidad para', tableName);
+      await legacyReplaceSupabaseTable(tableName, rows || []);
+    }
   }
 
   function mapDbOrderLine(row) {
@@ -4911,7 +4947,11 @@
       if (canWriteWarehouseHistory) await replaceSupabaseTable('tms_warehouse_history', warehouseHistoryRows);
 
       if (btn) {
-        btn.textContent = 'Guardado en nube';
+        btn.textContent = APP.cloudMigrationPending ? 'Nube modo compat.' : 'Guardado en nube';
+      }
+      if (APP.cloudMigrationPending && !silent && !window._tmsMigrationPendingNoticeShown) {
+        window._tmsMigrationPendingNoticeShown = true;
+        alert('Cambios guardados en la nube en modo compatibilidad. Falta aplicar la migración 0004 en Supabase para activar guardado transaccional completo.');
       }
       return true;
     } catch (error) {
