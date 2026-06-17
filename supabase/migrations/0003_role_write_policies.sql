@@ -56,6 +56,10 @@ security definer
 set search_path = public
 as $$
 begin
+  if current_setting('tms.profile_replace_admin', true) = 'on' then
+    return new;
+  end if;
+
   if public.tms_current_role() = 'Admin' then
     return new;
   end if;

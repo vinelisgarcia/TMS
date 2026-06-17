@@ -56,6 +56,7 @@ begin
   end if;
 
   if p_table_name = 'tms_user_profiles' then
+    perform set_config('tms.profile_replace_admin', 'on', true);
     delete from public.tms_user_profiles where true;
     insert into public.tms_user_profiles (auth_user_id, nombre, email, rol, permisos_por_modulo, activo)
     select auth_user_id, nombre, lower(email), rol, coalesce(permisos_por_modulo, '{}'::jsonb), coalesce(activo, true)
