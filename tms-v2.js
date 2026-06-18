@@ -34,6 +34,7 @@
     feriadosRD: APP.feriadosRD || (RD_HOLIDAYS[CURRENT_YEAR] || []),
     importFiles: APP.importFiles || { plan: '', control: '', solicitudesPlan: '', solicitudesControl: '' },
     importShipments: APP.importShipments || [],
+    dailyPriorities: APP.dailyPriorities || [],
     selectedCalendarGroups: APP.selectedCalendarGroups || [],
     visualTheme: APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light',
     undoStack: APP.undoStack || [],
@@ -55,6 +56,15 @@
 
   function text(value) {
     return String(value == null ? '' : value).trim();
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   function isValidLoginEmail(value) {
@@ -111,6 +121,7 @@
     comercial: 'Comercial',
     rutas: 'Rutas',
     importaciones: 'Importaciones',
+    prioridades: 'Prioridades',
     configuracion: 'Configuración',
     solicitudesAlmacen: 'Solicitudes almacén',
     almacen: 'Almacén'
@@ -451,6 +462,7 @@
       comercial: { ver: true, editar: true },
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
+      prioridades: { ver: true, editar: true, importar: true },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -583,6 +595,8 @@
     'camionExtraEnabled',
     'feriadosRD',
     'importFiles',
+    'importShipments',
+    'dailyPriorities',
     'visualTheme'
   ];
 
@@ -634,6 +648,7 @@
       renderConfigAuxSections();
       renderSolicitudesAlmacen();
       renderAlmacen();
+      renderPrioridades();
       initRouteFilterOptions();
       saveLocalSnapshot();
       return true;
@@ -953,6 +968,7 @@
       comercial: 'comercial',
       rutas: 'rutas',
       importaciones: 'importaciones',
+      prioridades: 'prioridades',
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen',
@@ -1011,6 +1027,7 @@
       comercial: 'comercial',
       rutas: 'rutas',
       importaciones: 'importaciones',
+      prioridades: 'prioridades',
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen'
@@ -1044,6 +1061,7 @@
       originalCambiarVista(id, btn);
       if (id === 'rutas') renderRouteCatalog();
       if (id === 'importaciones') renderImportaciones();
+      if (id === 'prioridades') renderPrioridades();
       applyPermissionUi();
     };
   }
@@ -1447,6 +1465,7 @@
         feriadosRD: APP.feriadosRD,
         importFiles: APP.importFiles,
         importShipments: APP.importShipments,
+        dailyPriorities: APP.dailyPriorities,
         visualTheme: APP.visualTheme
       }
     };
@@ -4086,13 +4105,17 @@
       comercial: { ver: true, editar: true },
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
+      prioridades: { ver: role === 'Admin' || scope === 'full', editar: role === 'Admin' || scope === 'full', importar: false },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
     };
     if (role === 'Admin' || scope === 'full') return all;
     if (scope === 'read_only') {
-      return Object.fromEntries(Object.keys(all).map(key => [key, { ver: true, editar: false, importar: false }]));
+      return Object.fromEntries(Object.keys(all).map(key => [
+        key,
+        key === 'prioridades' ? { ver: false, editar: false, importar: false } : { ver: true, editar: false, importar: false }
+      ]));
     }
     if (scope === 'commercial') {
       return {
@@ -4103,6 +4126,7 @@
         comercial: { ver: true, editar: false },
         rutas: { ver: false, editar: false },
         importaciones: { ver: false, editar: false, importar: false },
+        prioridades: { ver: false, editar: false, importar: false },
         configuracion: { ver: false, editar: false, importar: false },
         solicitudesAlmacen: { ver: false, editar: false },
         almacen: { ver: false, editar: false }
@@ -4117,6 +4141,7 @@
         comercial: { ver: false, editar: false },
         rutas: { ver: false, editar: false },
         importaciones: { ver: false, editar: false, importar: false },
+        prioridades: { ver: false, editar: false, importar: false },
         configuracion: { ver: false, editar: false, importar: false },
         solicitudesAlmacen: { ver: true, editar: true },
         almacen: { ver: true, editar: true }
@@ -4130,6 +4155,7 @@
       comercial: { ver: true, editar: false },
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
+      prioridades: { ver: false, editar: false, importar: false },
       configuracion: { ver: false, editar: false, importar: false },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -4795,6 +4821,7 @@
         APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
         APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
         APP.importShipments = Array.isArray(settingsMap.app_state.importShipments) ? settingsMap.app_state.importShipments : (APP.importShipments || []);
+        APP.dailyPriorities = Array.isArray(settingsMap.app_state.dailyPriorities) ? settingsMap.app_state.dailyPriorities : (APP.dailyPriorities || []);
         APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
         APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
         applyVisualTheme(APP.visualTheme, true);
@@ -4880,6 +4907,7 @@
       renderConfigClientes();
       renderSolicitudesAlmacen();
       renderAlmacen();
+      renderPrioridades();
       applyPermissionUi();
       saveLocalSnapshot();
     } catch (error) {
@@ -4895,6 +4923,7 @@
         renderConfigClientes();
         renderSolicitudesAlmacen();
         renderAlmacen();
+        renderPrioridades();
         return;
       }
       APP.lineItems = [];
@@ -4914,6 +4943,7 @@
       renderConfigClientes();
       renderSolicitudesAlmacen();
       renderAlmacen();
+      renderPrioridades();
     }
   };
 
@@ -4968,6 +4998,7 @@
             feriadosRD: APP.feriadosRD || [],
             importFiles: APP.importFiles || {},
             importShipments: APP.importShipments || [],
+            dailyPriorities: APP.dailyPriorities || [],
             controlHistory: APP.controlHistory || [],
             visualTheme: APP.visualTheme || 'light'
           })
@@ -5507,6 +5538,28 @@
       .import-doc-chip.ok { color:#166534; background:#F0FDF4; border-color:#BBF7D0; }
       .import-actions { display:flex; flex-wrap:wrap; gap:6px; }
       .import-report { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; white-space:pre-wrap; color:var(--text); font-size:12px; line-height:1.5; }
+      .priorities-module { display:grid; gap:14px; }
+      .priority-hero { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; padding:18px; border:1px solid var(--border); border-radius:10px; background:linear-gradient(135deg, var(--surface), var(--surface-2)); box-shadow:var(--shadow-sm); }
+      .priority-hero h2 { margin:0; font-size:18px; color:var(--text); }
+      .priority-hero p { margin:4px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
+      .priority-top-actions, .priority-form, .priority-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+      .priority-form .form-control { min-width:180px; flex:1; }
+      .priority-voice-status { margin-top:8px; font-size:12px; color:var(--muted); }
+      .priority-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
+      .priority-kpi { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; }
+      .priority-kpi strong { display:block; font-size:22px; color:var(--primary); }
+      .priority-kpi span { color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:800; }
+      .priority-board { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; align-items:start; }
+      .priority-column { border:1px solid var(--border); border-radius:10px; background:var(--surface); overflow:hidden; min-height:180px; }
+      .priority-column.drag-over { outline:2px solid var(--warning); outline-offset:2px; }
+      .priority-column-head { padding:10px 12px; background:var(--primary); color:#fff; display:flex; justify-content:space-between; gap:8px; font-size:12px; font-weight:800; }
+      .priority-column-body { display:grid; gap:9px; padding:10px; }
+      .priority-card { border:1px solid var(--border); border-radius:8px; background:var(--surface-2); padding:10px; display:grid; gap:7px; cursor:grab; }
+      .priority-card-title { font-size:13px; font-weight:800; color:var(--text); line-height:1.25; }
+      .priority-card-note { font-size:12px; color:var(--muted); line-height:1.35; }
+      .priority-card-meta { display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+      .priority-report { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; }
+      .priority-report pre { margin:0; white-space:pre-wrap; color:var(--text); font-size:12px; line-height:1.5; font-family:inherit; }
       #appHeader {
         min-height:62px;
       }
@@ -6179,6 +6232,7 @@
       #nav-comercial .nav-icon::before { content:'$'; }
       #nav-rutas .nav-icon::before { content:'⇄'; }
       #nav-importaciones .nav-icon::before { content:'↗'; }
+      #nav-prioridades .nav-icon::before { content:'!'; }
       #nav-configClientes .nav-icon::before { content:'⚙'; }
       #nav-solicitudesAlmacen .nav-icon::before { content:'▤'; }
       #nav-almacen .nav-icon::before { content:'▦'; }
@@ -6445,6 +6499,235 @@
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Importaciones');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ Reporte: buildImportDailyReport() }]), 'Reporte diario');
     XLSX.writeFile(wb, 'TMS_Importaciones.xlsx');
+  };
+
+
+  const PRIORITY_STATUSES = [
+    { key: 'pendiente', label: 'Pendiente' },
+    { key: 'proceso', label: 'En proceso' },
+    { key: 'completada', label: 'Completada' }
+  ];
+
+  function todayIsoDate() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function priorityStatusLabel(status) {
+    return (PRIORITY_STATUSES.find(item => item.key === status) || PRIORITY_STATUSES[0]).label;
+  }
+
+  function ensureDailyPriorities() {
+    APP.dailyPriorities = Array.isArray(APP.dailyPriorities) ? APP.dailyPriorities : [];
+    APP.dailyPriorities.forEach(item => {
+      item.id = item.id || ('prio-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+      item.fecha = item.fecha || todayIsoDate();
+      item.estado = PRIORITY_STATUSES.some(status => status.key === item.estado) ? item.estado : 'pendiente';
+      item.titulo = text(item.titulo || item.texto || 'Tarea sin título');
+      item.notas = text(item.notas || '');
+      item.createdAt = item.createdAt || nowIso();
+      item.updatedAt = item.updatedAt || item.createdAt;
+    });
+  }
+
+  function getPrioritiesForSelectedDate() {
+    ensureDailyPriorities();
+    const date = text((document.getElementById('prioDate') || {}).value) || APP.prioritiesDate || todayIsoDate();
+    APP.prioritiesDate = date;
+    return APP.dailyPriorities
+      .filter(item => item.fecha === date)
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0) || text(a.titulo).localeCompare(text(b.titulo)));
+  }
+
+  function priorityCardHtml(item) {
+    return `<div class="priority-card" draggable="true" ondragstart="dragPriorityTask(event,'${item.id}')">
+      <div class="priority-card-title">${escapeHtml(item.titulo)}</div>
+      ${item.notas ? `<div class="priority-card-note">${escapeHtml(item.notas)}</div>` : ''}
+      <div class="priority-card-meta"><span>${priorityStatusLabel(item.estado)}</span><span>${new Date(item.updatedAt || item.createdAt || nowIso()).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div class="priority-actions">
+        ${PRIORITY_STATUSES.map(status => `<button class="btn btn-outline btn-sm" onclick="moverPrioridad('${item.id}','${status.key}')" ${item.estado === status.key ? 'disabled' : ''}>${status.label}</button>`).join('')}
+        <button class="btn btn-outline btn-sm" onclick="editarPrioridad('${item.id}')">Editar</button>
+        <button class="btn btn-outline btn-sm" onclick="eliminarPrioridad('${item.id}')">Eliminar</button>
+      </div>
+    </div>`;
+  }
+
+  function buildPriorityReport(rows) {
+    const pending = rows.filter(item => item.estado === 'pendiente').length;
+    const progress = rows.filter(item => item.estado === 'proceso').length;
+    const done = rows.filter(item => item.estado === 'completada').length;
+    const lines = PRIORITY_STATUSES.map(status => {
+      const items = rows.filter(item => item.estado === status.key);
+      return `${status.label}: ${items.length}\n${items.map(item => '- ' + item.titulo + (item.notas ? ' · ' + item.notas : '')).join('\n') || '- Sin tareas'}`;
+    }).join('\n\n');
+    return `Reporte diario de prioridades\nFecha: ${APP.prioritiesDate || todayIsoDate()}\n\nResumen:\nPendientes: ${pending}\nEn proceso: ${progress}\nCompletadas: ${done}\nTotal: ${rows.length}\n\n${lines}`;
+  }
+
+  function parsePriorityDictation(transcript) {
+    let value = text(transcript)
+      .replace(/^agregar\s+(tarea|prioridad)\s+/i, '')
+      .replace(/^crear\s+(tarea|prioridad)\s+/i, '')
+      .replace(/^tarea\s+/i, '');
+    const parts = value.split(/\s+(?:nota|notas|observacion|observación)\s+/i);
+    return { titulo: text(parts[0]), notas: text(parts.slice(1).join(' ')) };
+  }
+
+  window.renderPrioridades = function renderPrioridades() {
+    const mount = document.getElementById('prioridadesMount');
+    if (!mount) return;
+    if (!isAdminUser()) {
+      mount.innerHTML = '<div class="empty-state"><div class="empty-icon">!</div><p>Este módulo es solo para administradores.</p></div>';
+      return;
+    }
+    ensureDailyPriorities();
+    APP.prioritiesDate = APP.prioritiesDate || todayIsoDate();
+    const rows = getPrioritiesForSelectedDate();
+    const counts = Object.fromEntries(PRIORITY_STATUSES.map(status => [status.key, rows.filter(item => item.estado === status.key).length]));
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    mount.innerHTML = `<div class="priorities-module">
+      <section class="priority-hero">
+        <div><h2>Prioridades del día</h2><p>Tablero administrativo para dar seguimiento a lo urgente, mover tareas por estado y cerrar el día con reporte.</p></div>
+        <div class="priority-top-actions">
+          <input id="prioDate" class="form-control" type="date" value="${APP.prioritiesDate}" onchange="APP.prioritiesDate=this.value;renderPrioridades()">
+          <button class="btn btn-success btn-sm" onclick="exportarPrioridadesExcel()">Exportar reporte</button>
+        </div>
+      </section>
+      <section class="card">
+        <div class="priority-form">
+          <input id="prioTitle" class="form-control" placeholder="Nueva prioridad del día">
+          <input id="prioNotes" class="form-control" placeholder="Nota opcional">
+          <button class="btn btn-primary btn-sm" onclick="agregarPrioridad()">Agregar</button>
+          <button id="prioVoiceBtn" class="btn btn-outline btn-sm" onclick="iniciarDictadoPrioridades()" ${SpeechRecognition ? '' : 'disabled'}>${SpeechRecognition ? 'Dictar' : 'Dictado no disponible'}</button>
+        </div>
+        <div id="prioVoiceStatus" class="priority-voice-status">${SpeechRecognition ? 'Puedes dictar una tarea y se agregará automáticamente.' : 'Este navegador no expone dictado por voz.'}</div>
+      </section>
+      <section class="priority-kpis">
+        <div class="priority-kpi"><strong>${rows.length}</strong><span>Total</span></div>
+        <div class="priority-kpi"><strong>${counts.pendiente || 0}</strong><span>Pendientes</span></div>
+        <div class="priority-kpi"><strong>${counts.proceso || 0}</strong><span>En proceso</span></div>
+        <div class="priority-kpi"><strong>${counts.completada || 0}</strong><span>Completadas</span></div>
+      </section>
+      <section class="priority-board">
+        ${PRIORITY_STATUSES.map(status => {
+          const items = rows.filter(item => item.estado === status.key);
+          return `<div class="priority-column" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropPriorityTask(event,'${status.key}',this)">
+            <div class="priority-column-head"><span>${status.label}</span><span>${items.length}</span></div>
+            <div class="priority-column-body">${items.length ? items.map(priorityCardHtml).join('') : '<div class="route-catalog-empty">Sin tareas.</div>'}</div>
+          </div>`;
+        }).join('')}
+      </section>
+      <section class="priority-report"><pre>${escapeHtml(buildPriorityReport(rows))}</pre></section>
+    </div>`;
+  };
+
+  window.agregarPrioridad = function agregarPrioridad() {
+    if (!requireAdminUser('Crear prioridades')) return;
+    const titulo = text((document.getElementById('prioTitle') || {}).value);
+    const notas = text((document.getElementById('prioNotes') || {}).value);
+    if (!titulo) return alert('Escribe la prioridad que quieres agregar.');
+    ensureDailyPriorities();
+    pushUndoState('agregar prioridad');
+    const fecha = text((document.getElementById('prioDate') || {}).value) || APP.prioritiesDate || todayIsoDate();
+    APP.dailyPriorities.push({ id: 'prio-' + Date.now(), fecha, titulo, notas, estado: 'pendiente', orden: APP.dailyPriorities.length + 1, createdAt: nowIso(), updatedAt: nowIso() });
+    APP.prioritiesDate = fecha;
+    renderPrioridades();
+    scheduleAutoSave();
+  };
+
+  window.moverPrioridad = function moverPrioridad(id, estado) {
+    if (!requireAdminUser('Mover prioridades')) return;
+    const item = (APP.dailyPriorities || []).find(row => row.id === id);
+    if (!item || item.estado === estado) return;
+    pushUndoState('mover prioridad');
+    item.estado = estado;
+    item.updatedAt = nowIso();
+    renderPrioridades();
+    scheduleAutoSave();
+  };
+
+  window.dragPriorityTask = function dragPriorityTask(event, id) {
+    event.dataTransfer.setData('text/plain', id);
+  };
+
+  window.dropPriorityTask = function dropPriorityTask(event, estado, el) {
+    event.preventDefault();
+    if (el) el.classList.remove('drag-over');
+    const id = event.dataTransfer.getData('text/plain');
+    moverPrioridad(id, estado);
+  };
+
+  window.editarPrioridad = function editarPrioridad(id) {
+    if (!requireAdminUser('Editar prioridades')) return;
+    const item = (APP.dailyPriorities || []).find(row => row.id === id);
+    if (!item) return;
+    const titulo = prompt('Editar prioridad', item.titulo);
+    if (titulo === null) return;
+    const notas = prompt('Nota opcional', item.notas || '');
+    pushUndoState('editar prioridad');
+    item.titulo = text(titulo) || item.titulo;
+    item.notas = text(notas || '');
+    item.updatedAt = nowIso();
+    renderPrioridades();
+    scheduleAutoSave();
+  };
+
+  window.eliminarPrioridad = function eliminarPrioridad(id) {
+    if (!requireAdminUser('Eliminar prioridades')) return;
+    const item = (APP.dailyPriorities || []).find(row => row.id === id);
+    if (!item || !confirm('¿Eliminar esta prioridad?')) return;
+    pushUndoState('eliminar prioridad');
+    APP.dailyPriorities = APP.dailyPriorities.filter(row => row.id !== id);
+    renderPrioridades();
+    scheduleAutoSave();
+  };
+
+  window.iniciarDictadoPrioridades = function iniciarDictadoPrioridades() {
+    if (!requireAdminUser('Dictar prioridades')) return;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const status = document.getElementById('prioVoiceStatus');
+    if (!SpeechRecognition) return alert('El dictado no está disponible en este navegador.');
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-DO';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    if (status) status.textContent = 'Escuchando...';
+    recognition.onresult = event => {
+      const transcript = event.results && event.results[0] && event.results[0][0] ? event.results[0][0].transcript : '';
+      const parsed = parsePriorityDictation(transcript);
+      if (!parsed.titulo) {
+        if (status) status.textContent = 'No pude detectar una tarea clara. Intenta otra vez.';
+        return;
+      }
+      const titleEl = document.getElementById('prioTitle');
+      const notesEl = document.getElementById('prioNotes');
+      if (titleEl) titleEl.value = parsed.titulo;
+      if (notesEl) notesEl.value = parsed.notas;
+      if (status) status.textContent = 'Detectado: ' + parsed.titulo;
+      agregarPrioridad();
+    };
+    recognition.onerror = event => {
+      if (status) status.textContent = 'No se pudo usar el dictado: ' + (event.error || 'error desconocido');
+    };
+    recognition.onend = () => {
+      const current = document.getElementById('prioVoiceStatus');
+      if (current && current.textContent === 'Escuchando...') current.textContent = 'Dictado detenido.';
+    };
+    recognition.start();
+  };
+
+  window.exportarPrioridadesExcel = function exportarPrioridadesExcel() {
+    const rows = getPrioritiesForSelectedDate();
+    if (!rows.length) return alert('No hay prioridades para exportar en esta fecha.');
+    const ws = XLSX.utils.json_to_sheet(rows.map(item => ({
+      Fecha: item.fecha,
+      Estado: priorityStatusLabel(item.estado),
+      Prioridad: item.titulo,
+      Notas: item.notas || '',
+      Creada: item.createdAt || '',
+      Actualizada: item.updatedAt || ''
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Prioridades');
+    XLSX.writeFile(wb, 'TMS_Prioridades_' + (APP.prioritiesDate || todayIsoDate()) + '.xlsx');
   };
 
   window.renderImportaciones = function renderImportaciones() {

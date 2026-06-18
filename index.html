@@ -1035,6 +1035,9 @@ html { -webkit-text-size-adjust: 100%; }
     <button class="nav-btn" id="nav-importaciones" onclick="cambiarVista('importaciones',this)">
       <span class="nav-icon">↗</span><span class="nav-label">Importaciones</span>
     </button>
+    <button class="nav-btn" id="nav-prioridades" onclick="cambiarVista('prioridades',this)">
+      <span class="nav-icon">!</span><span class="nav-label">Prioridades</span>
+    </button>
     <button class="nav-btn" id="nav-configClientes" onclick="cambiarVista('configClientes',this)">
       <span class="nav-icon">⚙️</span><span class="nav-label">Config. Clientes</span>
     </button>
@@ -1535,6 +1538,14 @@ html { -webkit-text-size-adjust: 100%; }
       <div class="view-title">Control de Importaciones</div>
       <div id="importacionesMount">
         <div class="empty-state"><div class="empty-icon">↗</div><p>Cargando módulo de importaciones...</p></div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 11: PRIORIDADES ADMIN ========== -->
+    <div id="prioridades" class="view">
+      <div class="view-title">Prioridades del Día</div>
+      <div id="prioridadesMount">
+        <div class="empty-state"><div class="empty-icon">!</div><p>Cargando prioridades...</p></div>
       </div>
     </div>
 
@@ -4526,6 +4537,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260618-saturday-evidence-report"></script>
+<script src="./tms-v2.js?v=20260618-daily-priorities"></script>
 </body>
 </html>
