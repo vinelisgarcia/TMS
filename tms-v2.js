@@ -6113,7 +6113,8 @@
   const IMPORT_STAGES = [
     { key: 'pedido', label: 'Pedido / fabricación' },
     { key: 'docs_origen', label: 'Docs origen' },
-    { key: 'transito', label: 'En tránsito' },
+    { key: 'miami_consolidacion', label: 'Miami / consolidación' },
+    { key: 'transito', label: 'Tránsito a RD' },
     { key: 'aduana_rd', label: 'Aduana RD' },
     { key: 'transporte_almacen', label: 'Ruta a almacén' },
     { key: 'recepcion_sap', label: 'Recepción / SAP' }
@@ -6121,10 +6122,10 @@
 
   const IMPORT_DOCS = {
     espana: [
-      ['r1', 'R1'], ['seguro', 'Seguro'], ['waybill', 'Waybill / BL'], ['facturaProveedor', 'Factura proveedor'], ['packingList', 'Packing list'], ['preliquidacion', 'Preliquidación'], ['pin', 'PIN pagado'], ['liquidacion', 'Liquidación pagada'], ['facturaSap', 'Factura proveedor SAP'], ['gastosSap', 'Gastos SAP']
+      ['eur1', 'EUR1'], ['seguro', 'Seguro'], ['waybill', 'Waybill / BL'], ['facturaProveedor', 'Factura proveedor'], ['packingList', 'Packing list'], ['preliquidacion', 'Preliquidación'], ['pin', 'PIN pagado'], ['liquidacion', 'Liquidación pagada'], ['facturaSap', 'Factura proveedor SAP'], ['gastosSap', 'Gastos SAP']
     ],
     miami: [
-      ['po', 'PO'], ['trackingUsa', 'Tracking proveedor-Miami'], ['facturaProveedor', 'Factura proveedor'], ['packingList', 'Packing list'], ['bl', 'BL / guía marítima'], ['preliquidacion', 'Preliquidación'], ['pin', 'PIN pagado'], ['liquidacion', 'Liquidación pagada'], ['facturaSap', 'Factura proveedor SAP'], ['gastosSap', 'Gastos SAP']
+      ['po', 'PO'], ['trackingUsa', 'Tracking proveedor-Miami'], ['reciboMiami', 'Recibido en Miami'], ['consolidacionMiami', 'Consolidación Miami'], ['facturaProveedor', 'Factura proveedor'], ['packingList', 'Packing list'], ['bl', 'BL / guía marítima'], ['preliquidacion', 'Preliquidación'], ['pin', 'PIN pagado'], ['liquidacion', 'Liquidación pagada'], ['facturaSap', 'Factura proveedor SAP'], ['gastosSap', 'Gastos SAP']
     ]
   };
 
@@ -6185,7 +6186,7 @@
 
   function clearImportForm() {
     APP.importEditingId = '';
-    ['impReferencia', 'impProveedor', 'impPO', 'impFactura', 'impBL', 'impTracking', 'impETA', 'impAduana', 'impSalidaAduana', 'impAlmacen', 'impValor', 'impNotas'].forEach(id => {
+    ['impReferencia', 'impProveedor', 'impPO', 'impFactura', 'impBL', 'impTracking', 'impETA', 'impMiami', 'impAduana', 'impSalidaAduana', 'impAlmacen', 'impValor', 'impNotas'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -6216,6 +6217,7 @@
     set('impBL', item.bl);
     set('impTracking', item.tracking);
     set('impETA', item.eta);
+    set('impMiami', item.fechaMiami);
     set('impAduana', item.fechaAduana);
     set('impSalidaAduana', item.fechaSalidaAduana);
     set('impAlmacen', item.fechaAlmacen);
@@ -6268,6 +6270,7 @@
       bl: getImportFormValue('impBL'),
       tracking: getImportFormValue('impTracking'),
       eta: getImportFormValue('impETA'),
+      fechaMiami: getImportFormValue('impMiami'),
       fechaAduana: getImportFormValue('impAduana'),
       fechaSalidaAduana: getImportFormValue('impSalidaAduana'),
       fechaAlmacen: getImportFormValue('impAlmacen'),
@@ -6293,7 +6296,7 @@
       <div class="import-card-title"><span>${item.referencia || 'Sin ref.'}</span><span>${progress.done}/${progress.total}</span></div>
       <div class="import-card-meta"><strong>${importOriginLabel(item.origen)}</strong> · ${item.proveedor || 'Proveedor pendiente'}<br>PO ${item.po || '—'} · Factura ${item.factura || '—'}<br>BL/Waybill ${item.bl || '—'} · ${eta.label}</div>
       <div class="import-docs">${docsHtml}</div>
-      <div class="import-card-meta">Aduana: ${item.fechaAduana || '—'} · Salida: ${item.fechaSalidaAduana || '—'} · Almacén: ${item.fechaAlmacen || '—'}</div>
+      <div class="import-card-meta">Miami: ${item.fechaMiami || '—'} · Aduana: ${item.fechaAduana || '—'} · Salida: ${item.fechaSalidaAduana || '—'} · Almacén: ${item.fechaAlmacen || '—'}</div>
       ${item.notas ? `<div class="import-card-meta">${item.notas}</div>` : ''}
       <div class="import-actions">
         <button class="btn btn-outline btn-sm" onclick="editarImportacion('${jsString(item.id)}')">Editar</button>
@@ -6326,6 +6329,7 @@
       Tracking: item.tracking,
       ETA: item.eta,
       Estado_ETA: importEtaState(item).label,
+      Llegada_Miami: item.fechaMiami,
       Fecha_Aduana: item.fechaAduana,
       Salida_Aduana: item.fechaSalidaAduana,
       Llegada_Almacen: item.fechaAlmacen,
@@ -6358,7 +6362,7 @@
     const currentOrigin = getImportFormValue('impOrigen') || 'espana';
     mount.innerHTML = `<div class="import-module">
       <section class="import-hero">
-        <div><h2>Importaciones España y EE. UU. / Miami</h2><p>Seguimiento desde PO, documentación de origen, tránsito, aduana, transporte al almacén, recepción y registro de facturas/gastos en SAP.</p></div>
+        <div><h2>Importaciones España y EE. UU. / Miami</h2><p>Seguimiento desde PO, documentación de origen, llegada a Miami, consolidación/envío a RD, aduana, transporte al almacén, recepción y registro de facturas/gastos en SAP.</p></div>
         <div class="import-actions"><button class="btn btn-success btn-sm" onclick="exportarImportacionesExcel()">Exportar reporte</button></div>
       </section>
       <div class="import-kpis">
@@ -6378,7 +6382,8 @@
           <input id="impFactura" class="form-control" placeholder="Factura proveedor">
           <input id="impBL" class="form-control" placeholder="BL / Waybill">
           <input id="impTracking" class="form-control" placeholder="Tracking / transitario">
-          <label class="form-row">ETA<input id="impETA" class="form-control" type="date"></label>
+          <label class="form-row">ETA RD<input id="impETA" class="form-control" type="date"></label>
+          <label class="form-row">Llegada Miami<input id="impMiami" class="form-control" type="date"></label>
           <label class="form-row">Llegada aduana<input id="impAduana" class="form-control" type="date"></label>
           <label class="form-row">Salida aduana<input id="impSalidaAduana" class="form-control" type="date"></label>
           <label class="form-row">Llegada almacén<input id="impAlmacen" class="form-control" type="date"></label>
