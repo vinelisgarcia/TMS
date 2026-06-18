@@ -365,6 +365,23 @@
     return allowedDates.length ? allowedDates : dates;
   }
 
+  function setMoveDateInput(dates, selectedDate) {
+    const input = document.getElementById('moveFecha');
+    if (!input) return;
+    const sortedDates = [...new Set(dates || [])].sort((a, b) => fechaToDate(a) - fechaToDate(b));
+    const fallback = selectedDate || sortedDates[0] || fechaToStr(new Date());
+    input.type = 'date';
+    input.className = 'form-control';
+    input.min = sortedDates[0] ? fechaStrToISO(sortedDates[0]) : '';
+    input.max = sortedDates[sortedDates.length - 1] ? fechaStrToISO(sortedDates[sortedDates.length - 1]) : '';
+    input.value = fechaStrToISO(fallback) || '';
+  }
+
+  function getMoveDateValue() {
+    const rawValue = text((document.getElementById('moveFecha') || {}).value);
+    return rawValue ? isoToFechaStr(rawValue) : '';
+  }
+
   function buildClientConfigDefault(codigo, nombre) {
     return {
       codigoCliente: codigo,
@@ -2204,7 +2221,7 @@
     APP.moveCliente = { fecha, cam: camion, idx };
     document.getElementById('moveModalClienteNombre').textContent = `${group.nombre} · Pedido ${group.pedidoCliente}`;
     const dates = buildMoveDateOptions(group.items[0], fecha);
-    document.getElementById('moveFecha').innerHTML = dates.map(date => `<option value="${date}" ${date === fecha ? 'selected' : ''}>${date} (${fechaLabel(date)})</option>`).join('');
+    setMoveDateInput(dates, fecha);
     syncMoveOptions();
     document.getElementById('moveCamion').value = camion;
     document.getElementById('moveModal').classList.add('show');
@@ -2222,7 +2239,7 @@
     };
     document.getElementById('moveModalClienteNombre').textContent = `${selectedGroups.length} pedidos seleccionados`;
     const dates = buildMoveDateOptions(group.items[0], fecha);
-    document.getElementById('moveFecha').innerHTML = dates.map(date => `<option value="${date}" ${date === fecha ? 'selected' : ''}>${date} (${fechaLabel(date)})</option>`).join('');
+    setMoveDateInput(dates, fecha);
     syncMoveOptions();
     document.getElementById('moveCamion').value = camion;
     document.getElementById('moveModal').classList.add('show');
@@ -2235,7 +2252,7 @@
     document.getElementById('moveModalClienteNombre').textContent = `${routeName} · ${clientCount} clientes · ${routeItems.length} líneas`;
     const sample = routeItems[0] && routeItems[0].item;
     const dates = buildMoveDateOptions(sample || {}, APP.planFecha || fechaToStr(new Date()));
-    document.getElementById('moveFecha').innerHTML = dates.map((date, index) => `<option value="${date}" ${index === 0 ? 'selected' : ''}>${date} (${fechaLabel(date)})</option>`).join('');
+    setMoveDateInput(dates, dates[0]);
     syncMoveOptions();
     document.getElementById('moveCamion').value = getTruckOptions()[0];
     document.getElementById('moveModal').classList.add('show');
@@ -2247,7 +2264,7 @@
     APP.moveCliente = { queueIdx: idx };
     document.getElementById('moveModalClienteNombre').textContent = `${item.nombre} · Pedido ${item.pedidoCliente}`;
     const dates = buildMoveDateOptions(item.item, APP.planFecha || fechaToStr(new Date()));
-    document.getElementById('moveFecha').innerHTML = dates.map((date, index) => `<option value="${date}" ${index === 0 ? 'selected' : ''}>${date} (${fechaLabel(date)})</option>`).join('');
+    setMoveDateInput(dates, dates[0]);
     syncMoveOptions();
     document.getElementById('moveCamion').value = item.camion || getTruckOptions()[0];
     document.getElementById('moveModal').classList.add('show');
@@ -2277,7 +2294,8 @@
 
   window.confirmarMover = function confirmarMoverV2() {
     if (!APP.moveCliente) return;
-    const nuevaFecha = document.getElementById('moveFecha').value;
+    const nuevaFecha = getMoveDateValue();
+    if (!nuevaFecha) return alert('Selecciona una fecha para mover el cliente.');
     const nuevoCamion = document.getElementById('moveCamion').value;
     const moveState = APP.moveCliente;
     window.cerrarMoveModal();

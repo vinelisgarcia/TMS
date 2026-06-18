@@ -1572,7 +1572,7 @@ html { -webkit-text-size-adjust: 100%; }
     <div id="moveModalClienteNombre" style="font-weight:600;margin-bottom:12px;color:var(--text);font-size:14px;"></div>
 
     <label class="modal-label">Nueva Fecha</label>
-    <select id="moveFecha" class="modal-select"></select>
+    <input id="moveFecha" class="form-control" type="date" required>
 
     <label class="modal-label">Asignar a</label>
     <select id="moveCamion" class="modal-select">
@@ -3392,7 +3392,11 @@ function abrirMoveModal(fecha, cam, idx) {
 
   const fechas = fechasPlanMasFuturas();
   const sel = document.getElementById('moveFecha');
-  sel.innerHTML = fechas.map(f => `<option value="${f}" ${f===fecha?'selected':''}>${f} (${fechaLabel(f)})</option>`).join('');
+  sel.type = 'date';
+  sel.className = 'form-control';
+  sel.min = fechas[0] ? fechaStrToISO(fechas[0]) : '';
+  sel.max = fechas[fechas.length - 1] ? fechaStrToISO(fechas[fechas.length - 1]) : '';
+  sel.value = fechaStrToISO(fecha) || '';
   document.getElementById('moveCamion').value = cam;
   document.getElementById('moveModal').classList.add('show');
 }
@@ -3405,7 +3409,11 @@ function abrirMoveQueueModal(idx) {
   document.getElementById('moveModalClienteNombre').textContent = q.nombre + ' · QUEUE';
   const fechas = fechasPlanMasFuturas();
   const sel = document.getElementById('moveFecha');
-  sel.innerHTML = fechas.map((f,i) => `<option value="${f}" ${i===0?'selected':''}>${f} (${fechaLabel(f)})</option>`).join('');
+  sel.type = 'date';
+  sel.className = 'form-control';
+  sel.min = fechas[0] ? fechaStrToISO(fechas[0]) : '';
+  sel.max = fechas[fechas.length - 1] ? fechaStrToISO(fechas[fechas.length - 1]) : '';
+  sel.value = fechaStrToISO(fechas[0] || fechaToStr(new Date())) || '';
   document.getElementById('moveCamion').value = q.camion || 'CAMION 1';
   document.getElementById('moveModal').classList.add('show');
 }
@@ -3420,14 +3428,16 @@ function confirmarMover() {
   if (!APP.moveCliente) return;
   if (APP.moveCliente.queueIdx !== undefined) {
     const idx = APP.moveCliente.queueIdx;
-    const nf = document.getElementById('moveFecha').value;
+    const nf = isoToFechaStr(document.getElementById('moveFecha').value);
+    if (!nf) return alert('Selecciona una fecha para mover el cliente.');
     const nc = document.getElementById('moveCamion').value;
     cerrarMoveModal();
     asignarQueueACalendario(idx, nf, nc);
     return;
   }
   const {fecha, cam, idx} = APP.moveCliente;
-  const nf = document.getElementById('moveFecha').value;
+  const nf = isoToFechaStr(document.getElementById('moveFecha').value);
+  if (!nf) return alert('Selecciona una fecha para mover el cliente.');
   const nc = document.getElementById('moveCamion').value;
   cerrarMoveModal();
   moverCliente(fecha, cam, idx, nf, nc);
@@ -4503,6 +4513,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260618-user-create-service-role"></script>
+<script src="./tms-v2.js?v=20260618-calendar-date-picker"></script>
 </body>
 </html>
