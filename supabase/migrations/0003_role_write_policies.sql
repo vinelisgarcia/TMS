@@ -56,7 +56,10 @@ security definer
 set search_path = public
 as $$
 begin
-  if current_setting('tms.profile_replace_admin', true) = 'on' then
+  if current_setting('tms.profile_replace_admin', true) = 'on'
+    or coalesce(auth.role(), '') = 'service_role'
+    or current_setting('request.jwt.claim.role', true) = 'service_role'
+  then
     return new;
   end if;
 

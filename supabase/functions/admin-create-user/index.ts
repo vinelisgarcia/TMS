@@ -79,8 +79,27 @@ Deno.serve(async (req) => {
     user_metadata: { nombre, rol },
   });
 
-  if (createError || !created.user) {
-    return jsonResponse({ error: createError?.message ?? 'No se pudo crear el usuario.' }, 400);
+  let authUserId = created?.user?.id ?? '';
+  if (!authUserId) {
+    const alreadyExists = /already|registered|exists|duplicate/i.test(createError?.message ?? '');
+    if (!alreadyExists) {
+      return jsonResponse({ error: createError?.message ?? 'No se pudo crear el usuario.' }, 400);
+    }
+
+    const { data: existingUsers, error: listError } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (listError) return jsonResponse({ error: listError.message }, 500);
+
+    const existingUser = existingUsers.users.find((user) => String(user.email ?? '').toLowerCase() === email);
+    if (!existingUser) {
+      return jsonResponse({ error: 'El email ya existe en Auth, pero no se pudo localizar para completar el perfil.' }, 409);
+    }
+
+    authUserId = existingUser.id;
+    const { error: updateError } = await adminClient.auth.admin.updateUserById(authUserId, {
+      password,
+      user_metadata: { nombre, rol },
+    });
+    if (updateError) return jsonResponse({ error: updateError.message }, 500);
   }
 
   const accountPerms = {
@@ -94,7 +113,7 @@ Deno.serve(async (req) => {
   };
 
   const { error: upsertError } = await adminClient.from('tms_user_profiles').upsert({
-    auth_user_id: created.user.id,
+    auth_user_id: authUserId,
     nombre,
     email,
     rol,
@@ -104,5 +123,5 @@ Deno.serve(async (req) => {
 
   if (upsertError) return jsonResponse({ error: upsertError.message }, 500);
 
-  return jsonResponse({ userId: created.user.id, needsConfirmation: false });
+  return jsonResponse({ userId: authUserId, needsConfirmation: false });
 });

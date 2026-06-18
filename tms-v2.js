@@ -4101,7 +4101,19 @@
         permisosPorModulo: getPermissionsForRole(rol)
       }
     });
-    if (error) throw error;
+    if (error) {
+      let detail = error.message || String(error);
+      const response = error.context || error.response;
+      if (response && typeof response.clone === 'function') {
+        try {
+          const body = await response.clone().json();
+          detail = body.error || body.message || detail;
+        } catch (_) {
+          try { detail = await response.clone().text() || detail; } catch (_) {}
+        }
+      }
+      throw new Error(detail);
+    }
     if (data && data.error) throw new Error(data.error);
     return {
       userId: (data && data.userId) || '',
