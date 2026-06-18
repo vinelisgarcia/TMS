@@ -1599,9 +1599,11 @@ html { -webkit-text-size-adjust: 100%; }
     <textarea id="incidenciaInput" class="nota-input" placeholder="Describe la incidencia (si aplica)..."></textarea>
     <label class="modal-label" style="margin-top:8px;">Número de precinto</label>
     <input id="precintoInput" class="form-control" placeholder="Precinto usado en despacho">
+    <label class="modal-label" style="margin-top:8px;">Chofer / recibido por</label>
+    <input id="choferRutaInput" class="form-control" placeholder="Chofer, cliente o persona que recibió">
     <label class="modal-label" style="margin-top:8px;">Comentario de cierre</label>
     <textarea id="comentarioRutaInput" class="nota-input" placeholder="Comentario operativo del despacho..."></textarea>
-    <label class="modal-label" style="margin-top:8px;">Foto del camión</label>
+    <label class="modal-label" style="margin-top:8px;">Foto del camión / evidencia del chofer</label>
     <input id="fotoCamionInput" class="form-control" type="file" accept="image/*" onchange="previsualizarFotoCamion(this.files[0])">
     <div id="fotoCamionPreviewWrap" style="display:none;margin-top:8px;">
       <img id="fotoCamionPreview" alt="Foto del camión" style="max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border);object-fit:cover;">
@@ -1868,6 +1870,11 @@ function lunesDeSemana(fechaStr) {
   return d;
 }
 
+function tieneOperacionSabado(fechaStr) {
+  return (APP.clientes || []).some(c => c.fecha === fechaStr) ||
+    (APP.lineItems || []).some(item => item.fechaPlanificada === fechaStr);
+}
+
 function semanaLaborableDesde(lunes) {
   const dias = [];
   const d = new Date(lunes.getTime());
@@ -1875,6 +1882,8 @@ function semanaLaborableDesde(lunes) {
     dias.push(fechaToStr(d));
     d.setDate(d.getDate() + 1);
   }
+  const sabado = fechaToStr(d);
+  if (tieneOperacionSabado(sabado)) dias.push(sabado);
   return dias;
 }
 
@@ -3430,6 +3439,8 @@ function confirmarMover() {
     const idx = APP.moveCliente.queueIdx;
     const nf = isoToFechaStr(document.getElementById('moveFecha').value);
     if (!nf) return alert('Selecciona una fecha para mover el cliente.');
+    const dMove = fechaToDate(nf);
+    if (dMove.getDay() === 0) return alert('Para movimientos manuales puedes usar lunes a sábado. Domingos no están disponibles.');
     const nc = document.getElementById('moveCamion').value;
     cerrarMoveModal();
     asignarQueueACalendario(idx, nf, nc);
@@ -3438,6 +3449,8 @@ function confirmarMover() {
   const {fecha, cam, idx} = APP.moveCliente;
   const nf = isoToFechaStr(document.getElementById('moveFecha').value);
   if (!nf) return alert('Selecciona una fecha para mover el cliente.');
+  const dMove = fechaToDate(nf);
+  if (dMove.getDay() === 0) return alert('Para movimientos manuales puedes usar lunes a sábado. Domingos no están disponibles.');
   const nc = document.getElementById('moveCamion').value;
   cerrarMoveModal();
   moverCliente(fecha, cam, idx, nf, nc);
@@ -4513,6 +4526,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260618-calendar-date-picker"></script>
+<script src="./tms-v2.js?v=20260618-saturday-evidence-report"></script>
 </body>
 </html>

@@ -347,10 +347,10 @@
     const cursor = new Date(start.getTime());
     while (cursor <= end) {
       const current = fechaToStr(cursor);
-      if (!isNonWorkingDay(current)) out.push(current);
+      if (isManualRouteDate(current)) out.push(current);
       cursor.setDate(cursor.getDate() + 1);
     }
-    if (!out.includes(fallback) && !isNonWorkingDay(fallback)) out.push(fallback);
+    if (!out.includes(fallback) && isManualRouteDate(fallback)) out.push(fallback);
     return [...new Set(out)].sort((a, b) => fechaToDate(a) - fechaToDate(b));
   }
 
@@ -359,8 +359,8 @@
     const dates = getPlanningWindowDates(currentDate);
     const allowedDates = dates.filter(date => {
       if (!referenceItem) return true;
-      const routeOk = !routeName || routeAllowsDate(routeName, date);
-      return routeOk && clienteAllowsDate(referenceItem, date);
+      const routeOk = !routeName || routeAllowsDate(routeName, date) || fechaToDate(date).getDay() === 6;
+      return routeOk && (clienteAllowsDate(referenceItem, date) || fechaToDate(date).getDay() === 6);
     });
     return allowedDates.length ? allowedDates : dates;
   }
@@ -777,6 +777,7 @@
       incidencia: metadata.incidencia || '',
       precintoDespacho: metadata.precintoDespacho || '',
       comentarioRuta: metadata.comentarioRuta || '',
+      choferRuta: metadata.choferRuta || '',
       fotoCamion: metadata.fotoCamion || '',
       fotoCamionNombre: metadata.fotoCamionNombre || '',
       fechaCierreRuta: metadata.fechaCierreRuta || '',
@@ -824,6 +825,7 @@
           incidencia: item.incidencia || '',
           precintoDespacho: item.precintoDespacho || '',
           comentarioRuta: item.comentarioRuta || '',
+          choferRuta: item.choferRuta || '',
           fotoCamion: item.fotoCamion || '',
           fotoCamionNombre: item.fotoCamionNombre || '',
           fechaCierreRuta: item.fechaCierreRuta || '',
@@ -1053,6 +1055,11 @@
   function isNonWorkingDay(fechaStr) {
     const d = fechaToDate(fechaStr);
     return d.getDay() === 0 || d.getDay() === 6 || isHoliday(fechaStr);
+  }
+
+  function isManualRouteDate(fechaStr) {
+    const d = fechaToDate(fechaStr);
+    return d.getDay() !== 0 && !isHoliday(fechaStr);
   }
 
   function nextWorkingDay(fechaStr) {
@@ -1521,6 +1528,7 @@
           incidencia: '',
           precintoDespacho: '',
           comentarioRuta: '',
+          choferRuta: '',
           fotoCamion: '',
           fotoCamionNombre: '',
           fechaCierreRuta: '',
@@ -1550,6 +1558,7 @@
       group.incidencia = group.incidencia || item.incidencia || '';
       group.precintoDespacho = group.precintoDespacho || item.precintoDespacho || '';
       group.comentarioRuta = group.comentarioRuta || item.comentarioRuta || '';
+      group.choferRuta = group.choferRuta || item.choferRuta || '';
       group.fotoCamion = group.fotoCamion || item.fotoCamion || '';
       group.fotoCamionNombre = group.fotoCamionNombre || item.fotoCamionNombre || '';
       group.fechaCierreRuta = group.fechaCierreRuta || item.fechaCierreRuta || '';
@@ -1604,6 +1613,20 @@
     const prevMonthKey = APP.calMeses && APP.calMeses[APP.calMesIdx] ? APP.calMeses[APP.calMesIdx].key : null;
     const fechas = [...new Set(APP.lineItems.map(item => item.fechaPlanificada).filter(Boolean))].sort((a, b) => fechaToDate(a) - fechaToDate(b));
     APP.calSemanas = construirSemanasCalendario().filter(semana => semana.dias.some(fecha => fechas.includes(fecha)));
+    fechas.forEach(fecha => {
+      const weekKey = fechaToStr(lunesDeSemana(fecha));
+      let week = APP.calSemanas.find(semana => semana.key === weekKey);
+      if (!week) {
+        const lunes = fechaToDate(weekKey);
+        const dias = semanaLaborableDesde(lunes);
+        week = { key: weekKey, mesNombre: getCalendarMonthLabel(fecha), dias };
+        APP.calSemanas.push(week);
+      }
+      if (!week.dias.includes(fecha)) week.dias.push(fecha);
+      week.dias = [...new Set(week.dias)].sort((a, b) => fechaToDate(a) - fechaToDate(b));
+      week.nombre = fechaLabel(week.dias[0]) + ' ' + week.dias[0] + ' - ' + fechaLabel(week.dias[week.dias.length - 1]) + ' ' + week.dias[week.dias.length - 1];
+    });
+    APP.calSemanas = APP.calSemanas.sort((a, b) => fechaToDate(a.key) - fechaToDate(b.key));
     if (!APP.calSemanas.length && fechas.length) {
       const inicio = lunesDeSemana(fechas[0]);
       APP.calSemanas = [{
@@ -1818,9 +1841,12 @@
             const alertHtml = group.alertas.length
               ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
               : '';
-            const evidenceHtml = (group.precintoDespacho || group.fotoCamion)
-              ? `<div class="route-evidence-line">${group.precintoDespacho ? 'Precinto: ' + group.precintoDespacho : ''}${group.precintoDespacho && group.fotoCamion ? ' · ' : ''}${group.fotoCamion ? 'Foto adjunta' : ''}</div>`
-              : '';
+            const evidenceBits = [
+              group.precintoDespacho ? 'Precinto: ' + group.precintoDespacho : '',
+              group.choferRuta ? 'Chofer/recibido: ' + group.choferRuta : '',
+              group.fotoCamion ? 'Foto adjunta' : ''
+            ].filter(Boolean);
+            const evidenceHtml = evidenceBits.length ? `<div class="route-evidence-line">${evidenceBits.join(' · ')}</div>` : '';
             html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true"
               ondragstart="onDragStartCal(event,'${fecha}','${camion}',${realIdx})"
               ondragend="this.classList.remove('dragging')"
@@ -2296,6 +2322,7 @@
     if (!APP.moveCliente) return;
     const nuevaFecha = getMoveDateValue();
     if (!nuevaFecha) return alert('Selecciona una fecha para mover el cliente.');
+    if (!isManualRouteDate(nuevaFecha)) return alert('Para movimientos manuales puedes usar lunes a sábado. Domingos y feriados no están disponibles.');
     const nuevoCamion = document.getElementById('moveCamion').value;
     const moveState = APP.moveCliente;
     window.cerrarMoveModal();
@@ -2573,8 +2600,10 @@
     document.getElementById('incidenciaInput').value = group.incidencia || '';
     const precintoInput = document.getElementById('precintoInput');
     const comentarioInput = document.getElementById('comentarioRutaInput');
+    const choferInput = document.getElementById('choferRutaInput');
     const fotoInput = document.getElementById('fotoCamionInput');
     if (precintoInput) precintoInput.value = group.precintoDespacho || '';
+    if (choferInput) choferInput.value = group.choferRuta || '';
     if (comentarioInput) comentarioInput.value = group.comentarioRuta || '';
     if (fotoInput) fotoInput.value = '';
     setTruckPhotoPreview(group.fotoCamion ? { dataUrl: group.fotoCamion, name: group.fotoCamionNombre } : null);
@@ -2590,6 +2619,7 @@
     const incidencia = text(document.getElementById('incidenciaInput').value);
     const precinto = text((document.getElementById('precintoInput') || {}).value);
     const comentarioRuta = text((document.getElementById('comentarioRutaInput') || {}).value);
+    const choferRuta = text((document.getElementById('choferRutaInput') || {}).value);
     const currentPhoto = APP.pendingTruckPhoto || (group.fotoCamion ? { dataUrl: group.fotoCamion, name: group.fotoCamionNombre } : null);
     const keys = new Set(group.items.map(item => item.baseKey));
     let photoStored = false;
@@ -2599,6 +2629,7 @@
       item.incidencia = incidencia;
       item.precintoDespacho = precinto;
       item.comentarioRuta = comentarioRuta;
+      item.choferRuta = choferRuta;
       item.fotoCamion = currentPhoto && !photoStored ? currentPhoto.dataUrl : '';
       item.fotoCamionNombre = currentPhoto ? currentPhoto.name : '';
       if (currentPhoto && !photoStored) photoStored = true;
@@ -4257,6 +4288,8 @@
         cumplimiento: summary.pct,
         precintoDespacho: evidence.precintoDespacho,
         comentarioRuta: evidence.comentarioRuta,
+        choferRuta: evidence.choferRuta,
+        fotoCamion: evidence.fotoCamion,
         fotoCamionAdjunta: !!evidence.fotoCamion,
         fotoCamionNombre: evidence.fotoCamionNombre,
         importePlanificado,
@@ -4267,10 +4300,11 @@
   }
 
   function getRouteEvidenceFromItems(items) {
-    const first = (items || []).find(item => item.precintoDespacho || item.comentarioRuta || item.fotoCamion || item.fotoCamionNombre) || {};
+    const first = (items || []).find(item => item.precintoDespacho || item.comentarioRuta || item.choferRuta || item.fotoCamion || item.fotoCamionNombre) || {};
     return {
       precintoDespacho: first.precintoDespacho || '',
       comentarioRuta: first.comentarioRuta || '',
+      choferRuta: first.choferRuta || '',
       fotoCamion: first.fotoCamion || '',
       fotoCamionNombre: first.fotoCamionNombre || '',
       fechaCierreRuta: first.fechaCierreRuta || ''
@@ -4381,6 +4415,12 @@
     const routeCostTotal = routeHistory.reduce((sum, row) => sum + num(row.coste), 0);
     const warehouseCostTotal = warehouseHistory.reduce((sum, row) => sum + num(row.costeSolicitud), 0);
     const routeCostIssues = summarizeRouteCostIssues(routeHistory.filter(row => row.costePendienteConfig));
+    const routeEvidenceRows = routeHistory.filter(row => row.precintoDespacho || row.comentarioRuta || row.choferRuta || row.fotoCamion);
+    const routeEvidenceByDate = routeEvidenceRows.reduce((map, row) => {
+      if (!map.has(row.fecha)) map.set(row.fecha, []);
+      map.get(row.fecha).push(row);
+      return map;
+    }, new Map());
     const warehouseSummary = {
       solicitudes: warehouseHistory.length,
       clientes: new Set(warehouseHistory.map(row => row.clienteId)).size,
@@ -4408,11 +4448,31 @@
           </div>`).join('')}
         </div>
       </div>` : ''}
+      ${routeEvidenceRows.length ? `<div class="card">
+        <div class="card-title">Evidencias de despacho por día</div>
+        <div class="route-evidence-report">
+          ${[...routeEvidenceByDate.entries()].sort((a, b) => fechaToDate(a[0]) - fechaToDate(b[0])).map(([date, rows]) => `<div class="route-evidence-day">
+            <div class="route-evidence-day-title"><strong>${fechaLabel(date)} ${date}</strong><span>${rows.length} evidencia(s)</span></div>
+            <div class="route-evidence-grid">
+              ${rows.map(row => `<div class="route-evidence-card">
+                ${row.fotoCamion ? `<img src="${row.fotoCamion}" alt="Evidencia ${row.rutaNombre}">` : '<div class="route-evidence-placeholder">Sin foto</div>'}
+                <div class="route-evidence-info">
+                  <strong>${row.rutaNombre}</strong>
+                  <span>${getTruckLabel(row.camion)} · Coste ${formatMonto(row.coste)}</span>
+                  <span>Precinto: ${row.precintoDespacho || '—'}</span>
+                  <span>Chofer/recibido: ${row.choferRuta || '—'}</span>
+                  <span>${row.comentarioRuta || 'Sin observación'}</span>
+                </div>
+              </div>`).join('')}
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
       <div class="card">
         <div class="card-title">Gasto teórico / real de rutas</div>
         <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:10px;">Planificado usa el monto operativo: confirmado no entregado + entregado no facturado. Real estima la porción entregada usando ese mismo monto y el avance facturado por línea.</div>
         ${routeHistory.length ? `<div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Fecha</th><th>Ruta</th><th>Camión</th><th>Coste</th><th>Estado coste</th><th>Cumplimiento</th><th>Precinto</th><th>Comentario</th><th>Foto</th><th>Planificado</th><th>Real</th><th>Diferencia</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Ruta</th><th>Camión</th><th>Coste</th><th>Estado coste</th><th>Cumplimiento</th><th>Precinto</th><th>Chofer/recibido</th><th>Comentario</th><th>Foto</th><th>Planificado</th><th>Real</th><th>Diferencia</th></tr></thead>
           <tbody>${routeHistory.map(row => `<tr>
             <td>${row.fecha}</td>
             <td>${row.rutaNombre}</td>
@@ -4421,8 +4481,9 @@
             <td>${row.costePendienteConfig ? `<span class="badge badge-warn">${row.costeAlerta}</span>` : '<span class="badge badge-ok">Configurado</span>'}</td>
             <td>${row.cumplimiento}%</td>
             <td>${row.precintoDespacho || '—'}</td>
+            <td>${row.choferRuta || '—'}</td>
             <td>${row.comentarioRuta || '—'}</td>
-            <td>${row.fotoCamionAdjunta ? (row.fotoCamionNombre || 'Adjunta') : '—'}</td>
+            <td>${row.fotoCamion ? `<img src="${row.fotoCamion}" alt="Foto ${row.rutaNombre}" class="route-evidence-thumb">` : (row.fotoCamionAdjunta ? (row.fotoCamionNombre || 'Adjunta') : '—')}</td>
             <td>${formatMonto(row.importePlanificado)}</td>
             <td>${formatMonto(row.importeReal)}</td>
             <td>${formatMonto(row.diferencia)}</td>
@@ -4464,6 +4525,7 @@
       EstadoCoste: row.costeAlerta || 'Configurado',
       Cumplimiento: row.cumplimiento,
       Precinto: row.precintoDespacho || '',
+      ChoferRecibidoPor: row.choferRuta || '',
       ComentarioRuta: row.comentarioRuta || '',
       FotoCamion: row.fotoCamionAdjunta ? (row.fotoCamionNombre || 'Adjunta') : '',
       Planificado: row.importePlanificado,
@@ -4499,6 +4561,7 @@
         'Facturada': group.cantidadFacturada,
         'Pendiente': group.cantidadPendiente,
         'Precinto': group.precintoDespacho || '',
+        'Chofer / recibido por': group.choferRuta || '',
         'Comentario cierre': group.comentarioRuta || '',
         'Foto camión': group.fotoCamionNombre || (group.fotoCamion ? 'Adjunta' : '')
       }));
@@ -5453,6 +5516,17 @@
       .route-cost-alert-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#FFF8EC; }
       .route-cost-alert-item strong { display:block; color:var(--text); font-size:13px; margin-bottom:3px; }
       .route-cost-alert-item span { display:block; color:var(--muted); font-size:12px; }
+      .route-evidence-report { display:flex; flex-direction:column; gap:14px; }
+      .route-evidence-day { border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface, #fff); }
+      .route-evidence-day-title { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; background:var(--surface-2, #F8FAFC); border-bottom:1px solid var(--border); color:var(--text); }
+      .route-evidence-day-title span { color:var(--muted); font-size:12px; font-weight:700; }
+      .route-evidence-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; padding:12px; }
+      .route-evidence-card { border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface, #fff); display:flex; flex-direction:column; min-height:100%; }
+      .route-evidence-card img, .route-evidence-placeholder { width:100%; height:150px; object-fit:cover; background:var(--surface-2, #F8FAFC); border-bottom:1px solid var(--border); }
+      .route-evidence-placeholder { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; font-weight:800; }
+      .route-evidence-info { display:flex; flex-direction:column; gap:4px; padding:10px 12px; font-size:12px; color:var(--muted); line-height:1.35; }
+      .route-evidence-info strong { color:var(--text); font-size:13px; }
+      .route-evidence-thumb { width:74px; height:52px; object-fit:cover; border-radius:6px; border:1px solid var(--border); display:block; }
       .import-view-shell { align-content:start; }
       .import-table-mode > #sapEstadoBanner,
       .import-table-mode > .card:not(#importExcelTableCard) { display:none !important; }
