@@ -56,7 +56,7 @@ html { -webkit-text-size-adjust: 100%; }
   border-bottom: 1px solid rgba(0,0,0,0.08);
   box-shadow: var(--shadow-sm);
 }
-#appHeader h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+#appHeader h1 { display: none; }
 #appHeader .logo { font-size: 22px; }
 #appHeader .logo img {
   display: block;
@@ -982,8 +982,8 @@ html { -webkit-text-size-adjust: 100%; }
   <div class="login-card">
     <div class="login-logo">
       <span class="login-icon"><img src="./assets/hospitality-by-alvarez.svg" alt="Hospitality by Alvarez"></span>
-      <h2>TMS - ALVAREZ</h2>
-      <p>Gestión Logística · República Dominicana</p>
+      <h2>TMS</h2>
+      <p>Uso exclusivo de Hospitality by Alvarez</p>
     </div>
     <div class="login-field">
       <label>Correo electrónico</label>
@@ -1003,7 +1003,6 @@ html { -webkit-text-size-adjust: 100%; }
 <!-- HEADER -->
 <div id="appHeader" style="display:none;">
   <span class="logo"><img src="./assets/hospitality-by-alvarez.svg" alt="Hospitality by Alvarez"></span>
-  <h1>TMS - ALVAREZ</h1>
   <button id="saveStateBtn" onclick="guardarEnSupabase()">Guardar cambios</button>
   <button id="undoStateBtn" onclick="revertirUltimoCambio()" disabled>Revertir último cambio</button>
   <span id="sapHeaderInfo" style="display:none;"></span>
@@ -1032,6 +1031,9 @@ html { -webkit-text-size-adjust: 100%; }
     </button>
     <button class="nav-btn" id="nav-rutas" onclick="cambiarVista('rutas',this)">
       <span class="nav-icon">🧭</span><span class="nav-label">Rutas</span>
+    </button>
+    <button class="nav-btn" id="nav-importaciones" onclick="cambiarVista('importaciones',this)">
+      <span class="nav-icon">↗</span><span class="nav-label">Importaciones</span>
     </button>
     <button class="nav-btn" id="nav-configClientes" onclick="cambiarVista('configClientes',this)">
       <span class="nav-icon">⚙️</span><span class="nav-label">Config. Clientes</span>
@@ -1523,6 +1525,16 @@ html { -webkit-text-size-adjust: 100%; }
         <div class="card" id="configEditor">
           <div class="empty-state"><div class="empty-icon">👈</div><p>Selecciona un cliente para editar sus reglas operativas.</p></div>
         </div>
+      </div>
+    </div>
+
+
+
+    <!-- ========== VISTA 10: IMPORTACIONES ========== -->
+    <div id="importaciones" class="view">
+      <div class="view-title">Control de Importaciones</div>
+      <div id="importacionesMount">
+        <div class="empty-state"><div class="empty-icon">↗</div><p>Cargando módulo de importaciones...</p></div>
       </div>
     </div>
 
@@ -4491,6 +4503,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260617-audit-fixes2"></script>
+<script src="./tms-v2.js?v=20260617-importaciones-ui"></script>
 </body>
 </html>

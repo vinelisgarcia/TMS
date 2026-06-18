@@ -33,6 +33,7 @@
     camionExtraEnabled: !!APP.camionExtraEnabled,
     feriadosRD: APP.feriadosRD || (RD_HOLIDAYS[CURRENT_YEAR] || []),
     importFiles: APP.importFiles || { plan: '', control: '', solicitudesPlan: '', solicitudesControl: '' },
+    importShipments: APP.importShipments || [],
     selectedCalendarGroups: APP.selectedCalendarGroups || [],
     visualTheme: APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light',
     undoStack: APP.undoStack || [],
@@ -109,6 +110,7 @@
     reportes: 'Reportes',
     comercial: 'Comercial',
     rutas: 'Rutas',
+    importaciones: 'Importaciones',
     configuracion: 'Configuración',
     solicitudesAlmacen: 'Solicitudes almacén',
     almacen: 'Almacén'
@@ -120,6 +122,19 @@
     });
     const label = document.getElementById('themeCurrentLabel');
     if (label) label.textContent = getThemeLabel(APP.visualTheme);
+  }
+
+  function ensureAppFooters() {
+    const text = 'TMS para uso exclusivo de Hospitality by Alvarez. Desarrollado por MVOG.';
+    document.querySelectorAll('.view').forEach(view => {
+      let footer = view.querySelector(':scope > .app-view-footer');
+      if (!footer) {
+        footer = document.createElement('div');
+        footer.className = 'app-view-footer';
+        view.appendChild(footer);
+      }
+      footer.textContent = text;
+    });
   }
 
   function applyBrandLogo() {
@@ -418,6 +433,7 @@
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: true },
       rutas: { ver: true, editar: true },
+      importaciones: { ver: true, editar: true, importar: true },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -917,6 +933,7 @@
       calendario: 'calendario',
       comercial: 'comercial',
       rutas: 'rutas',
+      importaciones: 'importaciones',
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen',
@@ -954,7 +971,7 @@
   }
 
   function getFirstAllowedView() {
-    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'solicitudesAlmacen', 'almacen', 'configClientes'];
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'importaciones', 'solicitudesAlmacen', 'almacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || 'comercial';
   }
 
@@ -974,6 +991,7 @@
       calendario: 'calendario',
       comercial: 'comercial',
       rutas: 'rutas',
+      importaciones: 'importaciones',
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen'
@@ -1006,6 +1024,7 @@
       }
       originalCambiarVista(id, btn);
       if (id === 'rutas') renderRouteCatalog();
+      if (id === 'importaciones') renderImportaciones();
       applyPermissionUi();
     };
   }
@@ -1403,6 +1422,7 @@
         camionExtraEnabled: APP.camionExtraEnabled,
         feriadosRD: APP.feriadosRD,
         importFiles: APP.importFiles,
+        importShipments: APP.importShipments,
         visualTheme: APP.visualTheme
       }
     };
@@ -4016,6 +4036,7 @@
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: true },
       rutas: { ver: true, editar: true },
+      importaciones: { ver: true, editar: true, importar: true },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -4032,6 +4053,7 @@
         reportes: { ver: false, editar: false },
         comercial: { ver: true, editar: false },
         rutas: { ver: false, editar: false },
+        importaciones: { ver: false, editar: false, importar: false },
         configuracion: { ver: false, editar: false, importar: false },
         solicitudesAlmacen: { ver: false, editar: false },
         almacen: { ver: false, editar: false }
@@ -4045,6 +4067,7 @@
         reportes: { ver: true, editar: false },
         comercial: { ver: false, editar: false },
         rutas: { ver: false, editar: false },
+        importaciones: { ver: false, editar: false, importar: false },
         configuracion: { ver: false, editar: false, importar: false },
         solicitudesAlmacen: { ver: true, editar: true },
         almacen: { ver: true, editar: true }
@@ -4057,6 +4080,7 @@
       reportes: { ver: true, editar: true },
       comercial: { ver: true, editar: false },
       rutas: { ver: true, editar: true },
+      importaciones: { ver: true, editar: true, importar: true },
       configuracion: { ver: false, editar: false, importar: false },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -4677,6 +4701,7 @@
         APP.camionExtraEnabled = !!settingsMap.app_state.camionExtraEnabled;
         APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
         APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
+        APP.importShipments = Array.isArray(settingsMap.app_state.importShipments) ? settingsMap.app_state.importShipments : (APP.importShipments || []);
         APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
         APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
         applyVisualTheme(APP.visualTheme, true);
@@ -4849,6 +4874,7 @@
             camionExtraEnabled: !!APP.camionExtraEnabled,
             feriadosRD: APP.feriadosRD || [],
             importFiles: APP.importFiles || {},
+            importShipments: APP.importShipments || [],
             controlHistory: APP.controlHistory || [],
             visualTheme: APP.visualTheme || 'light'
           })
@@ -5354,12 +5380,44 @@
         height:100%;
         object-fit:contain;
       }
+      .app-view-footer {
+        margin:28px 0 4px;
+        padding:12px 4px 0;
+        border-top:1px solid var(--border);
+        color:var(--muted);
+        font-size:11px;
+        line-height:1.35;
+        text-align:center;
+      }
+      .view-title { letter-spacing:0; }
+      .card, .kpi-card, .stat-box, .chart-card { box-shadow:0 10px 24px rgba(15,23,42,.06); }
+      .import-module { display:grid; gap:14px; }
+      .import-hero { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; padding:18px; border:1px solid var(--border); border-radius:10px; background:linear-gradient(135deg, var(--surface), var(--surface-2)); box-shadow:var(--shadow-sm); }
+      .import-hero h2 { margin:0; font-size:18px; color:var(--text); }
+      .import-hero p { margin:4px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
+      .import-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+      .import-kpi { border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--surface); }
+      .import-kpi strong { display:block; font-size:22px; color:var(--primary); }
+      .import-kpi span { display:block; margin-top:2px; color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:800; }
+      .import-form-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
+      .import-stage-board { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; align-items:start; }
+      .import-stage { border:1px solid var(--border); border-radius:10px; background:var(--surface); overflow:hidden; min-height:160px; }
+      .import-stage-head { padding:10px 12px; background:var(--primary); color:#fff; display:flex; justify-content:space-between; gap:8px; font-size:12px; font-weight:800; }
+      .import-stage-body { display:grid; gap:9px; padding:10px; }
+      .import-card { border:1px solid var(--border); border-radius:9px; padding:10px; background:var(--surface-2); display:grid; gap:7px; }
+      .import-card.alert { border-color:#F59E0B; background:#FFFBEB; }
+      .import-card.overdue { border-color:#DC2626; background:#FEF2F2; }
+      .import-card-title { display:flex; justify-content:space-between; gap:8px; font-size:13px; font-weight:800; color:var(--text); }
+      .import-card-meta { color:var(--muted); font-size:11px; line-height:1.35; }
+      .import-docs { display:flex; flex-wrap:wrap; gap:5px; }
+      .import-doc-chip { border:1px solid var(--border); border-radius:999px; padding:3px 7px; font-size:10px; font-weight:800; background:#fff; color:var(--muted); }
+      .import-doc-chip.ok { color:#166534; background:#F0FDF4; border-color:#BBF7D0; }
+      .import-actions { display:flex; flex-wrap:wrap; gap:6px; }
+      .import-report { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; white-space:pre-wrap; color:var(--text); font-size:12px; line-height:1.5; }
       #appHeader {
         min-height:62px;
       }
-      #appHeader h1 {
-        white-space:nowrap;
-      }
+      #appHeader h1 { display:none !important; }
       .route-cost-alert { border-left:4px solid var(--warning); }
       .route-cost-alert-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; }
       .route-cost-alert-item { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:#FFF8EC; }
@@ -5853,10 +5911,7 @@
           height:34px;
           order:0;
         }
-        #appHeader h1 {
-          font-size:15px;
-          min-width:0;
-        }
+        #appHeader h1 { display:none !important; }
         #mainLayout {
           padding-bottom:104px !important;
         }
@@ -6019,6 +6074,7 @@
       #nav-calendario .nav-icon::before { content:'□'; }
       #nav-comercial .nav-icon::before { content:'$'; }
       #nav-rutas .nav-icon::before { content:'⇄'; }
+      #nav-importaciones .nav-icon::before { content:'↗'; }
       #nav-configClientes .nav-icon::before { content:'⚙'; }
       #nav-solicitudesAlmacen .nav-icon::before { content:'▤'; }
       #nav-almacen .nav-icon::before { content:'▦'; }
@@ -6053,10 +6109,307 @@
     document.head.appendChild(style);
   }
 
+
+  const IMPORT_STAGES = [
+    { key: 'pedido', label: 'Pedido / fabricación' },
+    { key: 'docs_origen', label: 'Docs origen' },
+    { key: 'transito', label: 'En tránsito' },
+    { key: 'aduana_rd', label: 'Aduana RD' },
+    { key: 'transporte_almacen', label: 'Ruta a almacén' },
+    { key: 'recepcion_sap', label: 'Recepción / SAP' }
+  ];
+
+  const IMPORT_DOCS = {
+    espana: [
+      ['r1', 'R1'], ['seguro', 'Seguro'], ['waybill', 'Waybill / BL'], ['facturaProveedor', 'Factura proveedor'], ['packingList', 'Packing list'], ['preliquidacion', 'Preliquidación'], ['pin', 'PIN pagado'], ['liquidacion', 'Liquidación pagada'], ['facturaSap', 'Factura proveedor SAP'], ['gastosSap', 'Gastos SAP']
+    ],
+    miami: [
+      ['po', 'PO'], ['trackingUsa', 'Tracking proveedor-Miami'], ['facturaProveedor', 'Factura proveedor'], ['packingList', 'Packing list'], ['bl', 'BL / guía marítima'], ['preliquidacion', 'Preliquidación'], ['pin', 'PIN pagado'], ['liquidacion', 'Liquidación pagada'], ['facturaSap', 'Factura proveedor SAP'], ['gastosSap', 'Gastos SAP']
+    ]
+  };
+
+  function ensureImportShipments() {
+    APP.importShipments = Array.isArray(APP.importShipments) ? APP.importShipments : [];
+    APP.importShipments.forEach(item => {
+      item.docs = item.docs || {};
+      item.origen = item.origen || 'espana';
+      item.etapa = item.etapa || 'pedido';
+    });
+  }
+
+  function importStageLabel(stage) {
+    const found = IMPORT_STAGES.find(item => item.key === stage);
+    return found ? found.label : 'Sin etapa';
+  }
+
+  function importOriginLabel(origin) {
+    return origin === 'miami' ? 'EE. UU. / Miami' : 'España';
+  }
+
+  function importEtaState(item) {
+    if (!item.eta) return { cls: '', label: 'Sin ETA', days: null };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const eta = commercialFilterDateToDate(item.eta);
+    if (!eta || Number.isNaN(eta.getTime())) return { cls: '', label: 'ETA inválida', days: null };
+    eta.setHours(0, 0, 0, 0);
+    const days = Math.round((eta - today) / 86400000);
+    if (days < 0 && !['recepcion_sap'].includes(item.etapa)) return { cls: 'overdue', label: `ETA vencida hace ${Math.abs(days)} días`, days };
+    if (days <= 5 && !['recepcion_sap'].includes(item.etapa)) return { cls: 'alert', label: days === 0 ? 'ETA hoy' : `ETA en ${days} días`, days };
+    return { cls: '', label: `ETA ${item.eta}`, days };
+  }
+
+  function importRequiredDocs(origin) {
+    return IMPORT_DOCS[origin] || IMPORT_DOCS.espana;
+  }
+
+  function importDocsProgress(item) {
+    const docs = importRequiredDocs(item.origen);
+    const done = docs.filter(([key]) => !!(item.docs && item.docs[key])).length;
+    return { done, total: docs.length, pct: docs.length ? Math.round((done / docs.length) * 100) : 0 };
+  }
+
+  function getImportFormValue(id) {
+    return text((document.getElementById(id) || {}).value);
+  }
+
+  function importDocsFormHtml(origin, current) {
+    return importRequiredDocs(origin).map(([key, label]) => `<label class="import-doc-chip ${current && current[key] ? 'ok' : ''}" style="cursor:pointer;"><input type="checkbox" class="importDocInput" value="${key}" ${current && current[key] ? 'checked' : ''}> ${label}</label>`).join('');
+  }
+
+  window.cambiarDocsImportacionOrigen = function cambiarDocsImportacionOrigen() {
+    const origin = getImportFormValue('impOrigen') || 'espana';
+    const wrap = document.getElementById('impDocsWrap');
+    if (wrap) wrap.innerHTML = importDocsFormHtml(origin, {});
+  };
+
+  function clearImportForm() {
+    APP.importEditingId = '';
+    ['impReferencia', 'impProveedor', 'impPO', 'impFactura', 'impBL', 'impTracking', 'impETA', 'impAduana', 'impSalidaAduana', 'impAlmacen', 'impValor', 'impNotas'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    const origin = document.getElementById('impOrigen');
+    if (origin) origin.value = 'espana';
+    const stage = document.getElementById('impEtapa');
+    if (stage) stage.value = 'pedido';
+    cambiarDocsImportacionOrigen();
+    const btn = document.getElementById('impSaveBtn');
+    if (btn) btn.textContent = 'Crear embarque';
+  }
+
+  window.clearImportForm = clearImportForm;
+
+  window.editarImportacion = function editarImportacion(id) {
+    if (!hasPermission('importaciones', 'editar')) return alert('Tu rol no puede editar importaciones.');
+    ensureImportShipments();
+    const item = APP.importShipments.find(row => row.id === id);
+    if (!item) return;
+    APP.importEditingId = id;
+    const set = (fieldId, value) => { const el = document.getElementById(fieldId); if (el) el.value = value || ''; };
+    set('impOrigen', item.origen || 'espana');
+    set('impEtapa', item.etapa || 'pedido');
+    set('impReferencia', item.referencia);
+    set('impProveedor', item.proveedor);
+    set('impPO', item.po);
+    set('impFactura', item.factura);
+    set('impBL', item.bl);
+    set('impTracking', item.tracking);
+    set('impETA', item.eta);
+    set('impAduana', item.fechaAduana);
+    set('impSalidaAduana', item.fechaSalidaAduana);
+    set('impAlmacen', item.fechaAlmacen);
+    set('impValor', item.valor);
+    set('impNotas', item.notas);
+    const wrap = document.getElementById('impDocsWrap');
+    if (wrap) wrap.innerHTML = importDocsFormHtml(item.origen || 'espana', item.docs || {});
+    const btn = document.getElementById('impSaveBtn');
+    if (btn) btn.textContent = 'Guardar cambios';
+    document.getElementById('importacionesMount')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  window.eliminarImportacion = function eliminarImportacion(id) {
+    if (!hasPermission('importaciones', 'editar')) return alert('Tu rol no puede editar importaciones.');
+    if (!confirm('¿Eliminar este embarque del seguimiento?')) return;
+    pushUndoState('eliminar importación');
+    APP.importShipments = (APP.importShipments || []).filter(item => item.id !== id);
+    renderImportaciones();
+    scheduleAutoSave();
+  };
+
+  window.avanzarImportacion = function avanzarImportacion(id) {
+    if (!hasPermission('importaciones', 'editar')) return alert('Tu rol no puede editar importaciones.');
+    const item = (APP.importShipments || []).find(row => row.id === id);
+    if (!item) return;
+    const idx = IMPORT_STAGES.findIndex(stage => stage.key === item.etapa);
+    if (idx < IMPORT_STAGES.length - 1) {
+      pushUndoState('avanzar importación');
+      item.etapa = IMPORT_STAGES[idx + 1].key;
+      item.updatedAt = nowIso();
+      renderImportaciones();
+      scheduleAutoSave();
+    }
+  };
+
+  window.guardarImportacion = function guardarImportacion() {
+    if (!hasPermission('importaciones', 'editar')) return alert('Tu rol no puede editar importaciones.');
+    ensureImportShipments();
+    const docs = {};
+    document.querySelectorAll('.importDocInput').forEach(input => { docs[input.value] = !!input.checked; });
+    const id = APP.importEditingId || ('imp-' + Date.now());
+    const item = {
+      id,
+      origen: getImportFormValue('impOrigen') || 'espana',
+      etapa: getImportFormValue('impEtapa') || 'pedido',
+      referencia: getImportFormValue('impReferencia') || id,
+      proveedor: getImportFormValue('impProveedor'),
+      po: getImportFormValue('impPO'),
+      factura: getImportFormValue('impFactura'),
+      bl: getImportFormValue('impBL'),
+      tracking: getImportFormValue('impTracking'),
+      eta: getImportFormValue('impETA'),
+      fechaAduana: getImportFormValue('impAduana'),
+      fechaSalidaAduana: getImportFormValue('impSalidaAduana'),
+      fechaAlmacen: getImportFormValue('impAlmacen'),
+      valor: num(getImportFormValue('impValor')),
+      notas: getImportFormValue('impNotas'),
+      docs,
+      updatedAt: nowIso()
+    };
+    pushUndoState(APP.importEditingId ? 'editar importación' : 'crear importación');
+    const idx = APP.importShipments.findIndex(row => row.id === id);
+    if (idx >= 0) APP.importShipments[idx] = item;
+    else APP.importShipments.push(item);
+    clearImportForm();
+    renderImportaciones();
+    scheduleAutoSave();
+  };
+
+  function importCardHtml(item) {
+    const eta = importEtaState(item);
+    const progress = importDocsProgress(item);
+    const docsHtml = importRequiredDocs(item.origen).slice(0, 6).map(([key, label]) => `<span class="import-doc-chip ${item.docs && item.docs[key] ? 'ok' : ''}">${item.docs && item.docs[key] ? '✓' : '·'} ${label}</span>`).join('');
+    return `<article class="import-card ${eta.cls}">
+      <div class="import-card-title"><span>${item.referencia || 'Sin ref.'}</span><span>${progress.done}/${progress.total}</span></div>
+      <div class="import-card-meta"><strong>${importOriginLabel(item.origen)}</strong> · ${item.proveedor || 'Proveedor pendiente'}<br>PO ${item.po || '—'} · Factura ${item.factura || '—'}<br>BL/Waybill ${item.bl || '—'} · ${eta.label}</div>
+      <div class="import-docs">${docsHtml}</div>
+      <div class="import-card-meta">Aduana: ${item.fechaAduana || '—'} · Salida: ${item.fechaSalidaAduana || '—'} · Almacén: ${item.fechaAlmacen || '—'}</div>
+      ${item.notas ? `<div class="import-card-meta">${item.notas}</div>` : ''}
+      <div class="import-actions">
+        <button class="btn btn-outline btn-sm" onclick="editarImportacion('${jsString(item.id)}')">Editar</button>
+        <button class="btn btn-primary btn-sm" onclick="avanzarImportacion('${jsString(item.id)}')">Avanzar</button>
+        <button class="btn btn-outline btn-sm" onclick="eliminarImportacion('${jsString(item.id)}')">Eliminar</button>
+      </div>
+    </article>`;
+  }
+
+  function buildImportDailyReport() {
+    ensureImportShipments();
+    const active = APP.importShipments.filter(item => item.etapa !== 'recepcion_sap');
+    const overdue = active.filter(item => importEtaState(item).cls === 'overdue');
+    const alerts = active.filter(item => importEtaState(item).cls === 'alert');
+    const missingSap = APP.importShipments.filter(item => item.etapa === 'recepcion_sap' && !(item.docs && item.docs.facturaSap && item.docs.gastosSap));
+    const byStage = IMPORT_STAGES.map(stage => `${stage.label}: ${APP.importShipments.filter(item => item.etapa === stage.key).length}`).join('\n');
+    return `Reporte diario de importaciones\n\nEmbarques activos: ${active.length}\nETA vencida: ${overdue.length}\nETA próxima: ${alerts.length}\nPendientes de registro SAP: ${missingSap.length}\n\nPor etapa:\n${byStage}\n\nSeguimiento prioritario:\n${[...overdue, ...alerts, ...missingSap].slice(0, 10).map(item => `- ${item.referencia || item.id}: ${importStageLabel(item.etapa)} · ${importEtaState(item).label} · ${item.notas || 'Sin nota'}`).join('\n') || '- Sin alertas críticas.'}`;
+  }
+
+  window.exportarImportacionesExcel = function exportarImportacionesExcel() {
+    ensureImportShipments();
+    const rows = APP.importShipments.map(item => ({
+      Referencia: item.referencia,
+      Origen: importOriginLabel(item.origen),
+      Etapa: importStageLabel(item.etapa),
+      Proveedor: item.proveedor,
+      PO: item.po,
+      Factura: item.factura,
+      BL_Waybill: item.bl,
+      Tracking: item.tracking,
+      ETA: item.eta,
+      Estado_ETA: importEtaState(item).label,
+      Fecha_Aduana: item.fechaAduana,
+      Salida_Aduana: item.fechaSalidaAduana,
+      Llegada_Almacen: item.fechaAlmacen,
+      Docs: `${importDocsProgress(item).done}/${importDocsProgress(item).total}`,
+      Valor: item.valor,
+      Notas: item.notas
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Importaciones');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ Reporte: buildImportDailyReport() }]), 'Reporte diario');
+    XLSX.writeFile(wb, 'TMS_Importaciones.xlsx');
+  };
+
+  window.renderImportaciones = function renderImportaciones() {
+    const mount = document.getElementById('importacionesMount');
+    if (!mount) return;
+    ensureImportShipments();
+    const canEdit = hasPermission('importaciones', 'editar');
+    const q = text((document.getElementById('impSearch') || {}).value).toLowerCase();
+    const originFilter = text((document.getElementById('impFilterOrigen') || {}).value);
+    const rows = APP.importShipments.filter(item => {
+      if (originFilter && item.origen !== originFilter) return false;
+      if (!q) return true;
+      return [item.referencia, item.proveedor, item.po, item.factura, item.bl, item.tracking, item.notas].some(value => text(value).toLowerCase().includes(q));
+    });
+    const active = APP.importShipments.filter(item => item.etapa !== 'recepcion_sap');
+    const overdue = APP.importShipments.filter(item => importEtaState(item).cls === 'overdue').length;
+    const upcoming = APP.importShipments.filter(item => importEtaState(item).cls === 'alert').length;
+    const sapPending = APP.importShipments.filter(item => item.etapa === 'recepcion_sap' && !(item.docs && item.docs.facturaSap && item.docs.gastosSap)).length;
+    const currentOrigin = getImportFormValue('impOrigen') || 'espana';
+    mount.innerHTML = `<div class="import-module">
+      <section class="import-hero">
+        <div><h2>Importaciones España y EE. UU. / Miami</h2><p>Seguimiento desde PO, documentación de origen, tránsito, aduana, transporte al almacén, recepción y registro de facturas/gastos en SAP.</p></div>
+        <div class="import-actions"><button class="btn btn-success btn-sm" onclick="exportarImportacionesExcel()">Exportar reporte</button></div>
+      </section>
+      <div class="import-kpis">
+        <div class="import-kpi"><strong>${active.length}</strong><span>Activos</span></div>
+        <div class="import-kpi"><strong>${overdue}</strong><span>ETA vencida</span></div>
+        <div class="import-kpi"><strong>${upcoming}</strong><span>ETA próxima</span></div>
+        <div class="import-kpi"><strong>${sapPending}</strong><span>Pendiente SAP</span></div>
+      </div>
+      <section class="card" style="display:${canEdit ? 'block' : 'none'};">
+        <div class="card-title">Nuevo / editar embarque</div>
+        <div class="import-form-grid">
+          <select id="impOrigen" class="form-control" onchange="cambiarDocsImportacionOrigen()"><option value="espana">España</option><option value="miami">EE. UU. / Miami</option></select>
+          <select id="impEtapa" class="form-control">${IMPORT_STAGES.map(stage => `<option value="${stage.key}">${stage.label}</option>`).join('')}</select>
+          <input id="impReferencia" class="form-control" placeholder="Referencia / expediente">
+          <input id="impProveedor" class="form-control" placeholder="Proveedor / fabricante">
+          <input id="impPO" class="form-control" placeholder="PO">
+          <input id="impFactura" class="form-control" placeholder="Factura proveedor">
+          <input id="impBL" class="form-control" placeholder="BL / Waybill">
+          <input id="impTracking" class="form-control" placeholder="Tracking / transitario">
+          <label class="form-row">ETA<input id="impETA" class="form-control" type="date"></label>
+          <label class="form-row">Llegada aduana<input id="impAduana" class="form-control" type="date"></label>
+          <label class="form-row">Salida aduana<input id="impSalidaAduana" class="form-control" type="date"></label>
+          <label class="form-row">Llegada almacén<input id="impAlmacen" class="form-control" type="date"></label>
+          <input id="impValor" class="form-control" type="number" step="0.01" placeholder="Valor estimado">
+          <input id="impNotas" class="form-control" placeholder="Notas / bloqueo / próximo paso">
+        </div>
+        <div style="margin-top:10px;"><div class="card-title" style="font-size:12px;margin-bottom:8px;">Documentos y pagos</div><div id="impDocsWrap" class="import-docs">${importDocsFormHtml(currentOrigin, {})}</div></div>
+        <div class="import-actions" style="margin-top:12px;"><button id="impSaveBtn" class="btn btn-primary btn-sm" onclick="guardarImportacion()">Crear embarque</button><button class="btn btn-outline btn-sm" onclick="clearImportForm()">Limpiar</button></div>
+      </section>
+      <section class="card">
+        <div class="view-toolbar" style="justify-content:space-between;"><input id="impSearch" class="search-input" placeholder="Buscar referencia, proveedor, PO, factura o BL" oninput="renderImportaciones()" style="max-width:340px;"><select id="impFilterOrigen" class="search-input" onchange="renderImportaciones()" style="max-width:180px;"><option value="">Todos los orígenes</option><option value="espana">España</option><option value="miami">EE. UU. / Miami</option></select></div>
+        <div class="import-stage-board">${IMPORT_STAGES.map(stage => {
+          const stageRows = rows.filter(item => item.etapa === stage.key);
+          return `<div class="import-stage"><div class="import-stage-head"><span>${stage.label}</span><span>${stageRows.length}</span></div><div class="import-stage-body">${stageRows.length ? stageRows.map(importCardHtml).join('') : '<div class="route-catalog-empty">Sin embarques.</div>'}</div></div>`;
+        }).join('')}</div>
+      </section>
+      <section class="import-report">${buildImportDailyReport()}</section>
+    </div>`;
+    const origin = document.getElementById('impOrigen');
+    if (origin) origin.value = currentOrigin;
+    const searchEl = document.getElementById('impSearch');
+    if (searchEl) searchEl.value = q;
+    const filterEl = document.getElementById('impFilterOrigen');
+    if (filterEl) filterEl.value = originFilter;
+  };
+
   function initV2UI() {
     ensureAdminProfile();
     injectV2Styles();
     applyBrandLogo();
+    ensureAppFooters();
     applyVisualTheme(APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light', true);
     initUiLabels();
     enhanceImportUi();
@@ -6068,6 +6421,7 @@
     initControlHistoryPanel();
     initThemeSettings();
     initConfigExtras();
+    renderImportaciones();
     syncMoveOptions();
     initRouteFilterOptions();
     renderRouteCatalog();
