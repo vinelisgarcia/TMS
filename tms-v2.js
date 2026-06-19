@@ -1037,9 +1037,13 @@
       almacen: 'almacen'
     };
     Object.entries(navMap).forEach(([viewId, moduleName]) => {
+      const allowed = hasPermission(moduleName, 'ver');
       const btn = document.getElementById('nav-' + viewId);
-      if (btn) btn.style.display = hasPermission(moduleName, 'ver') ? '' : 'none';
+      if (btn) btn.style.display = allowed ? '' : 'none';
+      const mobileOption = document.querySelector(`#mobileModuleSelect option[value=\"${viewId}\"]`);
+      if (mobileOption) mobileOption.hidden = !allowed;
     });
+    syncMobileModuleSelect();
     const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
     document.body.classList.toggle('role-readonly', !hasPermission(activeModule, 'editar'));
     const saveBtn = document.getElementById('saveStateBtn');
@@ -1050,6 +1054,12 @@
       badge.textContent = `${email} · ${APP.currentUserProfile.rol}`;
     }
     enforceCurrentViewPermission();
+  }
+
+  function syncMobileModuleSelect() {
+    const select = document.getElementById('mobileModuleSelect');
+    const active = document.querySelector('.view.active');
+    if (select && active && select.value !== active.id) select.value = active.id;
   }
 
   const originalCambiarVista = window.cambiarVista;
@@ -1063,6 +1073,7 @@
         return;
       }
       originalCambiarVista(id, btn);
+      syncMobileModuleSelect();
       if (id === 'rutas') renderRouteCatalog();
       if (id === 'importaciones') renderImportaciones();
       if (id === 'prioridades') renderPrioridades();
@@ -5637,8 +5648,18 @@
       .priority-column { border:1px solid var(--border); border-radius:10px; background:var(--surface); overflow:hidden; min-height:180px; }
       .priority-column.drag-over { outline:2px solid var(--warning); outline-offset:2px; }
       .priority-column-head { padding:10px 12px; background:var(--primary); color:#fff; display:flex; justify-content:space-between; gap:8px; font-size:12px; font-weight:800; }
+      .priority-column.status-pendiente .priority-column-head { background:#7F1D1D; }
+      .priority-column.status-proceso .priority-column-head { background:#92400E; }
+      .priority-column.status-completada .priority-column-head { background:#166534; }
       .priority-column-body { display:grid; gap:9px; padding:10px; }
-      .priority-card { border:1px solid var(--border); border-radius:8px; background:var(--surface-2); padding:10px; display:grid; gap:7px; cursor:grab; }
+      .priority-card { border:1px solid var(--border); border-left:4px solid var(--primary); border-radius:8px; background:var(--surface-2); padding:10px; display:grid; gap:7px; cursor:grab; }
+      .priority-card.status-pendiente { border-left-color:#DC2626; }
+      .priority-card.status-proceso { border-left-color:#F59E0B; }
+      .priority-card.status-completada { border-left-color:#16A34A; }
+      .priority-status-dot { width:9px; height:9px; border-radius:999px; display:inline-block; margin-right:6px; vertical-align:-1px; background:var(--primary); }
+      .priority-status-dot.status-pendiente { background:#DC2626; }
+      .priority-status-dot.status-proceso { background:#F59E0B; }
+      .priority-status-dot.status-completada { background:#16A34A; }
       .priority-card-title { font-size:13px; font-weight:800; color:var(--text); line-height:1.25; }
       .priority-card-note { font-size:12px; color:var(--muted); line-height:1.35; }
       .priority-card-meta { display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
@@ -6623,10 +6644,11 @@
   }
 
   function priorityCardHtml(item) {
-    return `<div class="priority-card" draggable="true" ondragstart="dragPriorityTask(event,'${item.id}')">
+    const statusClass = 'status-' + (item.estado || 'pendiente');
+    return `<div class="priority-card ${statusClass}" draggable="true" ondragstart="dragPriorityTask(event,'${item.id}')">
       <div class="priority-card-title">${escapeHtml(item.titulo)}</div>
       ${item.notas ? `<div class="priority-card-note">${escapeHtml(item.notas)}</div>` : ''}
-      <div class="priority-card-meta"><span>${priorityStatusLabel(item.estado)}</span><span>${new Date(item.updatedAt || item.createdAt || nowIso()).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div class="priority-card-meta"><span><i class="priority-status-dot ${statusClass}"></i>${priorityStatusLabel(item.estado)}</span><span>${new Date(item.updatedAt || item.createdAt || nowIso()).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</span></div>
       <div class="priority-actions">
         ${PRIORITY_STATUSES.map(status => `<button class="btn btn-outline btn-sm" onclick="moverPrioridad('${item.id}','${status.key}')" ${item.estado === status.key ? 'disabled' : ''}>${status.label}</button>`).join('')}
         <button class="btn btn-outline btn-sm" onclick="editarPrioridad('${item.id}')">Editar</button>
@@ -6693,7 +6715,7 @@
       <section class="priority-board">
         ${PRIORITY_STATUSES.map(status => {
           const items = rows.filter(item => item.estado === status.key);
-          return `<div class="priority-column" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropPriorityTask(event,'${status.key}',this)">
+          return `<div class="priority-column status-${status.key}" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="dropPriorityTask(event,'${status.key}',this)">
             <div class="priority-column-head"><span>${status.label}</span><span>${items.length}</span></div>
             <div class="priority-column-body">${items.length ? items.map(priorityCardHtml).join('') : '<div class="route-catalog-empty">Sin tareas.</div>'}</div>
           </div>`;

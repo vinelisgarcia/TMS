@@ -133,6 +133,33 @@ html { -webkit-text-size-adjust: 100%; }
 }
 .nav-btn .nav-icon { font-size: 16px; }
 
+#mobileModuleNav {
+  display: none;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  box-shadow: var(--shadow-sm);
+}
+#mobileModuleNav label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+#mobileModuleSelect {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
 /* CONTENT */
 #content {
   flex: 1;
@@ -507,7 +534,13 @@ html { -webkit-text-size-adjust: 100%; }
 
 /* Responsive */
 @media (max-width: 768px) {
-  body { height: auto; min-height: 100vh; overflow: auto; }
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  body { height: auto; min-height: 100vh; overflow-y: auto; }
   #appHeader {
     height: auto;
     min-height: 56px;
@@ -552,35 +585,21 @@ html { -webkit-text-size-adjust: 100%; }
   #mainLayout {
     display: block;
     overflow: visible;
-    padding-bottom: 74px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
-  #sidebar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: 64px;
-    z-index: 900;
-    flex-direction: row;
-    gap: 6px;
-    padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
-    border-right: none;
-    border-top: 1px solid var(--border);
-    overflow-x: auto;
-    overflow-y: hidden;
-    box-shadow: 0 -8px 24px rgba(15,23,42,.08);
+  #mobileModuleNav {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 850;
   }
-  .nav-btn {
-    flex: 0 0 64px;
-    justify-content: center;
-    padding: 8px 6px;
-    min-height: 48px;
-  }
-  .nav-btn span.nav-label { display: none; }
-  .nav-btn .nav-icon { font-size: 18px; }
+  #sidebar { display: none; }
   #content { overflow: visible; }
-  .view { padding: 14px 10px; }
+  .view {
+    width: 100%;
+    max-width: 100vw;
+    padding: 14px 10px;
+  }
   .view-title { font-size: 16px; margin-bottom: 12px; }
   .card {
     border-radius: 8px;
@@ -1014,6 +1033,23 @@ html { -webkit-text-size-adjust: 100%; }
 
 <!-- MAIN LAYOUT -->
 <div id="mainLayout" style="display:none;">
+
+  <div id="mobileModuleNav">
+    <label for="mobileModuleSelect">Módulo
+      <select id="mobileModuleSelect" onchange="cambiarVista(this.value, document.getElementById('nav-' + this.value))">
+        <option value="importar">Importar SAP</option>
+        <option value="dashboard">Dashboard</option>
+        <option value="calendario">Calendario</option>
+        <option value="comercial">Vista Comercial</option>
+        <option value="rutas">Rutas</option>
+        <option value="importaciones">Importaciones</option>
+        <option value="prioridades">Prioridades</option>
+        <option value="configClientes">Config. Clientes</option>
+        <option value="solicitudesAlmacen">Solicitudes Almacén</option>
+        <option value="almacen">Vista Almacén</option>
+      </select>
+    </label>
+  </div>
 
   <!-- SIDEBAR -->
   <nav id="sidebar">
