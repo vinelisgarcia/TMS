@@ -872,6 +872,7 @@
       fechaEnvio: isoToFechaStr(row.fecha),
       ubicacion: metadata.ubicacion || '',
       observaciones: row.observaciones || '',
+      motivoNoPreparada: metadata.motivoNoPreparada || '',
       estado: row.estado || 'Prevista',
       costeSolicitud: num(row.coste_solicitud),
       tipoSolicitudArchivo: metadata.tipoSolicitudArchivo || 'plan semanal'
@@ -898,6 +899,7 @@
       fechaEnvio: isoToFechaStr(row.fecha),
       ubicacion: metadata.ubicacion || '',
       observaciones: row.observaciones || '',
+      motivoNoPreparada: metadata.motivoNoPreparada || '',
       estado: row.estado || 'Pendiente',
       costeSolicitud: num(row.coste_solicitud),
       tipoSolicitudArchivo: metadata.tipoSolicitudArchivo || 'control diario'
@@ -927,7 +929,8 @@
         fechaFinalizada: fechaStrToISO(item.fechaFinalizada),
         ubicacion: item.ubicacion || '',
         tipoSolicitudArchivo: item.tipoSolicitudArchivo || 'plan semanal',
-        lineaPedidoCliente: item.lineaPedidoCliente || ''
+        lineaPedidoCliente: item.lineaPedidoCliente || '',
+        motivoNoPreparada: item.motivoNoPreparada || ''
       })
     }));
   }
@@ -955,7 +958,8 @@
         fechaFinalizada: fechaStrToISO(item.fechaFinalizada),
         ubicacion: item.ubicacion || '',
         tipoSolicitudArchivo: item.tipoSolicitudArchivo || 'control diario',
-        lineaPedidoCliente: item.lineaPedidoCliente || ''
+        lineaPedidoCliente: item.lineaPedidoCliente || '',
+        motivoNoPreparada: item.motivoNoPreparada || ''
       })
     }));
   }
@@ -2992,6 +2996,7 @@
         fechaEnvio: fecha,
         ubicacion: text(pickField(row, ['Ubicación de procedencia', 'Ubicacion de procedencia'])),
         observaciones: text(pickField(row, ['Observaciones', 'Nota'])),
+        motivoNoPreparada: text(pickField(row, ['Motivo no preparada', 'Motivo no preparación', 'Motivo no preparacion', 'Razón no preparada', 'Razon no preparada'])),
         estado: cantidadPendiente <= 0 ? 'Completada' : cantidadCompletada > 0 ? 'Parcial' : 'Pendiente',
         costeSolicitud: num(APP.warehouseSettings.costoSolicitud || 0),
         sapMatchKey: [pedidoCliente, lineaPedidoCliente, articulo, codigo].map(normKey).join('|')
@@ -3093,85 +3098,148 @@
 
   window.renderSolicitudCard = renderWarehouseCard;
 
+  function getWarehouseScheduledDate(item) {
+    const exact = (APP.lineItems || []).find(line =>
+      text(line.clienteId) === text(item.codigo) &&
+      (!item.pedidoCliente || text(line.pedidoCliente) === text(item.pedidoCliente))
+    );
+    const anyClientLine = exact || (APP.lineItems || []).find(line => text(line.clienteId) === text(item.codigo));
+    if (anyClientLine && anyClientLine.fechaPlanificada) return anyClientLine.fechaPlanificada;
+    const legacyClient = (APP.clientes || []).find(client => text(client.codigo) === text(item.codigo));
+    return (legacyClient && legacyClient.fecha) || item.fechaEnvio || item.fechaLiberacion || fechaToStr(new Date());
+  }
+
+  function getWarehouseClientName(item) {
+    const line = (APP.lineItems || []).find(row => text(row.clienteId) === text(item.codigo));
+    const legacyClient = (APP.clientes || []).find(client => text(client.codigo) === text(item.codigo));
+    return item.cliente || (line && line.clienteNombre) || (legacyClient && legacyClient.nombre) || item.codigo || 'Cliente sin nombre';
+  }
+
+  function getWarehouseRequestAmount(item) {
+    const exact = (APP.lineItems || []).filter(line =>
+      text(line.clienteId) === text(item.codigo) &&
+      (!item.pedidoCliente || text(line.pedidoCliente) === text(item.pedidoCliente)) &&
+      (!item.articulo || text(line.articulo) === text(item.articulo))
+    );
+    const source = exact.length ? exact : (APP.lineItems || []).filter(line => text(line.clienteId) === text(item.codigo));
+    const amount = source.reduce((sum, line) => sum + getOperationalAmount(line), 0);
+    return amount || num(item.costeSolicitud || APP.warehouseSettings.costoSolicitud || 0);
+  }
+
+  function getWarehouseRowsForView(mode) {
+    const source = mode === 'completadas'
+      ? (APP.solicitudesControlAlmacen.length ? APP.solicitudesControlAlmacen : APP.solicitudesAlmacen)
+      : (APP.solicitudesPlanAlmacen.length ? APP.solicitudesPlanAlmacen : APP.solicitudesAlmacen);
+    return (source || []).map(item => ({
+      ...item,
+      fechaProgramada: getWarehouseScheduledDate(item),
+      clienteNombreVista: getWarehouseClientName(item),
+      montoProgramado: getWarehouseRequestAmount(item),
+      estadoVista: item.cantidadPendiente <= 0 ? 'Completada' : item.cantidadCompletada > 0 ? 'Parcial' : 'Pendiente'
+    }));
+  }
+
+  function renderWarehouseProgrammedCard(item, showReason) {
+    const badgeClass = item.estadoVista === 'Completada' ? 'badge-ok' : item.estadoVista === 'Parcial' ? 'badge-warn' : 'badge-pend';
+    return `<div class="sol-card" style="${item.estadoVista !== 'Completada' ? 'border-left:3px solid #f59e0b;' : ''}">
+      <div class="sol-card-head"><span>Solicitud ${escapeHtml(item.solicitud || '—')}</span><span class="badge ${badgeClass}">${escapeHtml(item.estadoVista)}</span></div>
+      <div class="sol-card-meta">
+        Pedido: <strong>${escapeHtml(item.pedidoCliente || '—')}</strong>${item.lineaPedidoCliente ? ' · Línea ' + escapeHtml(item.lineaPedidoCliente) : ''} · Artículo: <strong>${escapeHtml(item.articulo || '—')}</strong><br>
+        ${escapeHtml(item.descripcionArticulo || 'Sin descripción')}<br>
+        Solicitada: ${num(item.cantidadSolicitada)} · Completada: ${num(item.cantidadCompletada)} · Pendiente: ${num(item.cantidadPendiente)} · Monto: ${formatMonto(item.montoProgramado)}<br>
+        En calendario: <strong>${escapeHtml(item.fechaProgramada)}</strong> · Archivo: ${escapeHtml(item.tipoSolicitudArchivo || '—')}
+        ${showReason ? `<div style="margin-top:8px;"><label style="display:block;font-size:11px;font-weight:800;color:var(--muted);margin-bottom:4px;">Motivo de no preparación</label><input class="form-control" value="${escapeHtml(item.motivoNoPreparada || '')}" placeholder="Ej. falta stock, documento pendiente, no liberada..." onchange="actualizarMotivoSolicitud('${jsString(item.solicitud)}','${jsString(item.pedidoCliente)}','${jsString(item.articulo)}','${jsString(item.codigo)}',this.value)"></div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function renderWarehouseGroupedByDate(rows, mode) {
+    const search = text((document.getElementById('solSearch') || {}).value).toLowerCase();
+    const filtered = rows.filter(item => {
+      if (!search) return true;
+      return [item.codigo, item.clienteNombreVista, item.solicitud, item.pedidoCliente, item.articulo, item.descripcionArticulo]
+        .some(value => text(value).toLowerCase().includes(search));
+    });
+    if (!filtered.length) return '<div class="empty-state"><div class="empty-icon">🔍</div><p>Sin resultados para esta vista.</p></div>';
+    const byDate = new Map();
+    filtered.forEach(item => {
+      const date = item.fechaProgramada || 'Sin fecha';
+      if (!byDate.has(date)) byDate.set(date, new Map());
+      const clients = byDate.get(date);
+      const code = item.codigo || 'sin-codigo';
+      if (!clients.has(code)) clients.set(code, []);
+      clients.get(code).push(item);
+    });
+    return [...byDate.entries()].sort((a, b) => fechaToDate(a[0]) - fechaToDate(b[0])).map(([date, clients]) => {
+      const allItems = [...clients.values()].flat();
+      const amount = allItems.reduce((sum, item) => sum + num(item.montoProgramado), 0);
+      return `<div class="card" style="margin-bottom:14px;">
+        <div class="card-title" style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><span>Fecha ${escapeHtml(date)} · ${escapeHtml(fechaLabel(date))}</span><span class="badge badge-pend">${allItems.length} solicitudes · ${formatMonto(amount)}</span></div>
+        ${[...clients.entries()].sort((a, b) => text(a[1][0].clienteNombreVista).localeCompare(text(b[1][0].clienteNombreVista))).map(([code, items]) => {
+          const clientAmount = items.reduce((sum, item) => sum + num(item.montoProgramado), 0);
+          return `<details style="margin-bottom:10px;" open><summary style="cursor:pointer;font-weight:800;color:var(--primary);margin-bottom:8px;">${escapeHtml(items[0].clienteNombreVista)} · ${escapeHtml(code)} · ${items.length} solicitudes · ${formatMonto(clientAmount)}</summary>${items.map(item => renderWarehouseProgrammedCard(item, mode === 'pendientes')).join('')}</details>`;
+        }).join('')}
+      </div>`;
+    }).join('');
+  }
+
+  function buildWarehouseThursdaySummary(rows) {
+    const pending = rows.filter(item => item.estadoVista !== 'Completada');
+    if (!pending.length) return 'Resumen jueves: no hay solicitudes pendientes de preparar.';
+    const withoutReason = pending.filter(item => !text(item.motivoNoPreparada)).length;
+    return `Resumen jueves: ${pending.length} solicitudes pendientes de preparar. ${withoutReason} sin motivo registrado.`;
+  }
+
+  window.actualizarMotivoSolicitud = function actualizarMotivoSolicitud(solicitud, pedidoCliente, articulo, codigo, value) {
+    if (!hasPermission('solicitudesAlmacen', 'editar')) return alert('Tu rol no puede editar solicitudes.');
+    const apply = item => {
+      if (text(item.solicitud) === text(solicitud) && text(item.pedidoCliente) === text(pedidoCliente) && text(item.articulo) === text(articulo) && text(item.codigo) === text(codigo)) item.motivoNoPreparada = text(value);
+    };
+    pushUndoState('actualizar motivo solicitud');
+    [...(APP.solicitudesAlmacen || []), ...(APP.solicitudesPlanAlmacen || []), ...(APP.solicitudesControlAlmacen || [])].forEach(apply);
+    saveLocalSnapshot();
+    scheduleAutoSave();
+  };
+
+  window.cambiarVistaSolicitudes = function cambiarVistaSolicitudes(mode) {
+    APP.solicitudesVista = mode || 'programadas';
+    renderSolicitudesAlmacen();
+  };
+
+  window.renderSolicitudCard = renderWarehouseCard;
+
   window.renderSolicitudesAlmacen = function renderSolicitudesAlmacenV2() {
     const cont = document.getElementById('solicitudesContainer');
     const resumen = document.getElementById('solicitudesResumen');
     if (!cont || !resumen) return;
-    const visibleBase = APP.solicitudesControlAlmacen.length ? APP.solicitudesControlAlmacen : APP.solicitudesPlanAlmacen;
-    resumen.textContent = APP.solicitudesLoaded ? `${visibleBase.length} solicitudes` : 'Sin archivo';
-    if (!APP.solicitudesLoaded || !visibleBase.length) {
+    const baseRows = APP.solicitudesPlanAlmacen.length || APP.solicitudesControlAlmacen.length ? [...APP.solicitudesPlanAlmacen, ...APP.solicitudesControlAlmacen] : APP.solicitudesAlmacen;
+    resumen.textContent = APP.solicitudesLoaded ? `${baseRows.length} solicitudes` : 'Sin archivo';
+    if (!APP.solicitudesLoaded || !baseRows.length) {
       cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📦</div><p>No hay solicitudes registradas.</p></div>';
       return;
     }
-
-    const search = text((document.getElementById('solSearch') || {}).value).toLowerCase();
-    const filtered = visibleBase.filter(item => {
-      if (!search) return true;
-      return [item.codigo, item.cliente, item.solicitud, item.pedidoCliente, item.articulo]
-        .some(value => text(value).toLowerCase().includes(search));
-    });
-    const byDate = {};
-    filtered.forEach(item => {
-      const date = item.fechaEnvio || item.fechaLiberacion || fechaToStr(new Date());
-      if (!byDate[date]) byDate[date] = {};
-      if (!byDate[date][item.codigo]) byDate[date][item.codigo] = [];
-      byDate[date][item.codigo].push(item);
-    });
-    const comparison = (APP.solicitudesCompare || []).filter(item => {
-      if (!search) return true;
-      return [item.codigo, item.cliente, item.solicitud, item.pedidoCliente, item.articulo]
-        .some(value => text(value).toLowerCase().includes(search));
-    });
-    const incomplete = comparison.filter(item => item.cantidadPendiente > 0);
-
-    cont.innerHTML = Object.keys(byDate).sort((a, b) => fechaToDate(a) - fechaToDate(b)).map(date => {
-      const clients = byDate[date];
-      return `<div class="card" style="margin-bottom:14px;">
-        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-          <span>📅 ${date} · ${fechaLabel(date)}</span>
-          <span class="badge badge-pend">${Object.keys(clients).length} clientes</span>
+    const mode = APP.solicitudesVista || 'programadas';
+    const planRows = getWarehouseRowsForView('programadas');
+    const pendingRows = planRows.filter(item => item.estadoVista !== 'Completada');
+    const completedRows = getWarehouseRowsForView('completadas').filter(item => item.estadoVista === 'Completada');
+    const rowsByMode = { programadas: planRows, pendientes: pendingRows, completadas: completedRows };
+    const activeRows = rowsByMode[mode] || planRows;
+    const totalAmount = activeRows.reduce((sum, item) => sum + num(item.montoProgramado), 0);
+    cont.innerHTML = `
+      <div class="card" style="border-left:4px solid var(--secondary);margin-bottom:14px;">
+        <div class="card-title">Solicitudes programadas</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:10px;">Agrupadas por la fecha de entrega definida en Calendario. Usa pendientes para registrar por qué no se prepararon antes del resumen de jueves.</div>
+        <div class="view-toolbar" style="gap:8px;">
+          <button class="filter-btn ${mode === 'programadas' ? 'active' : ''}" onclick="cambiarVistaSolicitudes('programadas')">Solicitudes planificadas</button>
+          <button class="filter-btn ${mode === 'pendientes' ? 'active' : ''}" onclick="cambiarVistaSolicitudes('pendientes')">Pendientes de preparar</button>
+          <button class="filter-btn ${mode === 'completadas' ? 'active' : ''}" onclick="cambiarVistaSolicitudes('completadas')">Completadas</button>
+          <span class="badge badge-c1">${activeRows.length} solicitudes</span>
+          <span class="badge badge-ok">${formatMonto(totalAmount)}</span>
         </div>
-        ${Object.keys(clients).sort().map(code => {
-          const items = clients[code];
-          return `<details style="margin-bottom:10px;" open>
-            <summary style="cursor:pointer;font-weight:700;color:var(--primary);margin-bottom:8px;">${items[0].cliente || code} · ${code} (${items.length} solicitudes)</summary>
-            ${items.map(renderWarehouseCard).join('')}
-          </details>`;
-        }).join('')}
-      </div>`;
-    }).join('') + `
-      <div class="card" style="border-left:4px solid #6366f1;">
-        <div class="card-title" style="color:#4f46e5;">Comparativo plan semanal vs control diario</div>
-        ${comparison.length ? `<div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Solicitud</th><th>Artículo</th><th>Plan</th><th>Control</th><th>Pendiente</th><th>Estado</th></tr></thead>
-          <tbody>${comparison.map(item => `<tr>
-            <td>${item.fecha}</td>
-            <td>${item.cliente || item.codigo}</td>
-            <td>${item.solicitud}</td>
-            <td>${item.articulo || item.descripcionArticulo || '—'}</td>
-            <td>${item.cantidadSolicitada}</td>
-            <td>${item.cantidadCompletada}</td>
-            <td>${item.cantidadPendiente}</td>
-            <td>${item.estado}</td>
-          </tr>`).join('')}</tbody>
-        </table></div>` : '<div class="empty-state" style="padding:20px;"><p>Carga planificación y control diario de solicitudes para ver el comparativo.</p></div>'}
+        <div class="import-report" style="margin-top:8px;">${escapeHtml(buildWarehouseThursdaySummary(pendingRows))}</div>
       </div>
-      <div class="card" style="border-left:4px solid #f59e0b;">
-        <div class="card-title" style="color:#b45309;">Solicitudes incompletas de la semana</div>
-        ${incomplete.length ? `<div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Fecha</th><th>Cliente</th><th>Solicitud</th><th>Artículo</th><th>Solicitada</th><th>Completada</th><th>Pendiente</th><th>Estado</th></tr></thead>
-          <tbody>${incomplete.map(item => `<tr>
-            <td>${item.fechaEnvio || item.fechaLiberacion || '—'}</td>
-            <td>${item.cliente || item.codigo}</td>
-            <td>${item.solicitud}</td>
-            <td>${item.articulo || item.descripcionArticulo || '—'}</td>
-            <td>${item.cantidadSolicitada}</td>
-            <td>${item.cantidadCompletada}</td>
-            <td>${item.cantidadPendiente}</td>
-            <td>${item.estado}</td>
-          </tr>`).join('')}</tbody>
-        </table></div>` : '<div class="empty-state" style="padding:20px;"><p>Sin solicitudes incompletas.</p></div>'}
-      </div>`;
+      ${renderWarehouseGroupedByDate(activeRows, mode)}
+    `;
   };
 
   window.renderAlmacen = function renderAlmacenV2() {
@@ -4565,7 +4633,23 @@
   };
 
   window.exportarSolicitudesAlmacenExcel = function exportarSolicitudesAlmacenExcelV2() {
-    const ws = XLSX.utils.json_to_sheet(APP.solicitudesAlmacen);
+    const rows = getWarehouseRowsForView(APP.solicitudesVista || 'programadas');
+    if (!rows.length) return alert('No hay solicitudes para exportar.');
+    const ws = XLSX.utils.json_to_sheet(rows.map(item => ({
+      FechaProgramada: item.fechaProgramada,
+      Codigo: item.codigo,
+      Cliente: item.clienteNombreVista,
+      Solicitud: item.solicitud,
+      Pedido: item.pedidoCliente,
+      Articulo: item.articulo,
+      Descripcion: item.descripcionArticulo,
+      Solicitada: item.cantidadSolicitada,
+      Completada: item.cantidadCompletada,
+      Pendiente: item.cantidadPendiente,
+      Estado: item.estadoVista,
+      Monto: item.montoProgramado,
+      MotivoNoPreparada: item.motivoNoPreparada || ''
+    })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Solicitudes');
     XLSX.writeFile(wb, 'TMS_Solicitudes_Almacen.xlsx');
