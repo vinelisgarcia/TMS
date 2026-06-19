@@ -35,6 +35,7 @@
     importFiles: APP.importFiles || { plan: '', control: '', solicitudesPlan: '', solicitudesControl: '' },
     importShipments: APP.importShipments || [],
     dailyPriorities: APP.dailyPriorities || [],
+    calendarNotes: APP.calendarNotes || [],
     selectedCalendarGroups: APP.selectedCalendarGroups || [],
     visualTheme: APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light',
     undoStack: APP.undoStack || [],
@@ -597,6 +598,7 @@
     'importFiles',
     'importShipments',
     'dailyPriorities',
+    'calendarNotes',
     'visualTheme'
   ];
 
@@ -1481,6 +1483,7 @@
         importFiles: APP.importFiles,
         importShipments: APP.importShipments,
         dailyPriorities: APP.dailyPriorities,
+        calendarNotes: APP.calendarNotes,
         visualTheme: APP.visualTheme
       }
     };
@@ -1799,6 +1802,81 @@
     }).join('')}</div>`;
   };
 
+  function getCalendarNoteAuthor() {
+    const profile = APP.currentUserProfile || {};
+    return text(profile.nombre || profile.email || 'Usuario');
+  }
+
+  function ensureCalendarNotes() {
+    APP.calendarNotes = Array.isArray(APP.calendarNotes) ? APP.calendarNotes : [];
+    APP.calendarNotes.forEach(note => {
+      note.id = note.id || ('calnote-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+      note.fecha = text(note.fecha);
+      note.texto = text(note.texto || note.nota || '');
+      note.author = text(note.author || note.autor || getCalendarNoteAuthor());
+      note.createdAt = note.createdAt || nowIso();
+      note.updatedAt = note.updatedAt || note.createdAt;
+    });
+    APP.calendarNotes = APP.calendarNotes.filter(note => note.fecha && note.texto);
+  }
+
+  function getCalendarNotesForDate(fecha) {
+    ensureCalendarNotes();
+    return APP.calendarNotes
+      .filter(note => note.fecha === fecha)
+      .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  }
+
+  function renderCalendarNotesHtml(fecha) {
+    const notes = getCalendarNotesForDate(fecha);
+    return `<div class="calendar-notes-wrap">
+      <div class="calendar-notes-head">
+        <span>${notes.length ? notes.length + ' nota' + (notes.length === 1 ? '' : 's') : 'Notas'}</span>
+        <button class="calendar-note-add" onclick="agregarNotaCalendario('${jsString(fecha)}')">+ Nota</button>
+      </div>
+      ${notes.length ? `<div class="calendar-note-list">${notes.map(note => `<button class="calendar-note-postit" onclick="editarNotaCalendario('${jsString(note.id)}')" title="Editar nota">
+        <span>${escapeHtml(note.texto)}</span>
+        <small>${escapeHtml(note.author)} · ${new Date(note.updatedAt || note.createdAt || nowIso()).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</small>
+      </button>`).join('')}</div>` : ''}
+    </div>`;
+  }
+
+  window.agregarNotaCalendario = function agregarNotaCalendario(fecha) {
+    if (!fecha) return;
+    const texto = text(prompt('Nota pública para ' + fecha, ''));
+    if (!texto) return;
+    pushUndoState('agregar nota de calendario');
+    ensureCalendarNotes();
+    APP.calendarNotes.push({
+      id: 'calnote-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+      fecha,
+      texto,
+      author: getCalendarNoteAuthor(),
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    });
+    renderCalendario();
+    scheduleAutoSave();
+  };
+
+  window.editarNotaCalendario = function editarNotaCalendario(id) {
+    ensureCalendarNotes();
+    const note = APP.calendarNotes.find(item => item.id === id);
+    if (!note) return;
+    const next = prompt('Editar nota pública. Deja vacío para eliminarla.', note.texto);
+    if (next === null) return;
+    pushUndoState('editar nota de calendario');
+    const texto = text(next);
+    if (!texto) APP.calendarNotes = APP.calendarNotes.filter(item => item.id !== id);
+    else {
+      note.texto = texto;
+      note.author = getCalendarNoteAuthor();
+      note.updatedAt = nowIso();
+    }
+    renderCalendario();
+    scheduleAutoSave();
+  };
+
   window.renderCalendario = function renderCalendarioV2() {
     const calContainer = document.getElementById('calContainer');
     const calMesNav = document.getElementById('calMesNav');
@@ -1845,7 +1923,8 @@
         html.push(`<div class="cal-dia-col">
           <div class="cal-dia-header" style="${isHol ? 'background:#fde8e8;color:var(--danger);' : ''}">
             <strong>${fechaLabel(fecha)}</strong><small>${fecha}${isHol ? ' · Feriado RD' : ''}</small>
-          </div>`);
+          </div>
+          ${renderCalendarNotesHtml(fecha)}`);
 
         const activeTrucks = getTruckOptions().filter(camion => (dayRoutes[camion] || []).length || search);
         if (!activeTrucks.length) activeTrucks.push('CAMION 1');
@@ -4917,6 +4996,7 @@
         APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
         APP.importShipments = Array.isArray(settingsMap.app_state.importShipments) ? settingsMap.app_state.importShipments : (APP.importShipments || []);
         APP.dailyPriorities = Array.isArray(settingsMap.app_state.dailyPriorities) ? settingsMap.app_state.dailyPriorities : (APP.dailyPriorities || []);
+        APP.calendarNotes = Array.isArray(settingsMap.app_state.calendarNotes) ? settingsMap.app_state.calendarNotes : (APP.calendarNotes || []);
         APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
         APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
         applyVisualTheme(APP.visualTheme, true);
@@ -5076,7 +5156,8 @@
       const canWriteWarehousePlan = adminCanManageUsers || canWriteImports || hasPermission('solicitudesAlmacen', 'editar');
       const canWriteWarehouseControl = adminCanManageUsers || canWriteImports || hasPermission('almacen', 'editar');
       const canWriteWarehouseHistory = adminCanManageUsers || hasPermission('solicitudesAlmacen', 'editar') || hasPermission('almacen', 'editar');
-      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes;
+      const canWriteCalendarNotes = hasPermission('calendario', 'ver');
+      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes;
       const settingsRows = [
         ...((adminCanManageUsers || canWriteWarehouseHistory) ? [{ clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) }] : []),
         ...(adminCanManageUsers ? [{ clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) }] : []),
@@ -5094,6 +5175,7 @@
             importFiles: APP.importFiles || {},
             importShipments: APP.importShipments || [],
             dailyPriorities: APP.dailyPriorities || [],
+            calendarNotes: APP.calendarNotes || [],
             controlHistory: APP.controlHistory || [],
             visualTheme: APP.visualTheme || 'light'
           })
@@ -5801,6 +5883,63 @@
       .cal-card-selected {
         background: #FFF8D8;
         box-shadow: 0 0 0 2px rgba(245,197,66,0.55);
+      }
+      .calendar-notes-wrap {
+        margin:8px 0 10px;
+        display:grid;
+        gap:6px;
+      }
+      .calendar-notes-head {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:6px;
+        font-size:10px;
+        color:var(--muted);
+        font-weight:800;
+        text-transform:uppercase;
+      }
+      .calendar-note-add {
+        border:1px solid #FACC15;
+        background:#FEF3C7;
+        color:#713F12;
+        border-radius:999px;
+        padding:3px 7px;
+        font-size:10px;
+        font-weight:800;
+        cursor:pointer;
+      }
+      .calendar-note-list {
+        display:grid;
+        gap:5px;
+      }
+      .calendar-note-postit {
+        text-align:left;
+        border:1px solid #FDE68A;
+        border-left:4px solid #F59E0B;
+        border-radius:7px;
+        background:#FFFBEB;
+        color:#3F2B08;
+        padding:7px 8px;
+        box-shadow:0 1px 2px rgba(146,64,14,.08);
+        cursor:pointer;
+        width:100%;
+      }
+      .calendar-note-postit span {
+        display:block;
+        font-size:11px;
+        line-height:1.35;
+        font-weight:700;
+        white-space:normal;
+        overflow-wrap:anywhere;
+      }
+      .calendar-note-postit small {
+        display:block;
+        margin-top:4px;
+        font-size:9px;
+        color:#92400E;
+        font-weight:800;
+        text-transform:uppercase;
       }
       .commercial-toolbar {
         display:flex;
