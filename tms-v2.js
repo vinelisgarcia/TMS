@@ -5759,18 +5759,25 @@
       .priority-report { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; }
       .priority-report pre { margin:0; white-space:pre-wrap; color:var(--text); font-size:12px; line-height:1.5; font-family:inherit; }
       .priority-insights-grid { display:grid; grid-template-columns:minmax(280px,1.25fr) minmax(260px,.85fr); gap:12px; align-items:stretch; }
-      .priority-chart { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; display:grid; gap:10px; }
+      .priority-chart { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; display:grid; gap:12px; }
       .priority-chart-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
       .priority-chart-head strong { font-size:13px; color:var(--text); }
       .priority-chart-head span { font-size:11px; color:var(--muted); }
-      .priority-chart-row { display:grid; grid-template-columns:74px 1fr; gap:8px; align-items:center; font-size:11px; color:var(--muted); }
-      .priority-bars { display:grid; gap:3px; }
-      .priority-bar-track { height:8px; border-radius:999px; background:#EEF2F7; overflow:hidden; }
-      .priority-bar-fill { height:100%; min-width:4px; border-radius:999px; }
-      .priority-bar-fill.started { background:#64748B; }
-      .priority-bar-fill.carried { background:#F59E0B; }
-      .priority-bar-fill.done { background:#16A34A; }
-      .priority-bar-labels { display:flex; gap:8px; flex-wrap:wrap; font-size:10px; color:var(--muted); }
+      .priority-trend-wrap { position:relative; height:172px; border:1px solid var(--border); border-radius:8px; background:linear-gradient(180deg, rgba(148,163,184,.10), rgba(248,250,252,.55)); overflow:hidden; }
+      .priority-trend-svg { position:absolute; inset:0; width:100%; height:100%; }
+      .priority-trend-axis { position:absolute; left:10px; right:10px; bottom:10px; display:grid; grid-template-columns:repeat(7,1fr); gap:4px; font-size:10px; color:var(--muted); text-align:center; }
+      .priority-trend-point { position:absolute; width:9px; height:9px; margin:-4px 0 0 -4px; border-radius:999px; background:#16A34A; box-shadow:0 0 0 3px rgba(22,163,74,.14); }
+      .priority-trend-value { position:absolute; transform:translate(-50%,-100%); margin-top:-8px; font-size:10px; font-weight:800; color:#166534; }
+      .priority-trend-legend { display:flex; flex-wrap:wrap; gap:8px; font-size:10px; color:var(--muted); }
+      .priority-trend-legend span { display:inline-flex; align-items:center; gap:5px; }
+      .priority-trend-legend i { width:8px; height:8px; border-radius:999px; display:inline-block; }
+      .priority-trend-legend .done { background:#16A34A; }
+      .priority-trend-legend .started { background:#64748B; }
+      .priority-trend-legend .carried { background:#F59E0B; }
+      .priority-mini-stats { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+      .priority-mini-day { border:1px solid var(--border); border-radius:7px; padding:6px; display:grid; gap:3px; min-width:0; }
+      .priority-mini-day strong { font-size:10px; color:var(--text); }
+      .priority-mini-day span { font-size:9px; color:var(--muted); white-space:nowrap; }
       .priority-spain-panel { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; display:grid; gap:10px; }
       .priority-spain-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
       .priority-spain-head strong { font-size:13px; color:var(--text); }
@@ -7292,18 +7299,26 @@
 
   function renderPriorityChart(selectedDate) {
     const metrics = priorityDateRange(selectedDate).map(getPriorityMetricsForDate);
-    const max = Math.max(1, ...metrics.flatMap(row => [row.started, row.carried, row.completed]));
+    const max = Math.max(1, ...metrics.map(row => row.completed));
+    const points = metrics.map((row, index) => {
+      const x = 8 + (index * 84 / Math.max(metrics.length - 1, 1));
+      const y = 78 - (row.completed / max * 56);
+      return { ...row, x, y };
+    });
+    const path = points.map((point, index) => `${index ? 'L' : 'M'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`).join(' ');
     return `<section class="priority-chart">
-      <div class="priority-chart-head"><div><strong>Movimiento semanal</strong><span>Iniciadas, arrastradas y completadas por día</span></div></div>
-      ${metrics.map(row => `<div class="priority-chart-row">
-        <strong>${row.date.slice(5)}</strong>
-        <div class="priority-bars">
-          <div class="priority-bar-track"><div class="priority-bar-fill started" style="width:${Math.max(3, row.started / max * 100)}%;"></div></div>
-          <div class="priority-bar-track"><div class="priority-bar-fill carried" style="width:${Math.max(3, row.carried / max * 100)}%;"></div></div>
-          <div class="priority-bar-track"><div class="priority-bar-fill done" style="width:${Math.max(3, row.completed / max * 100)}%;"></div></div>
-          <div class="priority-bar-labels"><span>Ini ${row.started}</span><span>Arr ${row.carried}</span><span>Comp ${row.completed}</span><span>Proc ${row.progress}</span></div>
-        </div>
-      </div>`).join('')}
+      <div class="priority-chart-head"><div><strong>Tendencia semanal</strong><span>Completadas por día con lectura horizontal</span></div></div>
+      <div class="priority-trend-wrap">
+        <svg class="priority-trend-svg" viewBox="0 0 100 86" preserveAspectRatio="none" aria-hidden="true">
+          <line x1="8" y1="78" x2="92" y2="78" stroke="#CBD5E1" stroke-width=".7" />
+          <line x1="8" y1="22" x2="92" y2="22" stroke="#E2E8F0" stroke-width=".5" stroke-dasharray="2 2" />
+          <path d="${path}" fill="none" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+        </svg>
+        ${points.map(point => `<span class="priority-trend-point" style="left:${point.x}%;top:${point.y}%;"></span><span class="priority-trend-value" style="left:${point.x}%;top:${point.y}%">${point.completed}</span>`).join('')}
+        <div class="priority-trend-axis">${points.map(point => `<span>${point.date.slice(5)}</span>`).join('')}</div>
+      </div>
+      <div class="priority-trend-legend"><span><i class="done"></i>Completadas</span><span><i class="started"></i>Iniciadas</span><span><i class="carried"></i>Arrastradas</span></div>
+      <div class="priority-mini-stats">${metrics.map(row => `<div class="priority-mini-day"><strong>${row.date.slice(5)}</strong><span>Ini ${row.started}</span><span>Arr ${row.carried}</span><span>Proc ${row.progress}</span></div>`).join('')}</div>
     </section>`;
   }
 
