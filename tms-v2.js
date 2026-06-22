@@ -5731,6 +5731,8 @@
       .priority-hero h2 { margin:0; font-size:18px; color:var(--text); }
       .priority-hero p { margin:4px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
       .priority-top-actions, .priority-form, .priority-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+      .priority-period-field { display:grid; gap:3px; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+      .priority-period-field input { min-width:132px; }
       .priority-form .form-control { min-width:180px; flex:1; }
       .priority-voice-status { margin-top:8px; font-size:12px; color:var(--muted); }
       .priority-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
@@ -7357,6 +7359,88 @@
     </section>`;
   }
 
+  function priorityPeriodFromUi() {
+    const selected = APP.prioritiesDate || todayIsoDate();
+    const monthStart = selected.slice(0, 8) + '01';
+    const from = text((document.getElementById('prioPeriodFrom') || {}).value) || APP.priorityReportFrom || monthStart;
+    const to = text((document.getElementById('prioPeriodTo') || {}).value) || APP.priorityReportTo || selected;
+    APP.priorityReportFrom = from <= to ? from : to;
+    APP.priorityReportTo = to >= from ? to : from;
+    return { from: APP.priorityReportFrom, to: APP.priorityReportTo };
+  }
+
+  function daysBetweenIso(start, end) {
+    const a = new Date(start + 'T00:00:00');
+    const b = new Date(end + 'T00:00:00');
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+    return Math.max(0, Math.round((b - a) / 86400000));
+  }
+
+  function priorityRowsForPeriod(from, to) {
+    ensureDailyPriorities();
+    return APP.dailyPriorities.filter(item => {
+      if (item.fecha >= from && item.fecha <= to) return true;
+      if (item.completedDate && item.completedDate >= from && item.completedDate <= to) return true;
+      return item.estado !== 'completada' && item.fecha <= to;
+    });
+  }
+
+  function buildPriorityAnalysis(period) {
+    ensureDailyPriorities();
+    ensurePrioritySpainTopics();
+    const from = period.from;
+    const to = period.to;
+    const rows = priorityRowsForPeriod(from, to);
+    const started = rows.filter(item => item.fecha >= from && item.fecha <= to);
+    const completed = rows.filter(item => item.estado === 'completada' && item.completedDate >= from && item.completedDate <= to);
+    const open = APP.dailyPriorities.filter(item => item.estado !== 'completada' && item.fecha <= to);
+    const inProgress = open.filter(item => item.estado === 'proceso');
+    const pending = open.filter(item => item.estado === 'pendiente');
+    const carried = open.filter(item => item.fecha < from);
+    const closeDays = completed.map(item => daysBetweenIso(item.fecha, item.completedDate)).filter(value => value >= 0);
+    const avgClose = closeDays.length ? closeDays.reduce((sum, value) => sum + value, 0) / closeDays.length : 0;
+    const closeRate = started.length ? Math.round((completed.length / started.length) * 100) : (completed.length ? 100 : 0);
+    const estimated = open.map(item => {
+      const age = daysBetweenIso(item.fecha, to);
+      const remaining = Math.max(1, Math.ceil(avgClose || 2) - age);
+      const estimatedDate = new Date(to + 'T00:00:00');
+      estimatedDate.setDate(estimatedDate.getDate() + remaining);
+      return { ...item, age, estimatedClose: estimatedDate.toISOString().slice(0, 10), remaining };
+    });
+    const metrics = priorityDateRange(to).map(getPriorityMetricsForDate);
+    const spainOpen = APP.prioritySpainTopics.filter(item => !item.done);
+    const spainDone = APP.prioritySpainTopics.filter(item => item.done);
+    const risk = open.filter(item => daysBetweenIso(item.fecha, to) > Math.max(2, Math.ceil(avgClose || 2))).length;
+    return { from, to, rows, started, completed, open, inProgress, pending, carried, avgClose, closeRate, estimated, metrics, spainOpen, spainDone, risk };
+  }
+
+  function priorityAnalysisText(analysis) {
+    const estLines = analysis.estimated.slice(0, 12).map(item => `- ${item.titulo}: ${item.estado}, ${item.age} días abierta, cierre estimado ${item.estimatedClose}`).join('\n') || '- Sin tareas abiertas.';
+    const completedLines = analysis.completed.slice(0, 12).map(item => `- ${item.titulo}: cerrada ${item.completedDate}, duración ${daysBetweenIso(item.fecha, item.completedDate)} días`).join('\n') || '- Sin tareas completadas en el periodo.';
+    const spainLines = analysis.spainOpen.map(item => `- ${item.titulo}${item.notas ? ' · ' + item.notas : ''}`).join('\n') || '- Sin temas abiertos.';
+    return `Reporte analítico de prioridades\nPeriodo: ${analysis.from} a ${analysis.to}\n\nResumen ejecutivo:\nTareas iniciadas: ${analysis.started.length}\nTareas completadas: ${analysis.completed.length}\nPendientes actuales: ${analysis.pending.length}\nEn proceso actuales: ${analysis.inProgress.length}\nArrastradas desde antes del periodo: ${analysis.carried.length}\nTasa de cierre del periodo: ${analysis.closeRate}%\nTiempo promedio de cierre: ${analysis.avgClose.toFixed(1)} días\nTareas con riesgo por antigüedad: ${analysis.risk}\n\nEstimación de cierre de tareas abiertas:\n${estLines}\n\nTareas completadas del periodo:\n${completedLines}\n\nTemas pendientes de verificar con España:\n${spainLines}`;
+  }
+
+  function priorityAnalysisHtml(analysis) {
+    const report = priorityAnalysisText(analysis);
+    const cards = [
+      ['Iniciadas', analysis.started.length],
+      ['Completadas', analysis.completed.length],
+      ['Abiertas', analysis.open.length],
+      ['Prom. cierre', analysis.avgClose.toFixed(1) + ' días'],
+      ['Tasa cierre', analysis.closeRate + '%'],
+      ['Riesgo', analysis.risk]
+    ];
+    return `<div style="background:#fff;color:#111827;font-family:Arial,sans-serif;padding:24px;width:760px;">
+      <h1 style="font-size:22px;margin:0 0 4px;">Reporte analítico de prioridades</h1>
+      <div style="font-size:12px;color:#64748B;margin-bottom:16px;">Periodo ${escapeHtml(analysis.from)} a ${escapeHtml(analysis.to)}</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;">
+        ${cards.map(([label, value]) => `<div style="border:1px solid #E2E8F0;border-radius:8px;padding:10px;"><strong style="display:block;font-size:20px;">${escapeHtml(value)}</strong><span style="font-size:10px;color:#64748B;text-transform:uppercase;font-weight:700;">${escapeHtml(label)}</span></div>`).join('')}
+      </div>
+      <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:12px;line-height:1.5;margin:0;">${escapeHtml(report)}</pre>
+    </div>`;
+  }
+
   function buildPriorityReport(rows) {
     ensurePrioritySpainTopics();
     const pending = rows.filter(item => item.estado === 'pendiente').length;
@@ -7399,9 +7483,11 @@
       <section class="priority-hero">
         <div><h2>Prioridades del día</h2><p>Las tareas pendientes o en proceso se arrastran automáticamente hasta que se marquen como completadas. El histórico muestra las completadas por día.</p></div>
         <div class="priority-top-actions">
-          <input id="prioDate" class="form-control" type="date" value="${APP.prioritiesDate}" onchange="APP.prioritiesDate=this.value;renderPrioridades()">
-          <button class="btn btn-success btn-sm" onclick="exportarPrioridadesExcel()">Exportar Excel</button>
-          <button class="btn btn-outline btn-sm" onclick="exportarPrioridadesPdf()">Exportar PDF</button>
+          <label class="priority-period-field">Día<input id="prioDate" class="form-control" type="date" value="${APP.prioritiesDate}" onchange="APP.prioritiesDate=this.value;renderPrioridades()"></label>
+          <label class="priority-period-field">Desde<input id="prioPeriodFrom" class="form-control" type="date" value="${APP.priorityReportFrom || (APP.prioritiesDate || todayIsoDate()).slice(0, 8) + '01'}"></label>
+          <label class="priority-period-field">Hasta<input id="prioPeriodTo" class="form-control" type="date" value="${APP.priorityReportTo || APP.prioritiesDate}"></label>
+          <button class="btn btn-primary btn-sm" onclick="exportarPrioridadesPdf()">Reporte PDF</button>
+          <button class="btn btn-success btn-sm" onclick="exportarPrioridadesExcel()">Excel</button>
         </div>
       </section>
       <section class="priority-insights-grid">
@@ -7599,21 +7685,29 @@
     XLSX.writeFile(wb, 'TMS_Prioridades_' + (APP.prioritiesDate || todayIsoDate()) + '.xlsx');
   };
 
-  window.exportarPrioridadesPdf = function exportarPrioridadesPdf() {
-    const rows = getPrioritiesForSelectedDate();
-    const report = buildPriorityReport(rows);
-    const stage = document.createElement('div');
-    stage.style.cssText = 'position:fixed;left:-10000px;top:0;width:760px;background:#fff;color:#111827;padding:24px;font-family:Arial,sans-serif;';
-    stage.innerHTML = `<h1 style="font-size:20px;margin:0 0 12px;">Prioridades ${escapeHtml(APP.prioritiesDate || todayIsoDate())}</h1><pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:12px;line-height:1.45;">${escapeHtml(report)}</pre>`;
-    document.body.appendChild(stage);
-    const done = () => setTimeout(() => stage.remove(), 500);
-    if (window.html2pdf) {
-      window.html2pdf().set({ margin: 10, filename: 'TMS_Prioridades_' + (APP.prioritiesDate || todayIsoDate()) + '.pdf', html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(stage).save().then(done).catch(done);
-    } else {
-      alert('No se pudo cargar el exportador PDF. Usa Exportar Excel por ahora.');
-      done();
+  window.exportarPrioridadesPdf = async function exportarPrioridadesPdf() {
+    try {
+      const period = priorityPeriodFromUi();
+      const analysis = buildPriorityAnalysis(period);
+      const stage = document.createElement('div');
+      stage.style.cssText = 'position:fixed;left:0;top:0;width:820px;background:#fff;z-index:2147483647;padding:0;';
+      stage.innerHTML = priorityAnalysisHtml(analysis);
+      document.body.appendChild(stage);
+      const html2pdfLib = await ensureHtml2Pdf();
+      await html2pdfLib().set({
+        margin: 8,
+        filename: `TMS_Prioridades_${period.from}_a_${period.to}.pdf`,
+        html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      }).from(stage.firstElementChild || stage).save();
+      setTimeout(() => stage.remove(), 250);
+    } catch (error) {
+      console.error('Error exportando prioridades PDF:', error);
+      alert('No se pudo generar el PDF de prioridades: ' + error.message);
     }
   };
+
+  window.generarReportePrioridades = window.exportarPrioridadesPdf;
 
   window.renderImportaciones = function renderImportaciones() {
     const mount = document.getElementById('importacionesMount');
