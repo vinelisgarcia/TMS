@@ -5713,6 +5713,12 @@
       .import-docs { display:flex; flex-wrap:wrap; gap:5px; }
       .import-doc-chip { border:1px solid var(--border); border-radius:999px; padding:3px 7px; font-size:10px; font-weight:800; background:#fff; color:var(--muted); }
       .import-doc-chip.ok { color:#166534; background:#F0FDF4; border-color:#BBF7D0; }
+      .import-bulk-box { border:1px dashed var(--border); border-radius:10px; background:var(--surface-2); padding:12px; display:grid; gap:10px; }
+      .import-bulk-box strong { font-size:13px; color:var(--text); }
+      .import-bulk-box small { color:var(--muted); font-size:11px; line-height:1.4; }
+      .import-bulk-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+      .import-bulk-text { width:100%; min-height:82px; resize:vertical; }
+      .import-bulk-status { color:var(--muted); font-size:12px; min-height:18px; }
       .import-actions { display:flex; flex-wrap:wrap; gap:6px; }
       .import-report { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; white-space:pre-wrap; color:var(--text); font-size:12px; line-height:1.5; }
       .priorities-module { display:grid; gap:14px; }
@@ -6531,6 +6537,335 @@
     ]
   };
 
+
+  const IMPORT_BULK_HEADERS = [
+    'EXPEDIENTE', 'Nº BOOKING', 'PARTNER', 'DESTINO', 'POA', 'VESSEL', 'ETD', 'ETA', 'EQUIPO', 'FECHA CARGA', 'HORA CARGA', 'SITUACION', 'POD', 'Nº CONTENEDOR'
+  ];
+
+  const IMPORT_BULK_ALIASES = {
+    expediente: ['EXPEDIENTE', 'Expediente', 'REF', 'Referencia'],
+    booking: ['Nº BOOKING', 'N° BOOKING', 'NO BOOKING', 'BOOKING', 'N BOOKING', 'Numero Booking'],
+    partner: ['PARTNER', 'Transitario', 'Agente'],
+    destino: ['DESTINO', 'Destino'],
+    poa: ['POA'],
+    vessel: ['VESSEL', 'Buque', 'Barco'],
+    etd: ['ETD'],
+    eta: ['ETA'],
+    equipo: ['EQUIPO', 'Equipo'],
+    fechaCarga: ['FECHA CARGA', 'Fecha carga', 'Fecha de carga'],
+    horaCarga: ['HORA CARGA', 'Hora carga', 'Hora de carga'],
+    situacion: ['SITUACION', 'SITUACIÓN', 'Estado', 'Status'],
+    pod: ['POD'],
+    contenedor: ['Nº CONTENEDOR', 'N° CONTENEDOR', 'NO CONTENEDOR', 'CONTENEDOR', 'Container']
+  };
+
+  function getBulkAliasValue(row, field) {
+    const aliases = IMPORT_BULK_ALIASES[field] || [field];
+    for (const alias of aliases) {
+      const direct = row && row[alias];
+      if (direct !== undefined && direct !== null && text(direct)) return text(direct);
+      const normalized = normalizeRow(row || {});
+      const key = normKey(alias);
+      if (normalized[key] !== undefined && normalized[key] !== null && text(normalized[key])) return text(normalized[key]);
+    }
+    return '';
+  }
+
+  function parseImportBulkDate(value) {
+    const raw = text(value).replace(/\.$/, '');
+    if (!raw || raw === '-') return '';
+    const slash = raw.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+    if (slash) {
+      const year = slash[3].length === 2 ? '20' + slash[3] : slash[3];
+      return `${year}-${String(slash[2]).padStart(2, '0')}-${String(slash[1]).padStart(2, '0')}`;
+    }
+    const monthMap = {
+      ene: 1, enero: 1, jan: 1,
+      feb: 2, febrero: 2,
+      mar: 3, marzo: 3,
+      abr: 4, abril: 4, apr: 4,
+      may: 5, mayo: 5,
+      jun: 6, junio: 6,
+      jul: 7, julio: 7,
+      ago: 8, agosto: 8, aug: 8,
+      sep: 9, sept: 9, septiembre: 9,
+      oct: 10, octubre: 10,
+      nov: 11, noviembre: 11,
+      dic: 12, diciembre: 12, dec: 12
+    };
+    const monthText = stripAccents(raw.toLowerCase()).match(/^(\d{1,2})\s*[-/ ]\s*([a-z]+)(?:\s*[-/ ]\s*(\d{2,4}))?$/);
+    if (monthText) {
+      const month = monthMap[monthText[2]];
+      if (!month) return raw;
+      const year = monthText[3] ? (monthText[3].length === 2 ? '20' + monthText[3] : monthText[3]) : String(CURRENT_YEAR);
+      return `${year}-${String(month).padStart(2, '0')}-${String(monthText[1]).padStart(2, '0')}`;
+    }
+    return raw;
+  }
+
+  function normalizeImportSituation(value) {
+    const status = stripAccents(text(value).toLowerCase());
+    if (status.includes('anulado')) return 'Anulado';
+    if (status.includes('pdte embarque')) return 'Pdte embarque';
+    if (status.includes('pdte carga')) return 'Pdte Carga';
+    if (status.includes('cargado')) return 'Cargado';
+    if (status.includes('embarcado')) return 'Embarcado';
+    return text(value);
+  }
+
+  function importStageFromSituation(value) {
+    const status = stripAccents(text(value).toLowerCase());
+    if (status.includes('embarcado')) return 'transito';
+    if (status.includes('cargado') || status.includes('pdte embarque') || status.includes('pdte carga')) return 'docs_origen';
+    if (status.includes('anulado')) return 'pedido';
+    return 'docs_origen';
+  }
+
+  function normalizeBulkShipment(raw) {
+    const expediente = text(raw.expediente || raw.referencia);
+    const booking = text(raw.booking || raw.po);
+    const contenedor = text(raw.contenedor || raw.bl);
+    if (!expediente && !booking && !contenedor) return null;
+    const situacion = normalizeImportSituation(raw.situacion);
+    const eta = parseImportBulkDate(raw.eta);
+    const etd = parseImportBulkDate(raw.etd);
+    const fechaCarga = parseImportBulkDate(raw.fechaCarga);
+    const id = 'imp-bulk-' + normKey([expediente, contenedor || booking].filter(Boolean).join('-'));
+    const detailParts = [
+      raw.destino ? 'Destino: ' + raw.destino : '',
+      raw.poa ? 'POA: ' + raw.poa : '',
+      raw.vessel ? 'Vessel: ' + raw.vessel : '',
+      etd ? 'ETD: ' + etd : '',
+      raw.equipo ? 'Equipo: ' + raw.equipo : '',
+      fechaCarga ? 'Carga: ' + fechaCarga + (raw.horaCarga ? ' ' + raw.horaCarga : '') : '',
+      situacion ? 'Situación: ' + situacion : '',
+      raw.pod ? 'POD: ' + raw.pod : '',
+      contenedor ? 'Contenedor: ' + contenedor : ''
+    ].filter(Boolean);
+    return {
+      id,
+      origen: 'espana',
+      etapa: importStageFromSituation(situacion),
+      referencia: expediente || booking || contenedor,
+      proveedor: text(raw.partner) || 'RAMINATRANS',
+      po: booking,
+      factura: '',
+      bl: contenedor || booking,
+      tracking: text(raw.vessel || raw.partner),
+      eta,
+      fechaMiami: '',
+      fechaAduana: '',
+      fechaSalidaAduana: '',
+      fechaAlmacen: '',
+      valor: 0,
+      notas: detailParts.join(' · '),
+      booking,
+      partner: text(raw.partner),
+      destino: text(raw.destino),
+      poa: text(raw.poa),
+      vessel: text(raw.vessel),
+      etd,
+      equipo: text(raw.equipo),
+      fechaCarga,
+      horaCarga: text(raw.horaCarga),
+      situacion,
+      pod: text(raw.pod),
+      contenedor,
+      docs: { waybill: !!(booking || contenedor), bl: !!(booking || contenedor) },
+      source: 'bulk-import',
+      updatedAt: nowIso()
+    };
+  }
+
+  function shipmentKey(item) {
+    return normKey([item.referencia, item.contenedor || item.bl, item.booking || item.po].filter(Boolean).join('|'));
+  }
+
+  function parseBulkRowsFromObjects(rows) {
+    return (rows || []).map(row => normalizeBulkShipment({
+      expediente: getBulkAliasValue(row, 'expediente'),
+      booking: getBulkAliasValue(row, 'booking'),
+      partner: getBulkAliasValue(row, 'partner'),
+      destino: getBulkAliasValue(row, 'destino'),
+      poa: getBulkAliasValue(row, 'poa'),
+      vessel: getBulkAliasValue(row, 'vessel'),
+      etd: getBulkAliasValue(row, 'etd'),
+      eta: getBulkAliasValue(row, 'eta'),
+      equipo: getBulkAliasValue(row, 'equipo'),
+      fechaCarga: getBulkAliasValue(row, 'fechaCarga'),
+      horaCarga: getBulkAliasValue(row, 'horaCarga'),
+      situacion: getBulkAliasValue(row, 'situacion'),
+      pod: getBulkAliasValue(row, 'pod'),
+      contenedor: getBulkAliasValue(row, 'contenedor')
+    })).filter(Boolean);
+  }
+
+  function parseBulkShipmentsFromText(rawText) {
+    const lines = String(rawText || '')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map(line => text(line).replace(/\s+/g, ' '))
+      .filter(Boolean)
+      .filter(line => !IMPORT_BULK_HEADERS.some(header => normKey(line) === normKey(header)));
+    const records = [];
+    let current = [];
+    lines.forEach(line => {
+      if (/^H\d{5,}/i.test(line) && current.length) {
+        records.push(current);
+        current = [];
+      }
+      current.push(line);
+    });
+    if (current.length) records.push(current);
+    const sequential = records.map(parts => normalizeBulkShipment({
+      expediente: parts[0],
+      booking: parts[1],
+      partner: parts[2],
+      destino: parts[3],
+      poa: parts[4],
+      vessel: parts[5],
+      etd: parts[6],
+      eta: parts[7],
+      equipo: parts[8],
+      fechaCarga: parts[9],
+      horaCarga: parts[10],
+      situacion: parts[11],
+      pod: parts[12],
+      contenedor: parts[13]
+    })).filter(Boolean);
+    if (sequential.length) return sequential;
+    return lines.filter(line => /^H\d{5,}/i.test(line)).map(line => {
+      const expediente = (line.match(/H\d{5,}/i) || [''])[0];
+      const contenedor = (line.match(/[A-Z]{4}\d{7}/i) || [''])[0];
+      const situacion = (line.match(/Pdte\s+Carga|Pdte\s+embarque|Embarcado|Cargado|Anulado/i) || [''])[0];
+      const eta = (line.match(/\b\d{1,2}[-/](?:ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic|\d{1,2})\b/i) || [''])[0];
+      return normalizeBulkShipment({ expediente, eta, situacion, contenedor, partner: 'RAMINATRANS', vessel: line.replace(expediente, '').replace(contenedor, '').trim() });
+    }).filter(Boolean);
+  }
+
+  function upsertBulkImportShipments(shipments) {
+    ensureImportShipments();
+    let created = 0;
+    let updated = 0;
+    shipments.forEach(next => {
+      const key = shipmentKey(next);
+      const idx = APP.importShipments.findIndex(item => item.id === next.id || (key && shipmentKey(item) === key));
+      if (idx >= 0) {
+        APP.importShipments[idx] = {
+          ...APP.importShipments[idx],
+          ...next,
+          docs: { ...(APP.importShipments[idx].docs || {}), ...(next.docs || {}) },
+          createdAt: APP.importShipments[idx].createdAt || nowIso(),
+          updatedAt: nowIso()
+        };
+        updated += 1;
+      } else {
+        APP.importShipments.push({ ...next, createdAt: nowIso(), updatedAt: nowIso() });
+        created += 1;
+      }
+    });
+    return { created, updated };
+  }
+
+  function loadTesseractScript() {
+    if (window.Tesseract) return Promise.resolve();
+    if (window._tmsTesseractLoading) return window._tmsTesseractLoading;
+    window._tmsTesseractLoading = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('No se pudo cargar el lector OCR. Revisa la conexión e intenta de nuevo.'));
+      document.head.appendChild(script);
+    });
+    return window._tmsTesseractLoading;
+  }
+
+  function readTextFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = event => resolve(event.target.result || '');
+      reader.onerror = () => reject(reader.error || new Error('No se pudo leer el archivo.'));
+      reader.readAsText(file);
+    });
+  }
+
+  function readArrayBufferFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = event => resolve(event.target.result);
+      reader.onerror = () => reject(reader.error || new Error('No se pudo leer el archivo.'));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function updateBulkImportStatus(message) {
+    const status = document.getElementById('impBulkStatus');
+    if (status) status.textContent = message || '';
+  }
+
+  async function parseImportShipmentsFile(file) {
+    const name = (file.name || '').toLowerCase();
+    if (/\.(xlsx|xls|xml)$/.test(name)) {
+      const buffer = await readArrayBufferFile(file);
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      return parseBulkRowsFromObjects(XLSX.utils.sheet_to_json(sheet, { defval: '' }));
+    }
+    if (/\.(csv|txt)$/.test(name) || /^text\//.test(file.type || '')) {
+      return parseBulkShipmentsFromText(await readTextFile(file));
+    }
+    if (/^image\//.test(file.type || '')) {
+      updateBulkImportStatus('Leyendo imagen con OCR... puede tardar unos segundos.');
+      await loadTesseractScript();
+      const result = await window.Tesseract.recognize(file, 'spa+eng', {
+        logger: event => {
+          if (event && event.status) {
+            const pct = event.progress ? ` ${Math.round(event.progress * 100)}%` : '';
+            updateBulkImportStatus('OCR: ' + event.status + pct);
+          }
+        }
+      });
+      return parseBulkShipmentsFromText(result && result.data ? result.data.text : '');
+    }
+    return parseBulkShipmentsFromText(await readTextFile(file));
+  }
+
+  window.importarEmbarquesDesdeArchivo = async function importarEmbarquesDesdeArchivo(file) {
+    if (!file) return;
+    if (!hasPermission('importaciones', 'editar')) return alert('Tu rol no puede editar importaciones.');
+    try {
+      updateBulkImportStatus('Procesando archivo...');
+      const shipments = await parseImportShipmentsFile(file);
+      if (!shipments.length) throw new Error('No pude detectar embarques en el archivo. Prueba con Excel/CSV o una captura más nítida.');
+      pushUndoState('importar embarques');
+      const result = upsertBulkImportShipments(shipments);
+      updateBulkImportStatus(`Importación lista: ${result.created} nuevos · ${result.updated} actualizados.`);
+      renderImportaciones();
+      scheduleAutoSave();
+    } catch (error) {
+      console.error('Error importando embarques:', error);
+      updateBulkImportStatus('Error: ' + error.message);
+      alert('No se pudieron importar los embarques: ' + error.message);
+    } finally {
+      const input = document.getElementById('impBulkFile');
+      if (input) input.value = '';
+    }
+  };
+
+  window.importarEmbarquesDesdeTexto = function importarEmbarquesDesdeTexto() {
+    if (!hasPermission('importaciones', 'editar')) return alert('Tu rol no puede editar importaciones.');
+    const textarea = document.getElementById('impBulkText');
+    const raw = textarea ? textarea.value : '';
+    const shipments = parseBulkShipmentsFromText(raw);
+    if (!shipments.length) return alert('No pude detectar embarques en el texto pegado.');
+    pushUndoState('importar embarques pegados');
+    const result = upsertBulkImportShipments(shipments);
+    if (textarea) textarea.value = '';
+    updateBulkImportStatus(`Importación lista: ${result.created} nuevos · ${result.updated} actualizados.`);
+    renderImportaciones();
+    scheduleAutoSave();
+  };
+
   function ensureImportShipments() {
     APP.importShipments = Array.isArray(APP.importShipments) ? APP.importShipments : [];
     APP.importShipments.forEach(item => {
@@ -6696,8 +7031,9 @@
     const docsHtml = importRequiredDocs(item.origen).slice(0, 6).map(([key, label]) => `<span class="import-doc-chip ${item.docs && item.docs[key] ? 'ok' : ''}">${item.docs && item.docs[key] ? '✓' : '·'} ${label}</span>`).join('');
     return `<article class="import-card ${eta.cls}">
       <div class="import-card-title"><span>${item.referencia || 'Sin ref.'}</span><span>${progress.done}/${progress.total}</span></div>
-      <div class="import-card-meta"><strong>${importOriginLabel(item.origen)}</strong> · ${item.proveedor || 'Proveedor pendiente'}<br>PO ${item.po || '—'} · Factura ${item.factura || '—'}<br>BL/Waybill ${item.bl || '—'} · ${eta.label}</div>
+      <div class="import-card-meta"><strong>${importOriginLabel(item.origen)}</strong> · ${item.proveedor || item.partner || 'Proveedor pendiente'}<br>Booking/PO ${item.booking || item.po || '—'} · Vessel ${item.vessel || '—'}<br>Contenedor/BL ${item.contenedor || item.bl || '—'} · ${eta.label}</div>
       <div class="import-docs">${docsHtml}</div>
+      <div class="import-card-meta">ETD: ${item.etd || '—'} · Carga: ${item.fechaCarga || '—'} ${item.horaCarga || ''} · Situación: ${item.situacion || '—'}<br>Destino: ${item.destino || '—'} · POA: ${item.poa || '—'} · POD: ${item.pod || '—'}</div>
       <div class="import-card-meta">Miami: ${item.fechaMiami || '—'} · Aduana: ${item.fechaAduana || '—'} · Salida: ${item.fechaSalidaAduana || '—'} · Almacén: ${item.fechaAlmacen || '—'}</div>
       ${item.notas ? `<div class="import-card-meta">${item.notas}</div>` : ''}
       <div class="import-actions">
@@ -6725,9 +7061,20 @@
       Origen: importOriginLabel(item.origen),
       Etapa: importStageLabel(item.etapa),
       Proveedor: item.proveedor,
+      Booking: item.booking || item.po,
       PO: item.po,
       Factura: item.factura,
       BL_Waybill: item.bl,
+      Contenedor: item.contenedor || '',
+      Vessel: item.vessel || '',
+      ETD: item.etd || '',
+      Equipo: item.equipo || '',
+      Fecha_Carga: item.fechaCarga || '',
+      Hora_Carga: item.horaCarga || '',
+      Situacion: item.situacion || '',
+      Destino: item.destino || '',
+      POA: item.poa || '',
+      POD: item.pod || '',
       Tracking: item.tracking,
       ETA: item.eta,
       Estado_ETA: importEtaState(item).label,
@@ -7003,6 +7350,18 @@
         <div class="import-kpi"><strong>${upcoming}</strong><span>ETA próxima</span></div>
         <div class="import-kpi"><strong>${sapPending}</strong><span>Pendiente SAP</span></div>
       </div>
+      <section class="card" style="display:${canEdit ? 'block' : 'none'};">
+        <div class="card-title">Carga automática de embarques</div>
+        <div class="import-bulk-box">
+          <strong>Sube Excel/CSV/TXT o una captura de pantalla</strong>
+          <small>El TMS buscará expediente, booking, partner, destino, POA, vessel, ETD, ETA, equipo, fecha/hora de carga, situación, POD y contenedor. Si el embarque ya existe, lo actualiza; si no existe, lo crea.</small>
+          <div class="import-bulk-actions">
+            <input id="impBulkFile" class="form-control" type="file" accept=".xlsx,.xls,.csv,.txt,image/*" onchange="importarEmbarquesDesdeArchivo(this.files[0])">
+          </div>
+          <textarea id="impBulkText" class="form-control import-bulk-text" placeholder="También puedes pegar aquí la tabla o el texto OCR de los embarques..."></textarea>
+          <div class="import-bulk-actions"><button class="btn btn-outline btn-sm" onclick="importarEmbarquesDesdeTexto()">Registrar texto pegado</button><span id="impBulkStatus" class="import-bulk-status"></span></div>
+        </div>
+      </section>
       <section class="card" style="display:${canEdit ? 'block' : 'none'};">
         <div class="card-title">Nuevo / editar embarque</div>
         <div class="import-form-grid">
