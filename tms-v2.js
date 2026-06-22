@@ -6700,6 +6700,73 @@
     })).filter(Boolean);
   }
 
+  function parseCompactShipmentLine(line) {
+    const original = text(line).replace(/\s+/g, ' ');
+    if (!/^H\d{5,}/i.test(original)) return null;
+    const expediente = (original.match(/^H\d{5,}/i) || [''])[0];
+    let rest = text(original.slice(expediente.length));
+    const bookingMatch = rest.match(/^([A-Z0-9]{5,}|\d{5,})\b/i);
+    const booking = bookingMatch ? bookingMatch[1] : '';
+    if (booking) rest = text(rest.slice(booking.length));
+    const partnerMatch = rest.match(/^(RAMINATRANS|[A-Z][A-Z0-9&. -]{2,}?)(?=\s+ALVAREZ|\s+CLIENTE|\s+[A-Z]+\s+[A-Z]+)/i);
+    const partner = partnerMatch ? partnerMatch[1] : 'RAMINATRANS';
+    if (partnerMatch) rest = text(rest.slice(partnerMatch[0].length));
+
+    const dateMatches = [...rest.matchAll(/\b\d{1,2}\s*[-/]\s*(?:ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic|jan|apr|aug|dec|\d{1,2})\b/ig)];
+    const etdRaw = dateMatches[0] ? dateMatches[0][0] : '';
+    const etaRaw = dateMatches[1] ? dateMatches[1][0] : '';
+    const beforeDates = etdRaw ? text(rest.slice(0, dateMatches[0].index)) : rest;
+    const afterEtaStart = dateMatches[1] ? dateMatches[1].index + dateMatches[1][0].length : (dateMatches[0] ? dateMatches[0].index + dateMatches[0][0].length : 0);
+    let tail = afterEtaStart ? text(rest.slice(afterEtaStart)) : '';
+
+    const poaOptions = ['SANTO DOMINGO', 'CAUCEDO', 'MORELOS', 'KINGSTON'];
+    let poa = '';
+    let poaIndex = -1;
+    poaOptions.forEach(option => {
+      const idx = stripAccents(beforeDates.toUpperCase()).indexOf(stripAccents(option));
+      if (idx >= 0 && (poaIndex < 0 || idx < poaIndex)) {
+        poa = option;
+        poaIndex = idx;
+      }
+    });
+    const destino = poaIndex >= 0 ? text(beforeDates.slice(0, poaIndex)) : '';
+    const vessel = poaIndex >= 0 ? text(beforeDates.slice(poaIndex + poa.length)) : beforeDates;
+
+    const equipoMatch = tail.match(/^(LCL|20|40\s*HC|40HC|40|45\s*HC)\b/i);
+    const equipo = equipoMatch ? equipoMatch[1].replace(/\s+/g, ' ').toUpperCase() : '';
+    if (equipoMatch) tail = text(tail.slice(equipoMatch[0].length));
+    const fechaCargaMatch = tail.match(/^(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|-)\b/);
+    const fechaCarga = fechaCargaMatch ? fechaCargaMatch[1] : '';
+    if (fechaCargaMatch) tail = text(tail.slice(fechaCargaMatch[0].length));
+    const horaMatch = tail.match(/^(\d{1,2}:\d{2}|-)\b/);
+    const horaCarga = horaMatch ? horaMatch[1] : '';
+    if (horaMatch) tail = text(tail.slice(horaMatch[0].length));
+    const situacionMatch = tail.match(/^(Pdte\s+embarque|Pdte\s+Carga|Embarcado|Cargado|Anulado|Pote\s+Carga)\b/i);
+    const situacion = situacionMatch ? situacionMatch[1].replace(/^Pote/i, 'Pdte') : '';
+    if (situacionMatch) tail = text(tail.slice(situacionMatch[0].length));
+    const podMatch = tail.match(/^(VALENCIA|CAUCEDO|SANTO DOMINGO|KINGSTON|MORELOS)\b/i);
+    const pod = podMatch ? podMatch[1].toUpperCase() : '';
+    if (podMatch) tail = text(tail.slice(podMatch[0].length));
+    const contenedor = tail || ((original.match(/[A-Z]{4}\d{7}/i) || [''])[0]);
+
+    return normalizeBulkShipment({
+      expediente,
+      booking,
+      partner,
+      destino,
+      poa,
+      vessel,
+      etd: etdRaw,
+      eta: etaRaw,
+      equipo,
+      fechaCarga,
+      horaCarga,
+      situacion,
+      pod,
+      contenedor
+    });
+  }
+
   function parseBulkShipmentsFromText(rawText) {
     const lines = String(rawText || '')
       .replace(/\r/g, '\n')
@@ -6707,6 +6774,8 @@
       .map(line => text(line).replace(/\s+/g, ' '))
       .filter(Boolean)
       .filter(line => !IMPORT_BULK_HEADERS.some(header => normKey(line) === normKey(header)));
+    const compact = lines.map(parseCompactShipmentLine).filter(Boolean);
+    if (compact.length >= Math.max(1, Math.floor(lines.filter(line => /^H\d{5,}/i.test(line)).length * 0.6))) return compact;
     const records = [];
     let current = [];
     lines.forEach(line => {
@@ -6717,22 +6786,24 @@
       current.push(line);
     });
     if (current.length) records.push(current);
-    const sequential = records.map(parts => normalizeBulkShipment({
-      expediente: parts[0],
-      booking: parts[1],
-      partner: parts[2],
-      destino: parts[3],
-      poa: parts[4],
-      vessel: parts[5],
-      etd: parts[6],
-      eta: parts[7],
-      equipo: parts[8],
-      fechaCarga: parts[9],
-      horaCarga: parts[10],
-      situacion: parts[11],
-      pod: parts[12],
-      contenedor: parts[13]
-    })).filter(Boolean);
+    const sequential = records
+      .filter(parts => parts.length > 1)
+      .map(parts => normalizeBulkShipment({
+        expediente: parts[0],
+        booking: parts[1],
+        partner: parts[2],
+        destino: parts[3],
+        poa: parts[4],
+        vessel: parts[5],
+        etd: parts[6],
+        eta: parts[7],
+        equipo: parts[8],
+        fechaCarga: parts[9],
+        horaCarga: parts[10],
+        situacion: parts[11],
+        pod: parts[12],
+        contenedor: parts[13]
+      })).filter(Boolean);
     if (sequential.length) return sequential;
     return lines.filter(line => /^H\d{5,}/i.test(line)).map(line => {
       const expediente = (line.match(/H\d{5,}/i) || [''])[0];
