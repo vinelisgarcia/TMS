@@ -35,6 +35,7 @@
     importFiles: APP.importFiles || { plan: '', control: '', solicitudesPlan: '', solicitudesControl: '' },
     importShipments: APP.importShipments || [],
     dailyPriorities: APP.dailyPriorities || [],
+    prioritySpainTopics: APP.prioritySpainTopics || [],
     calendarNotes: APP.calendarNotes || [],
     selectedCalendarGroups: APP.selectedCalendarGroups || [],
     visualTheme: APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light',
@@ -598,6 +599,7 @@
     'importFiles',
     'importShipments',
     'dailyPriorities',
+    'prioritySpainTopics',
     'calendarNotes',
     'visualTheme'
   ];
@@ -1483,6 +1485,7 @@
         importFiles: APP.importFiles,
         importShipments: APP.importShipments,
         dailyPriorities: APP.dailyPriorities,
+        prioritySpainTopics: APP.prioritySpainTopics,
         calendarNotes: APP.calendarNotes,
         visualTheme: APP.visualTheme
       }
@@ -4996,6 +4999,7 @@
         APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
         APP.importShipments = Array.isArray(settingsMap.app_state.importShipments) ? settingsMap.app_state.importShipments : (APP.importShipments || []);
         APP.dailyPriorities = Array.isArray(settingsMap.app_state.dailyPriorities) ? settingsMap.app_state.dailyPriorities : (APP.dailyPriorities || []);
+        APP.prioritySpainTopics = Array.isArray(settingsMap.app_state.prioritySpainTopics) ? settingsMap.app_state.prioritySpainTopics : (APP.prioritySpainTopics || []);
         APP.calendarNotes = Array.isArray(settingsMap.app_state.calendarNotes) ? settingsMap.app_state.calendarNotes : (APP.calendarNotes || []);
         APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
         APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
@@ -5175,6 +5179,7 @@
             importFiles: APP.importFiles || {},
             importShipments: APP.importShipments || [],
             dailyPriorities: APP.dailyPriorities || [],
+            prioritySpainTopics: APP.prioritySpainTopics || [],
             calendarNotes: APP.calendarNotes || [],
             controlHistory: APP.controlHistory || [],
             visualTheme: APP.visualTheme || 'light'
@@ -5753,6 +5758,31 @@
       .priority-card-meta { display:flex; justify-content:space-between; gap:8px; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
       .priority-report { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; }
       .priority-report pre { margin:0; white-space:pre-wrap; color:var(--text); font-size:12px; line-height:1.5; font-family:inherit; }
+      .priority-insights-grid { display:grid; grid-template-columns:minmax(280px,1.25fr) minmax(260px,.85fr); gap:12px; align-items:stretch; }
+      .priority-chart { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; display:grid; gap:10px; }
+      .priority-chart-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+      .priority-chart-head strong { font-size:13px; color:var(--text); }
+      .priority-chart-head span { font-size:11px; color:var(--muted); }
+      .priority-chart-row { display:grid; grid-template-columns:74px 1fr; gap:8px; align-items:center; font-size:11px; color:var(--muted); }
+      .priority-bars { display:grid; gap:3px; }
+      .priority-bar-track { height:8px; border-radius:999px; background:#EEF2F7; overflow:hidden; }
+      .priority-bar-fill { height:100%; min-width:4px; border-radius:999px; }
+      .priority-bar-fill.started { background:#64748B; }
+      .priority-bar-fill.carried { background:#F59E0B; }
+      .priority-bar-fill.done { background:#16A34A; }
+      .priority-bar-labels { display:flex; gap:8px; flex-wrap:wrap; font-size:10px; color:var(--muted); }
+      .priority-spain-panel { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; display:grid; gap:10px; }
+      .priority-spain-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+      .priority-spain-head strong { font-size:13px; color:var(--text); }
+      .priority-spain-head span { font-size:11px; color:var(--muted); }
+      .priority-spain-form { display:grid; grid-template-columns:1fr auto; gap:8px; }
+      .priority-spain-list { display:grid; gap:7px; max-height:260px; overflow:auto; }
+      .priority-spain-item { border:1px solid var(--border); border-radius:8px; background:var(--surface-2); padding:8px; display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:start; }
+      .priority-spain-item.done { opacity:.62; }
+      .priority-spain-item strong { display:block; font-size:12px; color:var(--text); overflow-wrap:anywhere; }
+      .priority-spain-item small { display:block; margin-top:2px; font-size:10px; color:var(--muted); }
+      .priority-spain-item input { margin-top:2px; accent-color:var(--secondary); }
+      @media (max-width: 760px) { .priority-insights-grid { grid-template-columns:1fr; } .priority-spain-form { grid-template-columns:1fr; } }
       #appHeader {
         min-height:62px;
       }
@@ -7178,34 +7208,112 @@
     return (PRIORITY_STATUSES.find(item => item.key === status) || PRIORITY_STATUSES[0]).label;
   }
 
+  function selectedPriorityDate() {
+    const date = text((document.getElementById('prioDate') || {}).value) || APP.prioritiesDate || todayIsoDate();
+    APP.prioritiesDate = date;
+    return date;
+  }
+
+  function isoDateFromAny(value, fallback) {
+    const raw = text(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    if (raw) {
+      const d = new Date(raw);
+      if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+    return fallback || todayIsoDate();
+  }
+
   function ensureDailyPriorities() {
     APP.dailyPriorities = Array.isArray(APP.dailyPriorities) ? APP.dailyPriorities : [];
     APP.dailyPriorities.forEach(item => {
       item.id = item.id || ('prio-' + Date.now() + '-' + Math.random().toString(16).slice(2));
-      item.fecha = item.fecha || todayIsoDate();
+      item.fecha = isoDateFromAny(item.fecha || item.createdAt, todayIsoDate());
       item.estado = PRIORITY_STATUSES.some(status => status.key === item.estado) ? item.estado : 'pendiente';
       item.titulo = text(item.titulo || item.texto || 'Tarea sin título');
       item.notas = text(item.notas || '');
       item.createdAt = item.createdAt || nowIso();
       item.updatedAt = item.updatedAt || item.createdAt;
+      if (item.estado === 'completada') {
+        item.completedDate = isoDateFromAny(item.completedDate || item.completedAt || item.updatedAt, item.fecha);
+        item.completedAt = item.completedAt || item.updatedAt || nowIso();
+      }
     });
+  }
+
+  function ensurePrioritySpainTopics() {
+    APP.prioritySpainTopics = Array.isArray(APP.prioritySpainTopics) ? APP.prioritySpainTopics : [];
+    APP.prioritySpainTopics.forEach(item => {
+      item.id = item.id || ('spain-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+      item.titulo = text(item.titulo || item.texto || 'Tema pendiente');
+      item.notas = text(item.notas || '');
+      item.done = !!item.done;
+      item.createdAt = item.createdAt || nowIso();
+      item.updatedAt = item.updatedAt || item.createdAt;
+      if (item.done) item.completedAt = item.completedAt || item.updatedAt;
+    });
+  }
+
+  function taskIsVisibleOnPriorityDate(item, date) {
+    if (item.fecha > date) return false;
+    if (item.estado === 'completada') return item.completedDate === date;
+    return true;
   }
 
   function getPrioritiesForSelectedDate() {
     ensureDailyPriorities();
-    const date = text((document.getElementById('prioDate') || {}).value) || APP.prioritiesDate || todayIsoDate();
-    APP.prioritiesDate = date;
+    const date = selectedPriorityDate();
     return APP.dailyPriorities
-      .filter(item => item.fecha === date)
-      .sort((a, b) => (a.orden || 0) - (b.orden || 0) || text(a.titulo).localeCompare(text(b.titulo)));
+      .filter(item => taskIsVisibleOnPriorityDate(item, date))
+      .sort((a, b) => {
+        const stateOrder = { pendiente: 1, proceso: 2, completada: 3 };
+        return (stateOrder[a.estado] || 9) - (stateOrder[b.estado] || 9) || (a.orden || 0) - (b.orden || 0) || text(a.titulo).localeCompare(text(b.titulo));
+      });
+  }
+
+  function getPriorityMetricsForDate(date) {
+    ensureDailyPriorities();
+    const started = APP.dailyPriorities.filter(item => item.fecha === date).length;
+    const completed = APP.dailyPriorities.filter(item => item.estado === 'completada' && item.completedDate === date).length;
+    const pending = APP.dailyPriorities.filter(item => item.estado === 'pendiente' && item.fecha <= date).length;
+    const progress = APP.dailyPriorities.filter(item => item.estado === 'proceso' && item.fecha <= date).length;
+    const carried = APP.dailyPriorities.filter(item => item.estado !== 'completada' && item.fecha < date).length;
+    return { date, started, completed, pending, progress, carried };
+  }
+
+  function priorityDateRange(centerDate) {
+    const base = new Date(centerDate + 'T00:00:00');
+    return Array.from({ length: 7 }).map((_, index) => {
+      const d = new Date(base);
+      d.setDate(base.getDate() - 6 + index);
+      return d.toISOString().slice(0, 10);
+    });
+  }
+
+  function renderPriorityChart(selectedDate) {
+    const metrics = priorityDateRange(selectedDate).map(getPriorityMetricsForDate);
+    const max = Math.max(1, ...metrics.flatMap(row => [row.started, row.carried, row.completed]));
+    return `<section class="priority-chart">
+      <div class="priority-chart-head"><div><strong>Movimiento semanal</strong><span>Iniciadas, arrastradas y completadas por día</span></div></div>
+      ${metrics.map(row => `<div class="priority-chart-row">
+        <strong>${row.date.slice(5)}</strong>
+        <div class="priority-bars">
+          <div class="priority-bar-track"><div class="priority-bar-fill started" style="width:${Math.max(3, row.started / max * 100)}%;"></div></div>
+          <div class="priority-bar-track"><div class="priority-bar-fill carried" style="width:${Math.max(3, row.carried / max * 100)}%;"></div></div>
+          <div class="priority-bar-track"><div class="priority-bar-fill done" style="width:${Math.max(3, row.completed / max * 100)}%;"></div></div>
+          <div class="priority-bar-labels"><span>Ini ${row.started}</span><span>Arr ${row.carried}</span><span>Comp ${row.completed}</span><span>Proc ${row.progress}</span></div>
+        </div>
+      </div>`).join('')}
+    </section>`;
   }
 
   function priorityCardHtml(item) {
     const statusClass = 'status-' + (item.estado || 'pendiente');
+    const carried = item.estado !== 'completada' && item.fecha < (APP.prioritiesDate || todayIsoDate());
     return `<div class="priority-card ${statusClass}" draggable="true" ondragstart="dragPriorityTask(event,'${item.id}')">
       <div class="priority-card-title">${escapeHtml(item.titulo)}</div>
       ${item.notas ? `<div class="priority-card-note">${escapeHtml(item.notas)}</div>` : ''}
-      <div class="priority-card-meta"><span><i class="priority-status-dot ${statusClass}"></i>${priorityStatusLabel(item.estado)}</span><span>${new Date(item.updatedAt || item.createdAt || nowIso()).toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</span></div>
+      <div class="priority-card-meta"><span><i class="priority-status-dot ${statusClass}"></i>${priorityStatusLabel(item.estado)}${carried ? ' · Arrastrada' : ''}</span><span>${item.estado === 'completada' ? 'Cerrada ' + (item.completedDate || '') : 'Inicio ' + item.fecha}</span></div>
       <div class="priority-actions">
         ${PRIORITY_STATUSES.map(status => `<button class="btn btn-outline btn-sm" onclick="moverPrioridad('${item.id}','${status.key}')" ${item.estado === status.key ? 'disabled' : ''}>${status.label}</button>`).join('')}
         <button class="btn btn-outline btn-sm" onclick="editarPrioridad('${item.id}')">Editar</button>
@@ -7214,15 +7322,38 @@
     </div>`;
   }
 
+  function renderSpainTopicsHtml() {
+    ensurePrioritySpainTopics();
+    const open = APP.prioritySpainTopics.filter(item => !item.done).length;
+    const done = APP.prioritySpainTopics.filter(item => item.done).length;
+    return `<section class="priority-spain-panel">
+      <div class="priority-spain-head"><div><strong>Temas pendientes de verificar con España</strong><span>${open} abiertos · ${done} cerrados</span></div></div>
+      <div class="priority-spain-form">
+        <input id="spainTopicInput" class="form-control" placeholder="Tema a hablar o cerrar">
+        <button class="btn btn-primary btn-sm" onclick="agregarTemaEspana()">Agregar</button>
+      </div>
+      <div class="priority-spain-list">
+        ${APP.prioritySpainTopics.length ? APP.prioritySpainTopics.map(item => `<div class="priority-spain-item ${item.done ? 'done' : ''}">
+          <input type="checkbox" ${item.done ? 'checked' : ''} onchange="toggleTemaEspana('${item.id}')">
+          <span><strong>${escapeHtml(item.titulo)}</strong>${item.notas ? `<small>${escapeHtml(item.notas)}</small>` : ''}<small>${item.done ? 'Cerrado' : 'Pendiente'} · ${new Date(item.updatedAt || item.createdAt || nowIso()).toLocaleDateString('es-DO')}</small></span>
+          <button class="btn btn-outline btn-sm" onclick="editarTemaEspana('${item.id}')">Editar</button>
+        </div>`).join('') : '<div class="route-catalog-empty">Sin temas pendientes.</div>'}
+      </div>
+    </section>`;
+  }
+
   function buildPriorityReport(rows) {
+    ensurePrioritySpainTopics();
     const pending = rows.filter(item => item.estado === 'pendiente').length;
     const progress = rows.filter(item => item.estado === 'proceso').length;
     const done = rows.filter(item => item.estado === 'completada').length;
+    const carried = rows.filter(item => item.estado !== 'completada' && item.fecha < (APP.prioritiesDate || todayIsoDate())).length;
     const lines = PRIORITY_STATUSES.map(status => {
       const items = rows.filter(item => item.estado === status.key);
       return `${status.label}: ${items.length}\n${items.map(item => '- ' + item.titulo + (item.notas ? ' · ' + item.notas : '')).join('\n') || '- Sin tareas'}`;
     }).join('\n\n');
-    return `Reporte diario de prioridades\nFecha: ${APP.prioritiesDate || todayIsoDate()}\n\nResumen:\nPendientes: ${pending}\nEn proceso: ${progress}\nCompletadas: ${done}\nTotal: ${rows.length}\n\n${lines}`;
+    const spain = APP.prioritySpainTopics.map(item => `- [${item.done ? 'x' : ' '}] ${item.titulo}${item.notas ? ' · ' + item.notas : ''}`).join('\n') || '- Sin temas';
+    return `Reporte diario de prioridades\nFecha: ${APP.prioritiesDate || todayIsoDate()}\n\nResumen:\nPendientes: ${pending}\nEn proceso: ${progress}\nCompletadas del día: ${done}\nArrastradas de días previos: ${carried}\nTotal visible: ${rows.length}\n\n${lines}\n\nTemas pendientes de verificar con España:\n${spain}`;
   }
 
   function parsePriorityDictation(transcript) {
@@ -7242,17 +7373,25 @@
       return;
     }
     ensureDailyPriorities();
+    ensurePrioritySpainTopics();
     APP.prioritiesDate = APP.prioritiesDate || todayIsoDate();
     const rows = getPrioritiesForSelectedDate();
+    const selectedDate = APP.prioritiesDate;
     const counts = Object.fromEntries(PRIORITY_STATUSES.map(status => [status.key, rows.filter(item => item.estado === status.key).length]));
+    const carried = rows.filter(item => item.estado !== 'completada' && item.fecha < selectedDate).length;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     mount.innerHTML = `<div class="priorities-module">
       <section class="priority-hero">
-        <div><h2>Prioridades del día</h2><p>Tablero administrativo para dar seguimiento a lo urgente, mover tareas por estado y cerrar el día con reporte.</p></div>
+        <div><h2>Prioridades del día</h2><p>Las tareas pendientes o en proceso se arrastran automáticamente hasta que se marquen como completadas. El histórico muestra las completadas por día.</p></div>
         <div class="priority-top-actions">
           <input id="prioDate" class="form-control" type="date" value="${APP.prioritiesDate}" onchange="APP.prioritiesDate=this.value;renderPrioridades()">
-          <button class="btn btn-success btn-sm" onclick="exportarPrioridadesExcel()">Exportar reporte</button>
+          <button class="btn btn-success btn-sm" onclick="exportarPrioridadesExcel()">Exportar Excel</button>
+          <button class="btn btn-outline btn-sm" onclick="exportarPrioridadesPdf()">Exportar PDF</button>
         </div>
+      </section>
+      <section class="priority-insights-grid">
+        ${renderPriorityChart(selectedDate)}
+        ${renderSpainTopicsHtml()}
       </section>
       <section class="card">
         <div class="priority-form">
@@ -7264,10 +7403,11 @@
         <div id="prioVoiceStatus" class="priority-voice-status">${SpeechRecognition ? 'Puedes dictar una tarea y se agregará automáticamente.' : 'Este navegador no expone dictado por voz.'}</div>
       </section>
       <section class="priority-kpis">
-        <div class="priority-kpi"><strong>${rows.length}</strong><span>Total</span></div>
+        <div class="priority-kpi"><strong>${rows.length}</strong><span>Total visible</span></div>
         <div class="priority-kpi"><strong>${counts.pendiente || 0}</strong><span>Pendientes</span></div>
         <div class="priority-kpi"><strong>${counts.proceso || 0}</strong><span>En proceso</span></div>
-        <div class="priority-kpi"><strong>${counts.completada || 0}</strong><span>Completadas</span></div>
+        <div class="priority-kpi"><strong>${counts.completada || 0}</strong><span>Completadas del día</span></div>
+        <div class="priority-kpi"><strong>${carried}</strong><span>Arrastradas</span></div>
       </section>
       <section class="priority-board">
         ${PRIORITY_STATUSES.map(status => {
@@ -7289,7 +7429,7 @@
     if (!titulo) return alert('Escribe la prioridad que quieres agregar.');
     ensureDailyPriorities();
     pushUndoState('agregar prioridad');
-    const fecha = text((document.getElementById('prioDate') || {}).value) || APP.prioritiesDate || todayIsoDate();
+    const fecha = selectedPriorityDate();
     APP.dailyPriorities.push({ id: 'prio-' + Date.now(), fecha, titulo, notas, estado: 'pendiente', orden: APP.dailyPriorities.length + 1, createdAt: nowIso(), updatedAt: nowIso() });
     APP.prioritiesDate = fecha;
     renderPrioridades();
@@ -7302,6 +7442,13 @@
     if (!item || item.estado === estado) return;
     pushUndoState('mover prioridad');
     item.estado = estado;
+    if (estado === 'completada') {
+      item.completedDate = selectedPriorityDate();
+      item.completedAt = nowIso();
+    } else {
+      item.completedDate = '';
+      item.completedAt = '';
+    }
     item.updatedAt = nowIso();
     renderPrioridades();
     scheduleAutoSave();
@@ -7343,6 +7490,48 @@
     scheduleAutoSave();
   };
 
+  window.agregarTemaEspana = function agregarTemaEspana() {
+    if (!requireAdminUser('Agregar tema España')) return;
+    const input = document.getElementById('spainTopicInput');
+    const titulo = text(input && input.value);
+    if (!titulo) return alert('Escribe el tema pendiente.');
+    ensurePrioritySpainTopics();
+    pushUndoState('agregar tema España');
+    APP.prioritySpainTopics.push({ id: 'spain-' + Date.now(), titulo, notas: '', done: false, createdAt: nowIso(), updatedAt: nowIso() });
+    renderPrioridades();
+    scheduleAutoSave();
+  };
+
+  window.toggleTemaEspana = function toggleTemaEspana(id) {
+    if (!requireAdminUser('Cerrar tema España')) return;
+    const item = (APP.prioritySpainTopics || []).find(row => row.id === id);
+    if (!item) return;
+    pushUndoState('actualizar tema España');
+    item.done = !item.done;
+    item.completedAt = item.done ? nowIso() : '';
+    item.updatedAt = nowIso();
+    renderPrioridades();
+    scheduleAutoSave();
+  };
+
+  window.editarTemaEspana = function editarTemaEspana(id) {
+    if (!requireAdminUser('Editar tema España')) return;
+    const item = (APP.prioritySpainTopics || []).find(row => row.id === id);
+    if (!item) return;
+    const titulo = prompt('Editar tema pendiente. Deja vacío para eliminarlo.', item.titulo);
+    if (titulo === null) return;
+    pushUndoState('editar tema España');
+    if (!text(titulo)) APP.prioritySpainTopics = APP.prioritySpainTopics.filter(row => row.id !== id);
+    else {
+      const notas = prompt('Nota opcional', item.notas || '');
+      item.titulo = text(titulo);
+      item.notas = text(notas || '');
+      item.updatedAt = nowIso();
+    }
+    renderPrioridades();
+    scheduleAutoSave();
+  };
+
   window.iniciarDictadoPrioridades = function iniciarDictadoPrioridades() {
     if (!requireAdminUser('Dictar prioridades')) return;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -7379,18 +7568,36 @@
 
   window.exportarPrioridadesExcel = function exportarPrioridadesExcel() {
     const rows = getPrioritiesForSelectedDate();
-    if (!rows.length) return alert('No hay prioridades para exportar en esta fecha.');
-    const ws = XLSX.utils.json_to_sheet(rows.map(item => ({
-      Fecha: item.fecha,
+    ensurePrioritySpainTopics();
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(item => ({
+      Fecha_inicio: item.fecha,
+      Fecha_completada: item.completedDate || '',
       Estado: priorityStatusLabel(item.estado),
       Prioridad: item.titulo,
       Notas: item.notas || '',
       Creada: item.createdAt || '',
       Actualizada: item.updatedAt || ''
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Prioridades');
+    }))), 'Prioridades');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(priorityDateRange(APP.prioritiesDate || todayIsoDate()).map(getPriorityMetricsForDate)), 'Resumen');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.prioritySpainTopics.map(item => ({ Tema: item.titulo, Notas: item.notas || '', Estado: item.done ? 'Cerrado' : 'Pendiente', Creado: item.createdAt || '', Cerrado: item.completedAt || '' }))), 'Temas Espana');
     XLSX.writeFile(wb, 'TMS_Prioridades_' + (APP.prioritiesDate || todayIsoDate()) + '.xlsx');
+  };
+
+  window.exportarPrioridadesPdf = function exportarPrioridadesPdf() {
+    const rows = getPrioritiesForSelectedDate();
+    const report = buildPriorityReport(rows);
+    const stage = document.createElement('div');
+    stage.style.cssText = 'position:fixed;left:-10000px;top:0;width:760px;background:#fff;color:#111827;padding:24px;font-family:Arial,sans-serif;';
+    stage.innerHTML = `<h1 style="font-size:20px;margin:0 0 12px;">Prioridades ${escapeHtml(APP.prioritiesDate || todayIsoDate())}</h1><pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:12px;line-height:1.45;">${escapeHtml(report)}</pre>`;
+    document.body.appendChild(stage);
+    const done = () => setTimeout(() => stage.remove(), 500);
+    if (window.html2pdf) {
+      window.html2pdf().set({ margin: 10, filename: 'TMS_Prioridades_' + (APP.prioritiesDate || todayIsoDate()) + '.pdf', html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(stage).save().then(done).catch(done);
+    } else {
+      alert('No se pudo cargar el exportador PDF. Usa Exportar Excel por ahora.');
+      done();
+    }
   };
 
   window.renderImportaciones = function renderImportaciones() {
