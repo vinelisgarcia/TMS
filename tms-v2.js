@@ -5715,6 +5715,10 @@
       .import-card.overdue { border-color:#DC2626; background:#FEF2F2; }
       .import-card-title { display:flex; justify-content:space-between; gap:8px; font-size:13px; font-weight:800; color:var(--text); }
       .import-card-meta { color:var(--muted); font-size:11px; line-height:1.35; }
+      .import-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+      .import-field-grid div { border:1px solid var(--border); border-radius:7px; background:var(--surface); padding:6px 7px; min-width:0; }
+      .import-field-grid small { display:block; color:var(--muted); font-size:9px; text-transform:uppercase; font-weight:800; margin-bottom:2px; }
+      .import-field-grid strong { display:block; color:var(--text); font-size:11px; line-height:1.25; overflow-wrap:anywhere; }
       .import-docs { display:flex; flex-wrap:wrap; gap:5px; }
       .import-doc-chip { border:1px solid var(--border); border-radius:999px; padding:3px 7px; font-size:10px; font-weight:800; background:#fff; color:var(--muted); }
       .import-doc-chip.ok { color:#166534; background:#F0FDF4; border-color:#BBF7D0; }
@@ -6739,8 +6743,20 @@
     })).filter(Boolean);
   }
 
+  function normalizeShipmentOcrLine(line) {
+    return text(line)
+      .replace(/\s+/g, ' ')
+      .replace(/\bRANINATRANS\b/gi, 'RAMINATRANS')
+      .replace(/\bRAMINATRAN5\b/gi, 'RAMINATRANS')
+      .replace(/\bALVAREZ\s+DOMINCANA\b/gi, 'ALVAREZ DOMINICANA')
+      .replace(/\bPote\s+Carga\b/gi, 'Pdte Carga')
+      .replace(/\bPote\s+embarque\b/gi, 'Pdte embarque')
+      .replace(/\bVaLENCIA\b/gi, 'VALENCIA')
+      .trim();
+  }
+
   function parseCompactShipmentLine(line) {
-    const original = text(line).replace(/\s+/g, ' ');
+    const original = normalizeShipmentOcrLine(line);
     if (!/^H\d{5,}/i.test(original)) return null;
     const expediente = (original.match(/^H\d{5,}/i) || [''])[0];
     let rest = text(original.slice(expediente.length));
@@ -6768,8 +6784,12 @@
         poaIndex = idx;
       }
     });
-    const destino = poaIndex >= 0 ? text(beforeDates.slice(0, poaIndex)) : '';
-    const vessel = poaIndex >= 0 ? text(beforeDates.slice(poaIndex + poa.length)) : beforeDates;
+    const destino = poaIndex >= 0 ? text(beforeDates.slice(0, poaIndex)).replace(/\s+-\s*$/, '') : '';
+    const vessel = (poaIndex >= 0 ? text(beforeDates.slice(poaIndex + poa.length)) : beforeDates)
+      .replace(/^[-–]+\s*/, '')
+      .replace(/\s*\(\s*/g, ' (')
+      .replace(/\s*\)\s*/g, ')')
+      .trim();
 
     const equipoMatch = tail.match(/^(LCL|20|40\s*HC|40HC|40|45\s*HC)\b/i);
     const equipo = equipoMatch ? equipoMatch[1].replace(/\s+/g, ' ').toUpperCase() : '';
@@ -6786,7 +6806,10 @@
     const podMatch = tail.match(/^(VALENCIA|CAUCEDO|SANTO DOMINGO|KINGSTON|MORELOS)\b/i);
     const pod = podMatch ? podMatch[1].toUpperCase() : '';
     if (podMatch) tail = text(tail.slice(podMatch[0].length));
-    const contenedor = tail || ((original.match(/[A-Z]{4}\d{7}/i) || [''])[0]);
+    const contenedor = (tail || ((original.match(/[A-Z]{4}\d{7}/i) || [''])[0]))
+      .replace(/^[-–]+\s*/, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
 
     return normalizeBulkShipment({
       expediente,
@@ -6810,7 +6833,7 @@
     const lines = String(rawText || '')
       .replace(/\r/g, '\n')
       .split('\n')
-      .map(line => text(line).replace(/\s+/g, ' '))
+      .map(line => normalizeShipmentOcrLine(line))
       .filter(Boolean)
       .filter(line => !IMPORT_BULK_HEADERS.some(header => normKey(line) === normKey(header)));
     const compact = lines.map(parseCompactShipmentLine).filter(Boolean);
@@ -6825,6 +6848,8 @@
       current.push(line);
     });
     if (current.length) records.push(current);
+    const compactFromRecords = records.map(parts => parseCompactShipmentLine(parts.join(' '))).filter(Boolean);
+    if (compactFromRecords.length) return compactFromRecords;
     const sequential = records
       .filter(parts => parts.length > 1)
       .map(parts => normalizeBulkShipment({
@@ -7106,7 +7131,9 @@
     const docs = {};
     document.querySelectorAll('.importDocInput').forEach(input => { docs[input.value] = !!input.checked; });
     const id = APP.importEditingId || ('imp-' + Date.now());
+    const existing = APP.importShipments.find(row => row.id === id) || {};
     const item = {
+      ...existing,
       id,
       origen: getImportFormValue('impOrigen') || 'espana',
       etapa: getImportFormValue('impEtapa') || 'pedido',
@@ -7123,7 +7150,10 @@
       fechaAlmacen: getImportFormValue('impAlmacen'),
       valor: num(getImportFormValue('impValor')),
       notas: getImportFormValue('impNotas'),
-      docs,
+      docs: { ...(existing.docs || {}), ...docs },
+      booking: getImportFormValue('impPO') || existing.booking,
+      contenedor: getImportFormValue('impBL') || existing.contenedor,
+      partner: getImportFormValue('impProveedor') || existing.partner,
       updatedAt: nowIso()
     };
     pushUndoState(APP.importEditingId ? 'editar importación' : 'crear importación');
@@ -7139,13 +7169,28 @@
     const eta = importEtaState(item);
     const progress = importDocsProgress(item);
     const docsHtml = importRequiredDocs(item.origen).slice(0, 6).map(([key, label]) => `<span class="import-doc-chip ${item.docs && item.docs[key] ? 'ok' : ''}">${item.docs && item.docs[key] ? '✓' : '·'} ${label}</span>`).join('');
+    const fields = [
+      ['Expediente', item.referencia || '—'],
+      ['Booking', item.booking || item.po || '—'],
+      ['Partner', item.partner || item.proveedor || '—'],
+      ['Destino', item.destino || '—'],
+      ['POA', item.poa || '—'],
+      ['Vessel', item.vessel || '—'],
+      ['ETD', item.etd || '—'],
+      ['ETA', item.eta || '—'],
+      ['Equipo', item.equipo || '—'],
+      ['Carga', `${item.fechaCarga || '—'} ${item.horaCarga || ''}`.trim()],
+      ['Situación', item.situacion || '—'],
+      ['POD', item.pod || '—'],
+      ['Contenedor', item.contenedor || item.bl || '—']
+    ];
     return `<article class="import-card ${eta.cls}">
       <div class="import-card-title"><span>${item.referencia || 'Sin ref.'}</span><span>${progress.done}/${progress.total}</span></div>
-      <div class="import-card-meta"><strong>${importOriginLabel(item.origen)}</strong> · ${item.proveedor || item.partner || 'Proveedor pendiente'}<br>Booking/PO ${item.booking || item.po || '—'} · Vessel ${item.vessel || '—'}<br>Contenedor/BL ${item.contenedor || item.bl || '—'} · ${eta.label}</div>
+      <div class="import-card-meta"><strong>Factura:</strong> ${item.factura || 'Pendiente'} · <strong>Estado ficha:</strong> ${importStageLabel(item.etapa)} · <strong>ETA:</strong> ${eta.label}</div>
+      <div class="import-field-grid">${fields.map(([label, value]) => `<div><small>${label}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>
       <div class="import-docs">${docsHtml}</div>
-      <div class="import-card-meta">ETD: ${item.etd || '—'} · Carga: ${item.fechaCarga || '—'} ${item.horaCarga || ''} · Situación: ${item.situacion || '—'}<br>Destino: ${item.destino || '—'} · POA: ${item.poa || '—'} · POD: ${item.pod || '—'}</div>
       <div class="import-card-meta">Miami: ${item.fechaMiami || '—'} · Aduana: ${item.fechaAduana || '—'} · Salida: ${item.fechaSalidaAduana || '—'} · Almacén: ${item.fechaAlmacen || '—'}</div>
-      ${item.notas ? `<div class="import-card-meta">${item.notas}</div>` : ''}
+      ${item.notas ? `<div class="import-card-meta">${escapeHtml(item.notas)}</div>` : ''}
       <div class="import-actions">
         <button class="btn btn-outline btn-sm" onclick="editarImportacion('${jsString(item.id)}')">Editar</button>
         <button class="btn btn-primary btn-sm" onclick="avanzarImportacion('${jsString(item.id)}')">Avanzar</button>
@@ -7753,11 +7798,11 @@
         <div class="card-title">Nuevo / editar embarque</div>
         <div class="import-form-grid">
           <select id="impOrigen" class="form-control" onchange="cambiarDocsImportacionOrigen()"><option value="espana">España</option><option value="miami">EE. UU. / Miami</option></select>
-          <select id="impEtapa" class="form-control">${IMPORT_STAGES.map(stage => `<option value="${stage.key}">${stage.label}</option>`).join('')}</select>
+          <select id="impEtapa" class="form-control" title="Estado de la ficha">${IMPORT_STAGES.map(stage => `<option value="${stage.key}">${stage.label}</option>`).join('')}</select>
           <input id="impReferencia" class="form-control" placeholder="Referencia / expediente">
           <input id="impProveedor" class="form-control" placeholder="Proveedor / fabricante">
           <input id="impPO" class="form-control" placeholder="PO">
-          <input id="impFactura" class="form-control" placeholder="Factura proveedor">
+          <input id="impFactura" class="form-control" placeholder="Factura que representa">
           <input id="impBL" class="form-control" placeholder="BL / Waybill">
           <input id="impTracking" class="form-control" placeholder="Tracking / transitario">
           <label class="form-row">ETA RD<input id="impETA" class="form-control" type="date"></label>
