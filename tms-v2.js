@@ -6562,14 +6562,27 @@
 
 
   const IMPORT_STAGES = [
-    { key: 'pedido', label: 'Pedido / fabricación' },
-    { key: 'docs_origen', label: 'Docs origen' },
-    { key: 'miami_consolidacion', label: 'Miami / consolidación' },
-    { key: 'transito', label: 'Tránsito a RD' },
-    { key: 'aduana_rd', label: 'Aduana RD' },
-    { key: 'transporte_almacen', label: 'Ruta a almacén' },
-    { key: 'recepcion_sap', label: 'Recepción / SAP' }
+    { key: 'embarcado', label: 'Embarcado' },
+    { key: 'pdte_embarque', label: 'Pdte embarque' },
+    { key: 'pdte_bl_eur1', label: 'Pdte BL + EUR1' },
+    { key: 'pdte_eur1', label: 'Pdte EUR1' },
+    { key: 'pdte_carga', label: 'Pdte Carga' },
+    { key: 'en_aduana', label: 'En aduana' },
+    { key: 'en_transito_ct', label: 'En transito a CT' },
+    { key: 'pdte_entrada_sap', label: 'Pdte entrada SAP' },
+    { key: 'factura_proveedor_contabilizada', label: 'Factura proveedor Contabilizada' },
+    { key: 'proceso_completado', label: 'Proceso Completado' }
   ];
+
+  const IMPORT_LEGACY_STAGE_MAP = {
+    pedido: 'pdte_carga',
+    docs_origen: 'pdte_bl_eur1',
+    miami_consolidacion: 'pdte_embarque',
+    transito: 'embarcado',
+    aduana_rd: 'en_aduana',
+    transporte_almacen: 'en_transito_ct',
+    recepcion_sap: 'pdte_entrada_sap'
+  };
 
   const IMPORT_DOCS = {
     espana: [
@@ -6649,19 +6662,34 @@
   function normalizeImportSituation(value) {
     const status = stripAccents(text(value).toLowerCase());
     if (status.includes('anulado')) return 'Anulado';
-    if (status.includes('pdte embarque')) return 'Pdte embarque';
-    if (status.includes('pdte carga')) return 'Pdte Carga';
+    if (status.includes('pdte bl') || status.includes('pendiente bl')) return 'Pdte BL + EUR1';
+    if (status.includes('pdte eur1') || status.includes('pendiente eur1')) return 'Pdte EUR1';
+    if (status.includes('pdte embarque') || status.includes('pendiente embarque')) return 'Pdte embarque';
+    if (status.includes('pdte carga') || status.includes('pendiente carga')) return 'Pdte Carga';
     if (status.includes('cargado')) return 'Cargado';
     if (status.includes('embarcado')) return 'Embarcado';
+    if (status.includes('aduana')) return 'En aduana';
+    if (status.includes('transito') && status.includes('ct')) return 'En transito a CT';
+    if (status.includes('entrada sap')) return 'Pdte entrada SAP';
+    if (status.includes('factura') && status.includes('contabilizada')) return 'Factura proveedor Contabilizada';
+    if (status.includes('completado') || status.includes('completadp')) return 'Proceso Completado';
     return text(value);
   }
 
   function importStageFromSituation(value) {
     const status = stripAccents(text(value).toLowerCase());
-    if (status.includes('embarcado')) return 'transito';
-    if (status.includes('cargado') || status.includes('pdte embarque') || status.includes('pdte carga')) return 'docs_origen';
-    if (status.includes('anulado')) return 'pedido';
-    return 'docs_origen';
+    if (status.includes('completado') || status.includes('completadp') || status.includes('anulado')) return 'proceso_completado';
+    if (status.includes('factura') && status.includes('contabilizada')) return 'factura_proveedor_contabilizada';
+    if (status.includes('entrada sap')) return 'pdte_entrada_sap';
+    if (status.includes('transito') && status.includes('ct')) return 'en_transito_ct';
+    if (status.includes('aduana')) return 'en_aduana';
+    if (status.includes('pdte bl') || status.includes('pendiente bl')) return 'pdte_bl_eur1';
+    if (status.includes('pdte eur1') || status.includes('pendiente eur1')) return 'pdte_eur1';
+    if (status.includes('embarcado')) return 'embarcado';
+    if (status.includes('cargado')) return 'pdte_bl_eur1';
+    if (status.includes('pdte embarque') || status.includes('pendiente embarque')) return 'pdte_embarque';
+    if (status.includes('pdte carga') || status.includes('pendiente carga')) return 'pdte_carga';
+    return 'pdte_carga';
   }
 
   function normalizeBulkShipment(raw) {
@@ -6746,19 +6774,27 @@
   function normalizeShipmentOcrLine(line) {
     return text(line)
       .replace(/\s+/g, ' ')
+      .replace(/\bH\s+([0-9O]{5,})\b/gi, (_, digits) => 'H' + digits.replace(/O/gi, '0'))
+      .replace(/\bH([0-9O]{5,})\b/gi, (_, digits) => 'H' + digits.replace(/O/gi, '0'))
       .replace(/\bRANINATRANS\b/gi, 'RAMINATRANS')
       .replace(/\bRAMINATRAN5\b/gi, 'RAMINATRANS')
       .replace(/\bALVAREZ\s+DOMINCANA\b/gi, 'ALVAREZ DOMINICANA')
       .replace(/\bPote\s+Carga\b/gi, 'Pdte Carga')
       .replace(/\bPote\s+embarque\b/gi, 'Pdte embarque')
+      .replace(/\bPdte\s+BL\s*\+?\s*EUR1\b/gi, 'Pdte BL + EUR1')
       .replace(/\bVaLENCIA\b/gi, 'VALENCIA')
       .trim();
+  }
+
+  function extractShipmentExpediente(line) {
+    const match = normalizeShipmentOcrLine(line).match(/^H[0-9O]{5,}/i);
+    return match ? match[0].replace(/O/gi, '0').toUpperCase() : '';
   }
 
   function splitShipmentOcrRecords(rawText) {
     const normalized = normalizeShipmentOcrLine(String(rawText || '').replace(/\r/g, ' '));
     const chunks = normalized
-      .replace(/\s+(?=H\d{5,}\b)/gi, '\n')
+      .replace(/(?=H\d{5,}\b)/gi, '\n')
       .split('\n')
       .map(part => normalizeShipmentOcrLine(part))
       .filter(part => /^H\d{5,}/i.test(part));
@@ -6772,8 +6808,8 @@
 
   function parseCompactShipmentLine(line) {
     const original = normalizeShipmentOcrLine(line);
-    if (!/^H\d{5,}/i.test(original)) return null;
-    const expediente = (original.match(/^H\d{5,}/i) || [''])[0];
+    const expediente = extractShipmentExpediente(original);
+    if (!expediente) return null;
     let rest = text(original.slice(expediente.length));
     const bookingMatch = rest.match(/^([A-Z0-9]{5,}|\d{5,})\b/i);
     const booking = bookingMatch ? bookingMatch[1] : '';
@@ -6815,8 +6851,8 @@
     const horaMatch = tail.match(/^(\d{1,2}:\d{2}|-)\b/);
     const horaCarga = horaMatch ? horaMatch[1] : '';
     if (horaMatch) tail = text(tail.slice(horaMatch[0].length));
-    const situacionMatch = tail.match(/^(Pdte\s+embarque|Pdte\s+Carga|Embarcado|Cargado|Anulado|Pote\s+Carga)\b/i);
-    const situacion = situacionMatch ? situacionMatch[1].replace(/^Pote/i, 'Pdte') : '';
+    const situacionMatch = tail.match(/^(Pdte\s+BL\s*\+\s*EUR1|Pdte\s+EUR1|Pdte\s+embarque|Pdte\s+Carga|En\s+aduana|En\s+transito\s+a\s+CT|Pdte\s+entrada\s+SAP|Factura\s+proveedor\s+Contabilizada|Proceso\s+Completad[op]|Embarcado|Cargado|Anulado|Pote\s+Carga)\b/i);
+    const situacion = situacionMatch ? normalizeImportSituation(situacionMatch[1].replace(/^Pote/i, 'Pdte')) : '';
     if (situacionMatch) tail = text(tail.slice(situacionMatch[0].length));
     const podMatch = tail.match(/^(VALENCIA|CAUCEDO|SANTO DOMINGO|KINGSTON|MORELOS)\b/i);
     const pod = podMatch ? podMatch[1].toUpperCase() : '';
@@ -6972,7 +7008,9 @@
           }
         }
       });
-      return parseBulkShipmentsFromText(result && result.data ? result.data.text : '');
+      const ocrText = result && result.data ? result.data.text : '';
+      APP.lastImportOcrText = ocrText;
+      return parseBulkShipmentsFromText(ocrText);
     }
     return parseBulkShipmentsFromText(await readTextFile(file));
   }
@@ -6983,11 +7021,13 @@
     try {
       updateBulkImportStatus('Procesando archivo...');
       const shipments = await parseImportShipmentsFile(file);
-      if (!shipments.length) throw new Error('No pude detectar embarques en el archivo. Prueba con Excel/CSV o una captura más nítida.');
+      if (!shipments.length) throw new Error('OCR completado, pero no detecté expedientes H######. Prueba con una captura más nítida o pega la tabla como texto.');
       pushUndoState('importar embarques');
       const result = upsertBulkImportShipments(shipments);
-      updateBulkImportStatus(`Importación lista: ${result.created} nuevos · ${result.updated} actualizados.`);
       renderImportaciones();
+      const message = `Carga procesada: ${shipments.length} expedientes detectados · ${result.created} fichas nuevas · ${result.updated} actualizadas.`;
+      updateBulkImportStatus(message);
+      alert(message);
       scheduleAutoSave();
     } catch (error) {
       console.error('Error importando embarques:', error);
@@ -7008,8 +7048,10 @@
     pushUndoState('importar embarques pegados');
     const result = upsertBulkImportShipments(shipments);
     if (textarea) textarea.value = '';
-    updateBulkImportStatus(`Importación lista: ${result.created} nuevos · ${result.updated} actualizados.`);
     renderImportaciones();
+    const message = `Carga procesada: ${shipments.length} expedientes detectados · ${result.created} fichas nuevas · ${result.updated} actualizadas.`;
+    updateBulkImportStatus(message);
+    alert(message);
     scheduleAutoSave();
   };
 
@@ -7018,7 +7060,10 @@
     APP.importShipments.forEach(item => {
       item.docs = item.docs || {};
       item.origen = item.origen || 'espana';
-      item.etapa = item.etapa || 'pedido';
+      item.etapa = IMPORT_LEGACY_STAGE_MAP[item.etapa] || item.etapa || importStageFromSituation(item.situacion);
+      if (!IMPORT_STAGES.some(stage => stage.key === item.etapa)) {
+        item.etapa = importStageFromSituation(item.situacion);
+      }
     });
   }
 
@@ -7039,8 +7084,8 @@
     if (!eta || Number.isNaN(eta.getTime())) return { cls: '', label: 'ETA inválida', days: null };
     eta.setHours(0, 0, 0, 0);
     const days = Math.round((eta - today) / 86400000);
-    if (days < 0 && !['recepcion_sap'].includes(item.etapa)) return { cls: 'overdue', label: `ETA vencida hace ${Math.abs(days)} días`, days };
-    if (days <= 5 && !['recepcion_sap'].includes(item.etapa)) return { cls: 'alert', label: days === 0 ? 'ETA hoy' : `ETA en ${days} días`, days };
+    if (days < 0 && item.etapa !== 'proceso_completado') return { cls: 'overdue', label: `ETA vencida hace ${Math.abs(days)} días`, days };
+    if (days <= 5 && item.etapa !== 'proceso_completado') return { cls: 'alert', label: days === 0 ? 'ETA hoy' : `ETA en ${days} días`, days };
     return { cls: '', label: `ETA ${item.eta}`, days };
   }
 
@@ -7077,7 +7122,7 @@
     const origin = document.getElementById('impOrigen');
     if (origin) origin.value = 'espana';
     const stage = document.getElementById('impEtapa');
-    if (stage) stage.value = 'pedido';
+    if (stage) stage.value = 'pdte_carga';
     cambiarDocsImportacionOrigen();
     const btn = document.getElementById('impSaveBtn');
     if (btn) btn.textContent = 'Crear embarque';
@@ -7093,7 +7138,7 @@
     APP.importEditingId = id;
     const set = (fieldId, value) => { const el = document.getElementById(fieldId); if (el) el.value = value || ''; };
     set('impOrigen', item.origen || 'espana');
-    set('impEtapa', item.etapa || 'pedido');
+    set('impEtapa', item.etapa || 'pdte_carga');
     set('impReferencia', item.referencia);
     set('impProveedor', item.proveedor);
     set('impPO', item.po);
@@ -7148,7 +7193,7 @@
       ...existing,
       id,
       origen: getImportFormValue('impOrigen') || 'espana',
-      etapa: getImportFormValue('impEtapa') || 'pedido',
+      etapa: getImportFormValue('impEtapa') || 'pdte_carga',
       referencia: getImportFormValue('impReferencia') || id,
       proveedor: getImportFormValue('impProveedor'),
       po: getImportFormValue('impPO'),
@@ -7213,10 +7258,10 @@
 
   function buildImportDailyReport() {
     ensureImportShipments();
-    const active = APP.importShipments.filter(item => item.etapa !== 'recepcion_sap');
+    const active = APP.importShipments.filter(item => item.etapa !== 'proceso_completado');
     const overdue = active.filter(item => importEtaState(item).cls === 'overdue');
     const alerts = active.filter(item => importEtaState(item).cls === 'alert');
-    const missingSap = APP.importShipments.filter(item => item.etapa === 'recepcion_sap' && !(item.docs && item.docs.facturaSap && item.docs.gastosSap));
+    const missingSap = APP.importShipments.filter(item => item.etapa === 'pdte_entrada_sap' && !(item.docs && item.docs.facturaSap && item.docs.gastosSap));
     const byStage = IMPORT_STAGES.map(stage => `${stage.label}: ${APP.importShipments.filter(item => item.etapa === stage.key).length}`).join('\n');
     return `Reporte diario de importaciones\n\nEmbarques activos: ${active.length}\nETA vencida: ${overdue.length}\nETA próxima: ${alerts.length}\nPendientes de registro SAP: ${missingSap.length}\n\nPor etapa:\n${byStage}\n\nSeguimiento prioritario:\n${[...overdue, ...alerts, ...missingSap].slice(0, 10).map(item => `- ${item.referencia || item.id}: ${importStageLabel(item.etapa)} · ${importEtaState(item).label} · ${item.notas || 'Sin nota'}`).join('\n') || '- Sin alertas críticas.'}`;
   }
@@ -7778,10 +7823,10 @@
       if (!q) return true;
       return [item.referencia, item.proveedor, item.po, item.factura, item.bl, item.tracking, item.notas].some(value => text(value).toLowerCase().includes(q));
     });
-    const active = APP.importShipments.filter(item => item.etapa !== 'recepcion_sap');
+    const active = APP.importShipments.filter(item => item.etapa !== 'proceso_completado');
     const overdue = APP.importShipments.filter(item => importEtaState(item).cls === 'overdue').length;
     const upcoming = APP.importShipments.filter(item => importEtaState(item).cls === 'alert').length;
-    const sapPending = APP.importShipments.filter(item => item.etapa === 'recepcion_sap' && !(item.docs && item.docs.facturaSap && item.docs.gastosSap)).length;
+    const sapPending = APP.importShipments.filter(item => item.etapa === 'pdte_entrada_sap' && !(item.docs && item.docs.facturaSap && item.docs.gastosSap)).length;
     const currentOrigin = getImportFormValue('impOrigen') || 'espana';
     mount.innerHTML = `<div class="import-module">
       <section class="import-hero">
