@@ -6755,6 +6755,21 @@
       .trim();
   }
 
+  function splitShipmentOcrRecords(rawText) {
+    const normalized = normalizeShipmentOcrLine(String(rawText || '').replace(/\r/g, ' '));
+    const chunks = normalized
+      .replace(/\s+(?=H\d{5,}\b)/gi, '\n')
+      .split('\n')
+      .map(part => normalizeShipmentOcrLine(part))
+      .filter(part => /^H\d{5,}/i.test(part));
+    if (chunks.length) return chunks;
+    return String(rawText || '')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map(line => normalizeShipmentOcrLine(line))
+      .filter(Boolean);
+  }
+
   function parseCompactShipmentLine(line) {
     const original = normalizeShipmentOcrLine(line);
     if (!/^H\d{5,}/i.test(original)) return null;
@@ -6830,14 +6845,11 @@
   }
 
   function parseBulkShipmentsFromText(rawText) {
-    const lines = String(rawText || '')
-      .replace(/\r/g, '\n')
-      .split('\n')
-      .map(line => normalizeShipmentOcrLine(line))
-      .filter(Boolean)
+    const lines = splitShipmentOcrRecords(rawText)
       .filter(line => !IMPORT_BULK_HEADERS.some(header => normKey(line) === normKey(header)));
     const compact = lines.map(parseCompactShipmentLine).filter(Boolean);
-    if (compact.length >= Math.max(1, Math.floor(lines.filter(line => /^H\d{5,}/i.test(line)).length * 0.6))) return compact;
+    const expedienteCount = lines.filter(line => /^H\d{5,}/i.test(line)).length;
+    if (compact.length && compact.length >= Math.max(1, Math.floor(expedienteCount * 0.6))) return compact;
     const records = [];
     let current = [];
     lines.forEach(line => {
