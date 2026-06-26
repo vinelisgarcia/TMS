@@ -1043,6 +1043,7 @@ html { -webkit-text-size-adjust: 100%; }
         <option value="rutas">Rutas</option>
         <option value="importaciones">Importaciones</option>
         <option value="prioridades">Prioridades</option>
+        <option value="incidenciasDespacho">Incidencias Despacho</option>
         <option value="configClientes">Config. Clientes</option>
         <option value="solicitudesAlmacen">Solicitudes Almacén</option>
         <option value="almacen">Vista Almacén</option>
@@ -1072,6 +1073,9 @@ html { -webkit-text-size-adjust: 100%; }
     </button>
     <button class="nav-btn" id="nav-prioridades" onclick="cambiarVista('prioridades',this)">
       <span class="nav-icon">!</span><span class="nav-label">Prioridades</span>
+    </button>
+    <button class="nav-btn" id="nav-incidenciasDespacho" onclick="cambiarVista('incidenciasDespacho',this)">
+      <span class="nav-icon">!</span><span class="nav-label">Incidencias Despacho</span>
     </button>
     <button class="nav-btn" id="nav-configClientes" onclick="cambiarVista('configClientes',this)">
       <span class="nav-icon">⚙️</span><span class="nav-label">Config. Clientes</span>
@@ -1581,6 +1585,14 @@ html { -webkit-text-size-adjust: 100%; }
       <div class="view-title">Prioridades del Día</div>
       <div id="prioridadesMount">
         <div class="empty-state"><div class="empty-icon">!</div><p>Cargando prioridades...</p></div>
+      </div>
+    </div>
+
+    <!-- ========== VISTA 12: INCIDENCIAS DESPACHO ADMIN ========== -->
+    <div id="incidenciasDespacho" class="view">
+      <div class="view-title">Incidencias en Despacho</div>
+      <div id="incidenciasDespachoMount">
+        <div class="empty-state"><div class="empty-icon">!</div><p>Cargando incidencias...</p></div>
       </div>
     </div>
 
@@ -4572,6 +4584,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260625-import-ocr-alerts"></script>
+<script src="./tms-v2.js?v=20260626-dispatch-incidents"></script>
 </body>
 </html>

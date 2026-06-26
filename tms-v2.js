@@ -37,6 +37,7 @@
     dailyPriorities: APP.dailyPriorities || [],
     prioritySpainTopics: APP.prioritySpainTopics || [],
     calendarNotes: APP.calendarNotes || [],
+    dispatchIncidents: APP.dispatchIncidents || [],
     selectedCalendarGroups: APP.selectedCalendarGroups || [],
     visualTheme: APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light',
     undoStack: APP.undoStack || [],
@@ -124,6 +125,7 @@
     rutas: 'Rutas',
     importaciones: 'Importaciones',
     prioridades: 'Prioridades',
+    incidenciasDespacho: 'Incidencias despacho',
     configuracion: 'Configuración',
     solicitudesAlmacen: 'Solicitudes almacén',
     almacen: 'Almacén'
@@ -465,6 +467,7 @@
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
       prioridades: { ver: true, editar: true, importar: true },
+      incidenciasDespacho: { ver: true, editar: true, importar: false },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -601,6 +604,7 @@
     'dailyPriorities',
     'prioritySpainTopics',
     'calendarNotes',
+    'dispatchIncidents',
     'visualTheme'
   ];
 
@@ -977,6 +981,7 @@
       rutas: 'rutas',
       importaciones: 'importaciones',
       prioridades: 'prioridades',
+      incidenciasDespacho: 'incidenciasDespacho',
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen',
@@ -1014,7 +1019,7 @@
   }
 
   function getFirstAllowedView() {
-    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'importaciones', 'solicitudesAlmacen', 'almacen', 'configClientes'];
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'importaciones', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'almacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || 'comercial';
   }
 
@@ -1036,6 +1041,7 @@
       rutas: 'rutas',
       importaciones: 'importaciones',
       prioridades: 'prioridades',
+      incidenciasDespacho: 'incidenciasDespacho',
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen'
@@ -1081,6 +1087,7 @@
       if (id === 'rutas') renderRouteCatalog();
       if (id === 'importaciones') renderImportaciones();
       if (id === 'prioridades') renderPrioridades();
+      if (id === 'incidenciasDespacho') renderIncidenciasDespacho();
       applyPermissionUi();
     };
   }
@@ -1487,6 +1494,7 @@
         dailyPriorities: APP.dailyPriorities,
         prioritySpainTopics: APP.prioritySpainTopics,
         calendarNotes: APP.calendarNotes,
+        dispatchIncidents: APP.dispatchIncidents,
         visualTheme: APP.visualTheme
       }
     };
@@ -4267,6 +4275,7 @@
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
       prioridades: { ver: role === 'Admin' || scope === 'full', editar: role === 'Admin' || scope === 'full', importar: false },
+      incidenciasDespacho: { ver: role === 'Admin' || scope === 'full', editar: role === 'Admin' || scope === 'full', importar: false },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -4275,7 +4284,7 @@
     if (scope === 'read_only') {
       return Object.fromEntries(Object.keys(all).map(key => [
         key,
-        key === 'prioridades' ? { ver: false, editar: false, importar: false } : { ver: true, editar: false, importar: false }
+        ['prioridades', 'incidenciasDespacho'].includes(key) ? { ver: false, editar: false, importar: false } : { ver: true, editar: false, importar: false }
       ]));
     }
     if (scope === 'commercial') {
@@ -4288,6 +4297,7 @@
         rutas: { ver: false, editar: false },
         importaciones: { ver: false, editar: false, importar: false },
         prioridades: { ver: false, editar: false, importar: false },
+        incidenciasDespacho: { ver: false, editar: false, importar: false },
         configuracion: { ver: false, editar: false, importar: false },
         solicitudesAlmacen: { ver: false, editar: false },
         almacen: { ver: false, editar: false }
@@ -4303,6 +4313,7 @@
         rutas: { ver: false, editar: false },
         importaciones: { ver: false, editar: false, importar: false },
         prioridades: { ver: false, editar: false, importar: false },
+        incidenciasDespacho: { ver: false, editar: false, importar: false },
         configuracion: { ver: false, editar: false, importar: false },
         solicitudesAlmacen: { ver: true, editar: true },
         almacen: { ver: true, editar: true }
@@ -4317,6 +4328,7 @@
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
       prioridades: { ver: false, editar: false, importar: false },
+      incidenciasDespacho: { ver: false, editar: false, importar: false },
       configuracion: { ver: false, editar: false, importar: false },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true }
@@ -5001,6 +5013,7 @@
         APP.dailyPriorities = Array.isArray(settingsMap.app_state.dailyPriorities) ? settingsMap.app_state.dailyPriorities : (APP.dailyPriorities || []);
         APP.prioritySpainTopics = Array.isArray(settingsMap.app_state.prioritySpainTopics) ? settingsMap.app_state.prioritySpainTopics : (APP.prioritySpainTopics || []);
         APP.calendarNotes = Array.isArray(settingsMap.app_state.calendarNotes) ? settingsMap.app_state.calendarNotes : (APP.calendarNotes || []);
+        APP.dispatchIncidents = Array.isArray(settingsMap.app_state.dispatchIncidents) ? settingsMap.app_state.dispatchIncidents : (APP.dispatchIncidents || []);
         APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
         APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
         applyVisualTheme(APP.visualTheme, true);
@@ -5087,6 +5100,7 @@
       renderSolicitudesAlmacen();
       renderAlmacen();
       renderPrioridades();
+      renderIncidenciasDespacho();
       applyPermissionUi();
       saveLocalSnapshot();
     } catch (error) {
@@ -5103,6 +5117,7 @@
         renderSolicitudesAlmacen();
         renderAlmacen();
         renderPrioridades();
+        renderIncidenciasDespacho();
         return;
       }
       APP.lineItems = [];
@@ -5123,6 +5138,7 @@
       renderSolicitudesAlmacen();
       renderAlmacen();
       renderPrioridades();
+      renderIncidenciasDespacho();
     }
   };
 
@@ -5161,7 +5177,8 @@
       const canWriteWarehouseControl = adminCanManageUsers || canWriteImports || hasPermission('almacen', 'editar');
       const canWriteWarehouseHistory = adminCanManageUsers || hasPermission('solicitudesAlmacen', 'editar') || hasPermission('almacen', 'editar');
       const canWriteCalendarNotes = hasPermission('calendario', 'ver');
-      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes;
+      const canWriteDispatchIncidents = adminCanManageUsers && hasPermission('incidenciasDespacho', 'editar');
+      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes || canWriteDispatchIncidents;
       const settingsRows = [
         ...((adminCanManageUsers || canWriteWarehouseHistory) ? [{ clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) }] : []),
         ...(adminCanManageUsers ? [{ clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) }] : []),
@@ -5181,6 +5198,7 @@
             dailyPriorities: APP.dailyPriorities || [],
             prioritySpainTopics: APP.prioritySpainTopics || [],
             calendarNotes: APP.calendarNotes || [],
+            dispatchIncidents: APP.dispatchIncidents || [],
             controlHistory: APP.controlHistory || [],
             visualTheme: APP.visualTheme || 'light'
           })
@@ -6526,6 +6544,7 @@
       #nav-rutas .nav-icon::before { content:'⇄'; }
       #nav-importaciones .nav-icon::before { content:'↗'; }
       #nav-prioridades .nav-icon::before { content:'!'; }
+      #nav-incidenciasDespacho .nav-icon::before { content:'⚠'; }
       #nav-configClientes .nav-icon::before { content:'⚙'; }
       #nav-solicitudesAlmacen .nav-icon::before { content:'▤'; }
       #nav-almacen .nav-icon::before { content:'▦'; }
@@ -6552,8 +6571,38 @@
       .theme-preview-light { background:linear-gradient(90deg,#123F5D 0 24%,#fff 24% 66%,#F5F6F8 66%); }
       .theme-preview-dark { background:linear-gradient(90deg,#101820 0 24%,#171E26 24% 66%,#0F141A 66%); }
       .theme-preview-brand { background:linear-gradient(90deg,#F4C900 0 24%,#fff 24% 66%,#161616 66%); }
-      @media (max-width: 760px) { .route-add-form, .role-permission-toolbar { grid-template-columns:1fr; } }
+      @media (max-width: 760px) { .route-add-form, .role-permission-toolbar, .incident-form-grid, .incident-report-grid { grid-template-columns:1fr; } }
       @media (max-width: 760px) { .theme-option-grid { grid-template-columns:1fr; } }
+
+      .incident-module { display:grid; gap:14px; }
+      .incident-hero { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; padding:18px; border:1px solid var(--border); border-radius:12px; background:var(--surface); box-shadow:var(--shadow-sm); }
+      .incident-hero h2 { margin:0 0 4px; font-size:20px; }
+      .incident-hero p { margin:0; color:var(--muted); font-size:13px; max-width:760px; line-height:1.5; }
+      .incident-form-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; align-items:end; }
+      .incident-form-grid .wide { grid-column:span 2; }
+      .incident-form-grid textarea { min-height:76px; resize:vertical; }
+      .incident-kpis { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; }
+      .incident-kpi { border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--surface); box-shadow:var(--shadow-sm); }
+      .incident-kpi strong { display:block; font-size:22px; }
+      .incident-kpi span { color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:800; }
+      .incident-report-grid { display:grid; grid-template-columns:minmax(260px, .85fr) minmax(360px, 1.15fr); gap:10px; }
+      .incident-chart-card { border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--surface); box-shadow:var(--shadow-sm); min-height:260px; }
+      .incident-chart-card h3 { margin:0 0 10px; font-size:14px; }
+      .incident-chart-card svg { width:100%; height:auto; display:block; }
+      .incident-list { display:grid; gap:10px; }
+      .incident-card { border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:12px; display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:10px; box-shadow:var(--shadow-sm); }
+      .incident-card-title { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-weight:900; }
+      .incident-card-meta { color:var(--muted); font-size:12px; line-height:1.5; margin-top:5px; }
+      .incident-evidence { width:84px; height:64px; border-radius:8px; border:1px solid var(--border); object-fit:cover; background:var(--bg); }
+      .incident-type-chip { display:inline-flex; align-items:center; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:900; background:color-mix(in srgb, var(--danger) 12%, transparent); color:var(--danger); }
+      .incident-status-chip { display:inline-flex; align-items:center; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:900; background:color-mix(in srgb, var(--primary) 10%, transparent); color:var(--primary); }
+      .incident-photo-preview { max-width:130px; max-height:92px; object-fit:cover; border:1px solid var(--border); border-radius:8px; display:none; }
+      @media (max-width: 760px) {
+        .incident-hero, .incident-card { grid-template-columns:1fr; display:grid; }
+        .incident-form-grid .wide { grid-column:auto; }
+        .incident-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .incident-evidence { width:100%; height:150px; }
+      }
       details summary { list-style:none; }
       details summary::-webkit-details-marker { display:none; }
     `;
@@ -7810,6 +7859,277 @@
   };
 
   window.generarReportePrioridades = window.exportarPrioridadesPdf;
+
+
+  const DISPATCH_INCIDENT_TYPES = ['Rotura', 'Pérdida de material', 'Diferencia de cantidad', 'Manejo indebido', 'Retraso atribuible', 'Otro'];
+  const DISPATCH_INCIDENT_STATUSES = ['Pendiente reclamar', 'Reclamado a Caribetrans', 'Aceptado', 'Rechazado', 'Compensado'];
+
+  function ensureDispatchIncidents() {
+    APP.dispatchIncidents = Array.isArray(APP.dispatchIncidents) ? APP.dispatchIncidents : [];
+    APP.dispatchIncidents.forEach(item => {
+      item.tipo = text(item.tipo) || 'Otro';
+      item.estado = text(item.estado) || 'Pendiente reclamar';
+      item.fecha = item.fecha || todayIsoDate();
+      item.monto = num(item.monto);
+      item.responsable = text(item.responsable) || 'Caribetrans';
+      item.updatedAt = item.updatedAt || item.createdAt || nowIso();
+    });
+  }
+
+  function selectedIncidentPeriod() {
+    const today = todayIsoDate();
+    const monthStart = today.slice(0, 8) + '01';
+    const from = text((document.getElementById('incidentFrom') || {}).value) || APP.incidentReportFrom || monthStart;
+    const to = text((document.getElementById('incidentTo') || {}).value) || APP.incidentReportTo || today;
+    APP.incidentReportFrom = from <= to ? from : to;
+    APP.incidentReportTo = to >= from ? to : from;
+    APP.incidentGroupMode = text((document.getElementById('incidentGroupMode') || {}).value) || APP.incidentGroupMode || 'diario';
+    return { from: APP.incidentReportFrom, to: APP.incidentReportTo, mode: APP.incidentGroupMode };
+  }
+
+  function incidentRowsForPeriod(period) {
+    ensureDispatchIncidents();
+    return APP.dispatchIncidents.filter(item => item.fecha >= period.from && item.fecha <= period.to)
+      .sort((a, b) => text(b.fecha).localeCompare(text(a.fecha)) || text(b.createdAt).localeCompare(text(a.createdAt)));
+  }
+
+  function incidentBucketLabel(dateIso, mode) {
+    const date = new Date((dateIso || todayIsoDate()) + 'T00:00:00');
+    if (mode === 'anual') return String(date.getFullYear());
+    if (mode === 'mensual') return dateIso.slice(0, 7);
+    if (mode === 'semanal') {
+      const first = new Date(date.getFullYear(), 0, 1);
+      const week = Math.ceil((((date - first) / 86400000) + first.getDay() + 1) / 7);
+      return `${date.getFullYear()}-S${String(week).padStart(2, '0')}`;
+    }
+    return dateIso;
+  }
+
+  function buildIncidentAnalysis(period) {
+    const rows = incidentRowsForPeriod(period);
+    const totalMonto = rows.reduce((sum, item) => sum + num(item.monto), 0);
+    const byType = DISPATCH_INCIDENT_TYPES.map(tipo => {
+      const items = rows.filter(item => item.tipo === tipo);
+      return { tipo, count: items.length, monto: items.reduce((sum, item) => sum + num(item.monto), 0) };
+    }).filter(row => row.count || row.monto);
+    const bucketMap = {};
+    rows.forEach(item => {
+      const key = incidentBucketLabel(item.fecha, period.mode);
+      bucketMap[key] = bucketMap[key] || { label: key, count: 0, monto: 0 };
+      bucketMap[key].count += 1;
+      bucketMap[key].monto += num(item.monto);
+    });
+    const timeline = Object.values(bucketMap).sort((a, b) => a.label.localeCompare(b.label));
+    const pendiente = rows.filter(item => !['Compensado', 'Rechazado'].includes(item.estado)).length;
+    return { period, rows, totalMonto, byType, timeline, pendiente };
+  }
+
+  function renderIncidentPie(analysis) {
+    const total = analysis.byType.reduce((sum, row) => sum + row.count, 0);
+    const colors = ['#123F5D', '#E0B400', '#C2410C', '#64748B', '#059669', '#7C3AED'];
+    if (!total) return '<div class="route-catalog-empty">Sin incidencias en el periodo.</div>';
+    let offset = 25;
+    const slices = analysis.byType.map((row, idx) => {
+      const pct = row.count / total;
+      const dash = `${pct * 100} ${100 - pct * 100}`;
+      const slice = `<circle r="15.9" cx="21" cy="21" fill="transparent" stroke="${colors[idx % colors.length]}" stroke-width="9" stroke-dasharray="${dash}" stroke-dashoffset="${offset}" />`;
+      offset -= pct * 100;
+      return slice;
+    }).join('');
+    const legend = analysis.byType.map((row, idx) => {
+      const pct = Math.round((row.count / total) * 100);
+      return `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;margin-top:6px;"><span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${colors[idx % colors.length]};margin-right:6px;"></i>${escapeHtml(row.tipo)}</span><strong>${row.count} · ${pct}%</strong></div>`;
+    }).join('');
+    return `<svg viewBox="0 0 42 42" role="img" aria-label="Incidencias por tipo">${slices}<circle r="9" cx="21" cy="21" fill="var(--surface)" /><text x="21" y="20" text-anchor="middle" style="font-size:4px;font-weight:800;fill:var(--text);">${total}</text><text x="21" y="25" text-anchor="middle" style="font-size:2.5px;fill:var(--muted);">casos</text></svg>${legend}`;
+  }
+
+  function renderIncidentTrend(analysis) {
+    const data = analysis.timeline;
+    if (!data.length) return '<div class="route-catalog-empty">Sin datos para graficar.</div>';
+    const max = Math.max(1, ...data.map(row => row.count));
+    const width = 640, height = 230, left = 34, bottom = 32;
+    const chartW = width - left - 14, chartH = height - bottom - 14;
+    const barW = Math.max(8, chartW / data.length * 0.58);
+    const points = data.map((row, idx) => {
+      const x = left + (idx + 0.5) * (chartW / data.length);
+      const y = 14 + chartH - (row.count / max) * chartH;
+      return { ...row, x, y };
+    });
+    const bars = points.map(point => {
+      const h = Math.max(3, 14 + chartH - point.y);
+      return `<rect x="${point.x - barW / 2}" y="${point.y}" width="${barW}" height="${h}" rx="4" fill="#123F5D" opacity=".86"><title>${escapeHtml(point.label)}: ${point.count} incidencias</title></rect>`;
+    }).join('');
+    const step = Math.max(1, Math.ceil(points.length / 8));
+    const labels = points.map((point, idx) => idx % step === 0 ? `<text x="${point.x}" y="${height - 10}" text-anchor="middle" style="font-size:10px;fill:var(--muted);">${escapeHtml(point.label.slice(-8))}</text>` : '').join('');
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Tendencia de incidencias"><line x1="${left}" y1="${14 + chartH}" x2="${width - 10}" y2="${14 + chartH}" stroke="var(--border)" /><line x1="${left}" y1="14" x2="${left}" y2="${14 + chartH}" stroke="var(--border)" />${bars}<polyline points="${points.map(point => `${point.x},${point.y}`).join(' ')}" fill="none" stroke="#E0B400" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />${points.map(point => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="#E0B400"><title>${escapeHtml(point.label)}: ${point.count}</title></circle>`).join('')}${labels}</svg>`;
+  }
+
+  function incidentReportText(analysis) {
+    const typeLines = analysis.byType.map(row => `- ${row.tipo}: ${row.count} casos · ${formatMonto(row.monto)}`).join('\n') || '- Sin incidencias.';
+    const openLines = analysis.rows.filter(item => !['Compensado', 'Rechazado'].includes(item.estado)).slice(0, 12).map(item => `- ${item.fecha} · ${item.tipo} · ${item.factura || 'Sin factura'} · ${formatMonto(item.monto)} · ${item.estado}`).join('\n') || '- Sin reclamaciones abiertas.';
+    return `Reporte de incidencias en despacho\nPeriodo: ${analysis.period.from} a ${analysis.period.to}\nResponsable: Caribetrans\n\nResumen:\nIncidencias: ${analysis.rows.length}\nMonto reclamable: ${formatMonto(analysis.totalMonto)}\nPendientes de cierre: ${analysis.pendiente}\n\nPor tipo:\n${typeLines}\n\nPendientes / seguimiento:\n${openLines}`;
+  }
+
+  function incidentReportHtml(analysis) {
+    const cards = [['Incidencias', analysis.rows.length], ['Monto reclamable', formatMonto(analysis.totalMonto)], ['Pendientes', analysis.pendiente], ['Tipos', analysis.byType.length]];
+    return `<div style="background:#fff;color:#111827;font-family:Arial,sans-serif;padding:24px;width:780px;">
+      <h1 style="font-size:22px;margin:0 0 4px;">Reporte de incidencias en despacho</h1>
+      <div style="font-size:12px;color:#64748B;margin-bottom:16px;">Periodo ${escapeHtml(analysis.period.from)} a ${escapeHtml(analysis.period.to)} · Responsable Caribetrans</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">${cards.map(([label, value]) => `<div style="border:1px solid #E2E8F0;border-radius:8px;padding:10px;"><strong style="display:block;font-size:18px;">${escapeHtml(value)}</strong><span style="font-size:10px;color:#64748B;text-transform:uppercase;font-weight:700;">${escapeHtml(label)}</span></div>`).join('')}</div>
+      <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:12px;line-height:1.5;margin:0 0 16px;">${escapeHtml(incidentReportText(analysis))}</pre>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Fecha</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Tipo</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Factura</th><th style="text-align:right;border-bottom:1px solid #E2E8F0;padding:6px;">Monto</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Estado</th></tr></thead><tbody>${analysis.rows.map(item => `<tr><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.fecha)}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.tipo)}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.factura || '')}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;text-align:right;">${escapeHtml(formatMonto(item.monto))}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.estado)}</td></tr>`).join('')}</tbody></table>
+    </div>`;
+  }
+
+  function incidentCardHtml(item) {
+    return `<article class="incident-card"><div><div class="incident-card-title"><span>${escapeHtml(item.fecha)}</span><span class="incident-type-chip">${escapeHtml(item.tipo)}</span><span class="incident-status-chip">${escapeHtml(item.estado)}</span><strong>${formatMonto(item.monto)}</strong></div><div class="incident-card-meta">Factura: <strong>${escapeHtml(item.factura || 'Pendiente')}</strong> · Cliente/embarque: ${escapeHtml(item.cliente || 'No especificado')} · Responsable: ${escapeHtml(item.responsable || 'Caribetrans')}</div><div class="incident-card-meta">${escapeHtml(item.descripcion || 'Sin descripción')}</div><div class="incident-card-meta">Creada: ${new Date(item.createdAt || item.updatedAt || nowIso()).toLocaleString('es-DO')}</div><div class="import-actions" style="margin-top:8px;"><button class="btn btn-outline btn-sm" onclick="editarIncidenciaDespacho('${jsString(item.id)}')">Editar</button><button class="btn btn-outline btn-sm" onclick="eliminarIncidenciaDespacho('${jsString(item.id)}')">Eliminar</button></div></div>${item.photoDataUrl ? `<img class="incident-evidence" src="${item.photoDataUrl}" alt="Evidencia de incidencia">` : '<div class="incident-evidence" style="display:grid;place-items:center;color:var(--muted);font-size:11px;">Sin foto</div>'}</article>`;
+  }
+
+  window.renderIncidenciasDespacho = function renderIncidenciasDespacho() {
+    const mount = document.getElementById('incidenciasDespachoMount');
+    if (!mount) return;
+    if (!isAdminUser()) {
+      mount.innerHTML = '<div class="empty-state"><div class="empty-icon">!</div><p>Este módulo es solo para administradores.</p></div>';
+      return;
+    }
+    ensureDispatchIncidents();
+    const period = selectedIncidentPeriod();
+    const analysis = buildIncidentAnalysis(period);
+    const editing = APP.dispatchIncidentEditingId ? APP.dispatchIncidents.find(item => item.id === APP.dispatchIncidentEditingId) : null;
+    const q = text((document.getElementById('incidentSearch') || {}).value).toLowerCase();
+    const rows = analysis.rows.filter(item => !q || [item.tipo, item.estado, item.factura, item.cliente, item.descripcion].some(value => text(value).toLowerCase().includes(q)));
+    mount.innerHTML = `<div class="incident-module">
+      <section class="incident-hero"><div><h2>Incidencias en despacho</h2><p>Registro administrativo de roturas, pérdidas y gastos reclamables por manejo de mercancía. Cada ficha puede vincular factura, monto y evidencia para sustentar el seguimiento con Caribetrans.</p></div><div class="import-actions"><button class="btn btn-primary btn-sm" onclick="exportarIncidenciasDespachoPdf()">Reporte PDF</button><button class="btn btn-success btn-sm" onclick="exportarIncidenciasDespachoExcel()">Excel</button></div></section>
+      <section class="card"><div class="card-title">${editing ? 'Editar incidencia' : 'Nueva incidencia'}</div><div class="incident-form-grid">
+        <label class="form-row">Fecha<input id="incidentDate" class="form-control" type="date" value="${editing ? escapeHtml(editing.fecha) : todayIsoDate()}"></label>
+        <label class="form-row">Tipo<select id="incidentType" class="form-control">${DISPATCH_INCIDENT_TYPES.map(type => `<option value="${escapeHtml(type)}" ${editing && editing.tipo === type ? 'selected' : ''}>${escapeHtml(type)}</option>`).join('')}</select></label>
+        <label class="form-row">Estado<select id="incidentStatus" class="form-control">${DISPATCH_INCIDENT_STATUSES.map(status => `<option value="${escapeHtml(status)}" ${editing && editing.estado === status ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}</select></label>
+        <label class="form-row">Monto<input id="incidentAmount" class="form-control" type="number" step="0.01" value="${editing ? num(editing.monto) : ''}" placeholder="0.00"></label>
+        <input id="incidentInvoice" class="form-control" value="${editing ? escapeHtml(editing.factura || '') : ''}" placeholder="Factura relacionada">
+        <input id="incidentClient" class="form-control" value="${editing ? escapeHtml(editing.cliente || '') : ''}" placeholder="Cliente / embarque / ruta">
+        <input id="incidentResponsible" class="form-control" value="${editing ? escapeHtml(editing.responsable || 'Caribetrans') : 'Caribetrans'}" placeholder="Responsable">
+        <input id="incidentPhoto" class="form-control" type="file" accept="image/*" onchange="cargarFotoIncidenciaDespacho(this.files[0])">
+        <textarea id="incidentDescription" class="form-control wide" placeholder="Descripción de la incidencia y soporte para reclamación">${editing ? escapeHtml(editing.descripcion || '') : ''}</textarea>
+        <div><img id="incidentPhotoPreview" class="incident-photo-preview" src="${(APP.pendingDispatchIncidentPhoto && APP.pendingDispatchIncidentPhoto.dataUrl) || (editing && editing.photoDataUrl) || ''}" style="${((APP.pendingDispatchIncidentPhoto && APP.pendingDispatchIncidentPhoto.dataUrl) || (editing && editing.photoDataUrl)) ? 'display:block;' : ''}" alt="Vista previa"></div>
+      </div><div class="import-actions" style="margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="guardarIncidenciaDespacho()">${editing ? 'Guardar cambios' : 'Registrar incidencia'}</button><button class="btn btn-outline btn-sm" onclick="limpiarFormularioIncidenciaDespacho()">Limpiar</button></div></section>
+      <section class="incident-kpis"><div class="incident-kpi"><strong>${analysis.rows.length}</strong><span>Incidencias</span></div><div class="incident-kpi"><strong>${formatMonto(analysis.totalMonto)}</strong><span>Monto reclamable</span></div><div class="incident-kpi"><strong>${analysis.pendiente}</strong><span>Pendientes</span></div><div class="incident-kpi"><strong>${analysis.byType.length}</strong><span>Tipos activos</span></div></section>
+      <section class="card"><div class="view-toolbar" style="justify-content:space-between;gap:10px;"><input id="incidentSearch" class="search-input" value="${escapeHtml(q)}" placeholder="Buscar factura, cliente, tipo o descripción" oninput="renderIncidenciasDespacho()" style="max-width:340px;"><div class="import-actions"><select id="incidentGroupMode" class="search-input" onchange="renderIncidenciasDespacho()" style="max-width:150px;"><option value="diario" ${period.mode === 'diario' ? 'selected' : ''}>Diario</option><option value="semanal" ${period.mode === 'semanal' ? 'selected' : ''}>Semanal</option><option value="mensual" ${period.mode === 'mensual' ? 'selected' : ''}>Mensual</option><option value="anual" ${period.mode === 'anual' ? 'selected' : ''}>Anual</option></select><label class="priority-period-field">Desde<input id="incidentFrom" class="form-control" type="date" value="${period.from}" onchange="renderIncidenciasDespacho()"></label><label class="priority-period-field">Hasta<input id="incidentTo" class="form-control" type="date" value="${period.to}" onchange="renderIncidenciasDespacho()"></label></div></div></section>
+      <section class="incident-report-grid"><div class="incident-chart-card"><h3>Por tipo y porcentaje</h3>${renderIncidentPie(analysis)}</div><div class="incident-chart-card"><h3>Tendencia de incidencias</h3>${renderIncidentTrend(analysis)}</div></section>
+      <section class="incident-list">${rows.length ? rows.map(incidentCardHtml).join('') : '<div class="route-catalog-empty">Sin incidencias para este filtro.</div>'}</section>
+      <section class="priority-report"><pre>${escapeHtml(incidentReportText(analysis))}</pre></section>
+    </div>`;
+  };
+
+  window.cargarFotoIncidenciaDespacho = function cargarFotoIncidenciaDespacho(file) {
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) return alert('Selecciona una imagen válida.');
+    const reader = new FileReader();
+    reader.onload = () => {
+      APP.pendingDispatchIncidentPhoto = { dataUrl: reader.result, name: file.name || 'evidencia', type: file.type || 'image' };
+      const preview = document.getElementById('incidentPhotoPreview');
+      if (preview) {
+        preview.src = reader.result;
+        preview.style.display = 'block';
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  window.guardarIncidenciaDespacho = function guardarIncidenciaDespacho() {
+    if (!requireAdminUser('Registrar incidencia')) return;
+    ensureDispatchIncidents();
+    const id = APP.dispatchIncidentEditingId || ('inc-desp-' + Date.now());
+    const existing = APP.dispatchIncidents.find(item => item.id === id) || {};
+    const item = {
+      ...existing,
+      id,
+      fecha: text((document.getElementById('incidentDate') || {}).value) || todayIsoDate(),
+      tipo: text((document.getElementById('incidentType') || {}).value) || 'Otro',
+      estado: text((document.getElementById('incidentStatus') || {}).value) || 'Pendiente reclamar',
+      monto: num((document.getElementById('incidentAmount') || {}).value),
+      factura: text((document.getElementById('incidentInvoice') || {}).value),
+      cliente: text((document.getElementById('incidentClient') || {}).value),
+      responsable: text((document.getElementById('incidentResponsible') || {}).value) || 'Caribetrans',
+      descripcion: text((document.getElementById('incidentDescription') || {}).value),
+      photoDataUrl: (APP.pendingDispatchIncidentPhoto && APP.pendingDispatchIncidentPhoto.dataUrl) || existing.photoDataUrl || '',
+      photoName: (APP.pendingDispatchIncidentPhoto && APP.pendingDispatchIncidentPhoto.name) || existing.photoName || '',
+      createdAt: existing.createdAt || nowIso(),
+      updatedAt: nowIso()
+    };
+    if (!item.descripcion && !item.factura) return alert('Agrega al menos una descripción o factura para identificar la incidencia.');
+    pushUndoState(APP.dispatchIncidentEditingId ? 'editar incidencia despacho' : 'registrar incidencia despacho');
+    const idx = APP.dispatchIncidents.findIndex(row => row.id === id);
+    if (idx >= 0) APP.dispatchIncidents[idx] = item;
+    else APP.dispatchIncidents.push(item);
+    APP.pendingDispatchIncidentPhoto = null;
+    APP.dispatchIncidentEditingId = '';
+    renderIncidenciasDespacho();
+    scheduleAutoSave();
+  };
+
+  window.editarIncidenciaDespacho = function editarIncidenciaDespacho(id) {
+    if (!requireAdminUser('Editar incidencia')) return;
+    APP.dispatchIncidentEditingId = id;
+    APP.pendingDispatchIncidentPhoto = null;
+    renderIncidenciasDespacho();
+    document.getElementById('incidenciasDespachoMount')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  window.eliminarIncidenciaDespacho = function eliminarIncidenciaDespacho(id) {
+    if (!requireAdminUser('Eliminar incidencia')) return;
+    if (!confirm('¿Eliminar esta incidencia de despacho?')) return;
+    pushUndoState('eliminar incidencia despacho');
+    APP.dispatchIncidents = (APP.dispatchIncidents || []).filter(item => item.id !== id);
+    renderIncidenciasDespacho();
+    scheduleAutoSave();
+  };
+
+  window.limpiarFormularioIncidenciaDespacho = function limpiarFormularioIncidenciaDespacho() {
+    APP.dispatchIncidentEditingId = '';
+    APP.pendingDispatchIncidentPhoto = null;
+    renderIncidenciasDespacho();
+  };
+
+  window.exportarIncidenciasDespachoExcel = function exportarIncidenciasDespachoExcel() {
+    const analysis = buildIncidentAnalysis(selectedIncidentPeriod());
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(analysis.rows.map(item => ({
+      Fecha: item.fecha,
+      Tipo: item.tipo,
+      Estado: item.estado,
+      Factura: item.factura || '',
+      Cliente_Embarque: item.cliente || '',
+      Responsable: item.responsable || 'Caribetrans',
+      Monto: num(item.monto),
+      Descripcion: item.descripcion || '',
+      Foto: item.photoName || (item.photoDataUrl ? 'Adjunta en TMS' : '')
+    }))), 'Incidencias');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(analysis.byType), 'Por tipo');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(analysis.timeline), 'Tendencia');
+    XLSX.writeFile(wb, `TMS_Incidencias_Despacho_${analysis.period.from}_a_${analysis.period.to}.xlsx`);
+  };
+
+  window.exportarIncidenciasDespachoPdf = async function exportarIncidenciasDespachoPdf() {
+    try {
+      const analysis = buildIncidentAnalysis(selectedIncidentPeriod());
+      const stage = document.createElement('div');
+      stage.style.cssText = 'position:fixed;left:0;top:0;width:820px;background:#fff;z-index:2147483647;padding:0;';
+      stage.innerHTML = incidentReportHtml(analysis);
+      document.body.appendChild(stage);
+      const html2pdfLib = await ensureHtml2Pdf();
+      await html2pdfLib().set({
+        margin: 8,
+        filename: `TMS_Incidencias_Despacho_${analysis.period.from}_a_${analysis.period.to}.pdf`,
+        html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      }).from(stage.firstElementChild || stage).save();
+      setTimeout(() => stage.remove(), 250);
+    } catch (error) {
+      console.error('Error exportando incidencias:', error);
+      alert('No se pudo generar el PDF de incidencias: ' + error.message);
+    }
+  };
+
 
   window.renderImportaciones = function renderImportaciones() {
     const mount = document.getElementById('importacionesMount');
