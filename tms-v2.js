@@ -7861,7 +7861,7 @@
   window.generarReportePrioridades = window.exportarPrioridadesPdf;
 
 
-  const DISPATCH_INCIDENT_TYPES = ['Rotura', 'Pérdida de material', 'Diferencia de cantidad', 'Manejo indebido', 'Retraso atribuible', 'Otro'];
+  const DISPATCH_INCIDENT_TYPES = ['Rotura', 'Pérdida de material', 'Faltante de origen', 'Diferencia de cantidad', 'Manejo indebido', 'Retraso atribuible', 'Otro'];
   const DISPATCH_INCIDENT_STATUSES = ['Pendiente reclamar', 'Reclamado a Caribetrans', 'Aceptado', 'Rechazado', 'Compensado'];
 
   function ensureDispatchIncidents() {
