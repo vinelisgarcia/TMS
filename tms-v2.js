@@ -7863,6 +7863,8 @@
 
   const DISPATCH_INCIDENT_TYPES = ['Rotura', 'Pérdida de material', 'Faltante de origen', 'Diferencia de cantidad', 'Manejo indebido', 'Retraso atribuible', 'Otro'];
   const DISPATCH_INCIDENT_STATUSES = ['Pendiente reclamar', 'Reclamado a Caribetrans', 'Aceptado', 'Rechazado', 'Compensado'];
+  const DISPATCH_INCIDENT_RESPONSIBLES = ['Caribetrans', 'Origen'];
+  const DISPATCH_INCIDENT_CURRENCIES = ['DOP', 'USD'];
 
   function ensureDispatchIncidents() {
     APP.dispatchIncidents = Array.isArray(APP.dispatchIncidents) ? APP.dispatchIncidents : [];
@@ -7871,7 +7873,9 @@
       item.estado = text(item.estado) || 'Pendiente reclamar';
       item.fecha = item.fecha || todayIsoDate();
       item.monto = num(item.monto);
-      item.responsable = text(item.responsable) || 'Caribetrans';
+      item.moneda = DISPATCH_INCIDENT_CURRENCIES.includes(text(item.moneda).toUpperCase()) ? text(item.moneda).toUpperCase() : 'DOP';
+      item.responsable = DISPATCH_INCIDENT_RESPONSIBLES.includes(text(item.responsable)) ? text(item.responsable) : 'Caribetrans';
+      item.materialRelacionado = text(item.materialRelacionado || item.material);
       item.updatedAt = item.updatedAt || item.createdAt || nowIso();
     });
   }
@@ -7907,11 +7911,19 @@
 
   function buildIncidentAnalysis(period) {
     const rows = incidentRowsForPeriod(period);
-    const totalMonto = rows.reduce((sum, item) => sum + num(item.monto), 0);
+    const totalsByCurrency = DISPATCH_INCIDENT_CURRENCIES.reduce((acc, currency) => {
+      acc[currency] = rows.filter(item => (item.moneda || 'DOP') === currency).reduce((sum, item) => sum + num(item.monto), 0);
+      return acc;
+    }, {});
+    const totalMonto = totalsByCurrency.DOP || 0;
     const byType = DISPATCH_INCIDENT_TYPES.map(tipo => {
       const items = rows.filter(item => item.tipo === tipo);
-      return { tipo, count: items.length, monto: items.reduce((sum, item) => sum + num(item.monto), 0) };
-    }).filter(row => row.count || row.monto);
+      const totals = DISPATCH_INCIDENT_CURRENCIES.reduce((acc, currency) => {
+        acc[currency] = items.filter(item => (item.moneda || 'DOP') === currency).reduce((sum, item) => sum + num(item.monto), 0);
+        return acc;
+      }, {});
+      return { tipo, count: items.length, monto: totals.DOP || 0, totalsByCurrency: totals };
+    }).filter(row => row.count || row.monto || num(row.totalsByCurrency && row.totalsByCurrency.USD));
     const bucketMap = {};
     rows.forEach(item => {
       const key = incidentBucketLabel(item.fecha, period.mode);
@@ -7921,7 +7933,7 @@
     });
     const timeline = Object.values(bucketMap).sort((a, b) => a.label.localeCompare(b.label));
     const pendiente = rows.filter(item => !['Compensado', 'Rechazado'].includes(item.estado)).length;
-    return { period, rows, totalMonto, byType, timeline, pendiente };
+    return { period, rows, totalMonto, totalsByCurrency, byType, timeline, pendiente };
   }
 
   function renderIncidentPie(analysis) {
@@ -7964,25 +7976,38 @@
     return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Tendencia de incidencias"><line x1="${left}" y1="${14 + chartH}" x2="${width - 10}" y2="${14 + chartH}" stroke="var(--border)" /><line x1="${left}" y1="14" x2="${left}" y2="${14 + chartH}" stroke="var(--border)" />${bars}<polyline points="${points.map(point => `${point.x},${point.y}`).join(' ')}" fill="none" stroke="#E0B400" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />${points.map(point => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="#E0B400"><title>${escapeHtml(point.label)}: ${point.count}</title></circle>`).join('')}${labels}</svg>`;
   }
 
+  function formatIncidentAmount(item) {
+    const currency = item && item.moneda === 'USD' ? 'USD' : 'DOP';
+    return currency === 'USD' ? `USD ${num(item && item.monto).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatMonto(item && item.monto);
+  }
+
+  function formatIncidentTotals(analysis) {
+    const totals = analysis.totalsByCurrency || {};
+    const parts = [];
+    if (num(totals.DOP)) parts.push(formatMonto(totals.DOP));
+    if (num(totals.USD)) parts.push(`USD ${num(totals.USD).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    return parts.join(' / ') || formatMonto(0);
+  }
+
   function incidentReportText(analysis) {
-    const typeLines = analysis.byType.map(row => `- ${row.tipo}: ${row.count} casos · ${formatMonto(row.monto)}`).join('\n') || '- Sin incidencias.';
-    const openLines = analysis.rows.filter(item => !['Compensado', 'Rechazado'].includes(item.estado)).slice(0, 12).map(item => `- ${item.fecha} · ${item.tipo} · ${item.factura || 'Sin factura'} · ${formatMonto(item.monto)} · ${item.estado}`).join('\n') || '- Sin reclamaciones abiertas.';
-    return `Reporte de incidencias en despacho\nPeriodo: ${analysis.period.from} a ${analysis.period.to}\nResponsable: Caribetrans\n\nResumen:\nIncidencias: ${analysis.rows.length}\nMonto reclamable: ${formatMonto(analysis.totalMonto)}\nPendientes de cierre: ${analysis.pendiente}\n\nPor tipo:\n${typeLines}\n\nPendientes / seguimiento:\n${openLines}`;
+    const typeLines = analysis.byType.map(row => `- ${row.tipo}: ${row.count} casos · ${formatIncidentTotals({ totalsByCurrency: row.totalsByCurrency || { DOP: row.monto || 0 } })}`).join('\n') || '- Sin incidencias.';
+    const openLines = analysis.rows.filter(item => !['Compensado', 'Rechazado'].includes(item.estado)).slice(0, 12).map(item => `- ${item.fecha} · ${item.tipo} · ${item.factura || 'Sin factura'} · ${formatIncidentAmount(item)} · ${item.responsable || 'Caribetrans'} · ${item.materialRelacionado || 'Sin material'} · ${item.estado}`).join('\n') || '- Sin reclamaciones abiertas.';
+    return `Reporte de incidencias en despacho\nPeriodo: ${analysis.period.from} a ${analysis.period.to}\nResponsables: Caribetrans / Origen\n\nResumen:\nIncidencias: ${analysis.rows.length}\nMonto reclamable: ${formatIncidentTotals(analysis)}\nPendientes de cierre: ${analysis.pendiente}\n\nPor tipo:\n${typeLines}\n\nPendientes / seguimiento:\n${openLines}`;
   }
 
   function incidentReportHtml(analysis) {
-    const cards = [['Incidencias', analysis.rows.length], ['Monto reclamable', formatMonto(analysis.totalMonto)], ['Pendientes', analysis.pendiente], ['Tipos', analysis.byType.length]];
+    const cards = [['Incidencias', analysis.rows.length], ['Monto reclamable', formatIncidentTotals(analysis)], ['Pendientes', analysis.pendiente], ['Tipos', analysis.byType.length]];
     return `<div style="background:#fff;color:#111827;font-family:Arial,sans-serif;padding:24px;width:780px;">
       <h1 style="font-size:22px;margin:0 0 4px;">Reporte de incidencias en despacho</h1>
-      <div style="font-size:12px;color:#64748B;margin-bottom:16px;">Periodo ${escapeHtml(analysis.period.from)} a ${escapeHtml(analysis.period.to)} · Responsable Caribetrans</div>
+      <div style="font-size:12px;color:#64748B;margin-bottom:16px;">Periodo ${escapeHtml(analysis.period.from)} a ${escapeHtml(analysis.period.to)} · Responsables Caribetrans / Origen</div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">${cards.map(([label, value]) => `<div style="border:1px solid #E2E8F0;border-radius:8px;padding:10px;"><strong style="display:block;font-size:18px;">${escapeHtml(value)}</strong><span style="font-size:10px;color:#64748B;text-transform:uppercase;font-weight:700;">${escapeHtml(label)}</span></div>`).join('')}</div>
       <pre style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:12px;line-height:1.5;margin:0 0 16px;">${escapeHtml(incidentReportText(analysis))}</pre>
-      <table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Fecha</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Tipo</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Factura</th><th style="text-align:right;border-bottom:1px solid #E2E8F0;padding:6px;">Monto</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Estado</th></tr></thead><tbody>${analysis.rows.map(item => `<tr><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.fecha)}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.tipo)}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.factura || '')}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;text-align:right;">${escapeHtml(formatMonto(item.monto))}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.estado)}</td></tr>`).join('')}</tbody></table>
+      <table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Fecha</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Tipo</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Factura</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Material</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Responsable</th><th style="text-align:right;border-bottom:1px solid #E2E8F0;padding:6px;">Monto</th><th style="text-align:left;border-bottom:1px solid #E2E8F0;padding:6px;">Estado</th></tr></thead><tbody>${analysis.rows.map(item => `<tr><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.fecha)}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.tipo)}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.factura || '')}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.materialRelacionado || '')}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.responsable || 'Caribetrans')}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;text-align:right;">${escapeHtml(formatIncidentAmount(item))}</td><td style="padding:6px;border-bottom:1px solid #F1F5F9;">${escapeHtml(item.estado)}</td></tr>`).join('')}</tbody></table>
     </div>`;
   }
 
   function incidentCardHtml(item) {
-    return `<article class="incident-card"><div><div class="incident-card-title"><span>${escapeHtml(item.fecha)}</span><span class="incident-type-chip">${escapeHtml(item.tipo)}</span><span class="incident-status-chip">${escapeHtml(item.estado)}</span><strong>${formatMonto(item.monto)}</strong></div><div class="incident-card-meta">Factura: <strong>${escapeHtml(item.factura || 'Pendiente')}</strong> · Cliente/embarque: ${escapeHtml(item.cliente || 'No especificado')} · Responsable: ${escapeHtml(item.responsable || 'Caribetrans')}</div><div class="incident-card-meta">${escapeHtml(item.descripcion || 'Sin descripción')}</div><div class="incident-card-meta">Creada: ${new Date(item.createdAt || item.updatedAt || nowIso()).toLocaleString('es-DO')}</div><div class="import-actions" style="margin-top:8px;"><button class="btn btn-outline btn-sm" onclick="editarIncidenciaDespacho('${jsString(item.id)}')">Editar</button><button class="btn btn-outline btn-sm" onclick="eliminarIncidenciaDespacho('${jsString(item.id)}')">Eliminar</button></div></div>${item.photoDataUrl ? `<img class="incident-evidence" src="${item.photoDataUrl}" alt="Evidencia de incidencia">` : '<div class="incident-evidence" style="display:grid;place-items:center;color:var(--muted);font-size:11px;">Sin foto</div>'}</article>`;
+    return `<article class="incident-card"><div><div class="incident-card-title"><span>${escapeHtml(item.fecha)}</span><span class="incident-type-chip">${escapeHtml(item.tipo)}</span><span class="incident-status-chip">${escapeHtml(item.estado)}</span><strong>${formatIncidentAmount(item)}</strong></div><div class="incident-card-meta">Factura: <strong>${escapeHtml(item.factura || 'Pendiente')}</strong> · Cliente/embarque: ${escapeHtml(item.cliente || 'No especificado')} · Material: ${escapeHtml(item.materialRelacionado || 'No especificado')} · Responsable: ${escapeHtml(item.responsable || 'Caribetrans')}</div><div class="incident-card-meta">${escapeHtml(item.descripcion || 'Sin descripción')}</div><div class="incident-card-meta">Creada: ${new Date(item.createdAt || item.updatedAt || nowIso()).toLocaleString('es-DO')}</div><div class="import-actions" style="margin-top:8px;"><button class="btn btn-outline btn-sm" onclick="editarIncidenciaDespacho('${jsString(item.id)}')">Editar</button><button class="btn btn-outline btn-sm" onclick="eliminarIncidenciaDespacho('${jsString(item.id)}')">Eliminar</button></div></div>${item.photoDataUrl ? `<img class="incident-evidence" src="${item.photoDataUrl}" alt="Evidencia de incidencia">` : '<div class="incident-evidence" style="display:grid;place-items:center;color:var(--muted);font-size:11px;">Sin foto</div>'}</article>`;
   }
 
   window.renderIncidenciasDespacho = function renderIncidenciasDespacho() {
@@ -7999,20 +8024,22 @@
     const q = text((document.getElementById('incidentSearch') || {}).value).toLowerCase();
     const rows = analysis.rows.filter(item => !q || [item.tipo, item.estado, item.factura, item.cliente, item.descripcion].some(value => text(value).toLowerCase().includes(q)));
     mount.innerHTML = `<div class="incident-module">
-      <section class="incident-hero"><div><h2>Incidencias en despacho</h2><p>Registro administrativo de roturas, pérdidas y gastos reclamables por manejo de mercancía. Cada ficha puede vincular factura, monto y evidencia para sustentar el seguimiento con Caribetrans.</p></div><div class="import-actions"><button class="btn btn-primary btn-sm" onclick="exportarIncidenciasDespachoPdf()">Reporte PDF</button><button class="btn btn-success btn-sm" onclick="exportarIncidenciasDespachoExcel()">Excel</button></div></section>
+      <section class="incident-hero"><div><h2>Incidencias en despacho</h2><p>Registro administrativo de roturas, pérdidas, faltantes de origen y gastos reclamables por manejo de mercancía. Cada ficha puede vincular factura, material, moneda, responsable y evidencia para sustentar el seguimiento.</p></div><div class="import-actions"><button class="btn btn-primary btn-sm" onclick="exportarIncidenciasDespachoPdf()">Reporte PDF</button><button class="btn btn-success btn-sm" onclick="exportarIncidenciasDespachoExcel()">Excel</button></div></section>
       <section class="card"><div class="card-title">${editing ? 'Editar incidencia' : 'Nueva incidencia'}</div><div class="incident-form-grid">
         <label class="form-row">Fecha<input id="incidentDate" class="form-control" type="date" value="${editing ? escapeHtml(editing.fecha) : todayIsoDate()}"></label>
         <label class="form-row">Tipo<select id="incidentType" class="form-control">${DISPATCH_INCIDENT_TYPES.map(type => `<option value="${escapeHtml(type)}" ${editing && editing.tipo === type ? 'selected' : ''}>${escapeHtml(type)}</option>`).join('')}</select></label>
         <label class="form-row">Estado<select id="incidentStatus" class="form-control">${DISPATCH_INCIDENT_STATUSES.map(status => `<option value="${escapeHtml(status)}" ${editing && editing.estado === status ? 'selected' : ''}>${escapeHtml(status)}</option>`).join('')}</select></label>
         <label class="form-row">Monto<input id="incidentAmount" class="form-control" type="number" step="0.01" value="${editing ? num(editing.monto) : ''}" placeholder="0.00"></label>
+        <label class="form-row">Moneda<select id="incidentCurrency" class="form-control">${DISPATCH_INCIDENT_CURRENCIES.map(currency => `<option value="${currency}" ${(!editing && currency === 'DOP') || (editing && (editing.moneda || 'DOP') === currency) ? 'selected' : ''}>${currency}</option>`).join('')}</select></label>
         <input id="incidentInvoice" class="form-control" value="${editing ? escapeHtml(editing.factura || '') : ''}" placeholder="Factura relacionada">
         <input id="incidentClient" class="form-control" value="${editing ? escapeHtml(editing.cliente || '') : ''}" placeholder="Cliente / embarque / ruta">
-        <input id="incidentResponsible" class="form-control" value="${editing ? escapeHtml(editing.responsable || 'Caribetrans') : 'Caribetrans'}" placeholder="Responsable">
+        <input id="incidentMaterial" class="form-control" value="${editing ? escapeHtml(editing.materialRelacionado || '') : ''}" placeholder="Material relacionado">
+        <label class="form-row">Responsable<select id="incidentResponsible" class="form-control">${DISPATCH_INCIDENT_RESPONSIBLES.map(resp => `<option value="${escapeHtml(resp)}" ${((editing && (editing.responsable || 'Caribetrans') === resp) || (!editing && resp === 'Caribetrans')) ? 'selected' : ''}>${escapeHtml(resp)}</option>`).join('')}</select></label>
         <input id="incidentPhoto" class="form-control" type="file" accept="image/*" onchange="cargarFotoIncidenciaDespacho(this.files[0])">
         <textarea id="incidentDescription" class="form-control wide" placeholder="Descripción de la incidencia y soporte para reclamación">${editing ? escapeHtml(editing.descripcion || '') : ''}</textarea>
         <div><img id="incidentPhotoPreview" class="incident-photo-preview" src="${(APP.pendingDispatchIncidentPhoto && APP.pendingDispatchIncidentPhoto.dataUrl) || (editing && editing.photoDataUrl) || ''}" style="${((APP.pendingDispatchIncidentPhoto && APP.pendingDispatchIncidentPhoto.dataUrl) || (editing && editing.photoDataUrl)) ? 'display:block;' : ''}" alt="Vista previa"></div>
       </div><div class="import-actions" style="margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="guardarIncidenciaDespacho()">${editing ? 'Guardar cambios' : 'Registrar incidencia'}</button><button class="btn btn-outline btn-sm" onclick="limpiarFormularioIncidenciaDespacho()">Limpiar</button></div></section>
-      <section class="incident-kpis"><div class="incident-kpi"><strong>${analysis.rows.length}</strong><span>Incidencias</span></div><div class="incident-kpi"><strong>${formatMonto(analysis.totalMonto)}</strong><span>Monto reclamable</span></div><div class="incident-kpi"><strong>${analysis.pendiente}</strong><span>Pendientes</span></div><div class="incident-kpi"><strong>${analysis.byType.length}</strong><span>Tipos activos</span></div></section>
+      <section class="incident-kpis"><div class="incident-kpi"><strong>${analysis.rows.length}</strong><span>Incidencias</span></div><div class="incident-kpi"><strong>${formatIncidentTotals(analysis)}</strong><span>Monto reclamable</span></div><div class="incident-kpi"><strong>${analysis.pendiente}</strong><span>Pendientes</span></div><div class="incident-kpi"><strong>${analysis.byType.length}</strong><span>Tipos activos</span></div></section>
       <section class="card"><div class="view-toolbar" style="justify-content:space-between;gap:10px;"><input id="incidentSearch" class="search-input" value="${escapeHtml(q)}" placeholder="Buscar factura, cliente, tipo o descripción" oninput="renderIncidenciasDespacho()" style="max-width:340px;"><div class="import-actions"><select id="incidentGroupMode" class="search-input" onchange="renderIncidenciasDespacho()" style="max-width:150px;"><option value="diario" ${period.mode === 'diario' ? 'selected' : ''}>Diario</option><option value="semanal" ${period.mode === 'semanal' ? 'selected' : ''}>Semanal</option><option value="mensual" ${period.mode === 'mensual' ? 'selected' : ''}>Mensual</option><option value="anual" ${period.mode === 'anual' ? 'selected' : ''}>Anual</option></select><label class="priority-period-field">Desde<input id="incidentFrom" class="form-control" type="date" value="${period.from}" onchange="renderIncidenciasDespacho()"></label><label class="priority-period-field">Hasta<input id="incidentTo" class="form-control" type="date" value="${period.to}" onchange="renderIncidenciasDespacho()"></label></div></div></section>
       <section class="incident-report-grid"><div class="incident-chart-card"><h3>Por tipo y porcentaje</h3>${renderIncidentPie(analysis)}</div><div class="incident-chart-card"><h3>Tendencia de incidencias</h3>${renderIncidentTrend(analysis)}</div></section>
       <section class="incident-list">${rows.length ? rows.map(incidentCardHtml).join('') : '<div class="route-catalog-empty">Sin incidencias para este filtro.</div>'}</section>
@@ -8078,8 +8105,10 @@
       tipo: text((document.getElementById('incidentType') || {}).value) || 'Otro',
       estado: text((document.getElementById('incidentStatus') || {}).value) || 'Pendiente reclamar',
       monto: num((document.getElementById('incidentAmount') || {}).value),
+      moneda: text((document.getElementById('incidentCurrency') || {}).value) || 'DOP',
       factura: text((document.getElementById('incidentInvoice') || {}).value),
       cliente: text((document.getElementById('incidentClient') || {}).value),
+      materialRelacionado: text((document.getElementById('incidentMaterial') || {}).value),
       responsable: text((document.getElementById('incidentResponsible') || {}).value) || 'Caribetrans',
       descripcion: text((document.getElementById('incidentDescription') || {}).value),
       photoDataUrl: (APP.pendingDispatchIncidentPhoto && APP.pendingDispatchIncidentPhoto.dataUrl) || existing.photoDataUrl || '',
@@ -8130,7 +8159,9 @@
       Estado: item.estado,
       Factura: item.factura || '',
       Cliente_Embarque: item.cliente || '',
+      Material_Relacionado: item.materialRelacionado || '',
       Responsable: item.responsable || 'Caribetrans',
+      Moneda: item.moneda || 'DOP',
       Monto: num(item.monto),
       Descripcion: item.descripcion || '',
       Foto: item.photoName || (item.photoDataUrl ? 'Adjunta en TMS' : '')
