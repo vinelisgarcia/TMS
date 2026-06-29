@@ -8020,19 +8020,50 @@
     </div>`;
   };
 
-  window.cargarFotoIncidenciaDespacho = function cargarFotoIncidenciaDespacho(file) {
+  function resizeDispatchIncidentPhoto(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('No se pudo leer la foto.'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('No se pudo procesar la foto.'));
+        img.onload = () => {
+          const maxSide = 1200;
+          const ratio = Math.min(1, maxSide / Math.max(img.width || maxSide, img.height || maxSide));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round((img.width || maxSide) * ratio));
+          canvas.height = Math.max(1, Math.round((img.height || maxSide) * ratio));
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.72));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function persistDispatchIncidentsChange() {
+    saveLocalSnapshot();
+    window.guardarEnSupabase({ silent: false }).catch(error => {
+      console.warn('Error guardando incidencias de despacho:', error);
+    });
+  }
+
+  window.cargarFotoIncidenciaDespacho = async function cargarFotoIncidenciaDespacho(file) {
     if (!file) return;
     if (!file.type || !file.type.startsWith('image/')) return alert('Selecciona una imagen válida.');
-    const reader = new FileReader();
-    reader.onload = () => {
-      APP.pendingDispatchIncidentPhoto = { dataUrl: reader.result, name: file.name || 'evidencia', type: file.type || 'image' };
+    try {
+      const dataUrl = await resizeDispatchIncidentPhoto(file);
+      APP.pendingDispatchIncidentPhoto = { dataUrl, name: file.name || 'evidencia', type: 'image/jpeg' };
       const preview = document.getElementById('incidentPhotoPreview');
       if (preview) {
-        preview.src = reader.result;
+        preview.src = dataUrl;
         preview.style.display = 'block';
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+      alert('No se pudo cargar la foto de la incidencia: ' + error.message);
+    }
   };
 
   window.guardarIncidenciaDespacho = function guardarIncidenciaDespacho() {
@@ -8064,7 +8095,7 @@
     APP.pendingDispatchIncidentPhoto = null;
     APP.dispatchIncidentEditingId = '';
     renderIncidenciasDespacho();
-    scheduleAutoSave();
+    persistDispatchIncidentsChange();
   };
 
   window.editarIncidenciaDespacho = function editarIncidenciaDespacho(id) {
@@ -8081,7 +8112,7 @@
     pushUndoState('eliminar incidencia despacho');
     APP.dispatchIncidents = (APP.dispatchIncidents || []).filter(item => item.id !== id);
     renderIncidenciasDespacho();
-    scheduleAutoSave();
+    persistDispatchIncidentsChange();
   };
 
   window.limpiarFormularioIncidenciaDespacho = function limpiarFormularioIncidenciaDespacho() {
