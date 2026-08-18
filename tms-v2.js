@@ -306,11 +306,14 @@
 
   function getGroupSelectionKey(group) {
     if (!group || !Array.isArray(group.items)) return '';
-    return group.items
-      .map(item => item.baseKey)
-      .filter(Boolean)
-      .sort()
-      .join('||');
+    if (group.id) return group.id;
+    return [
+      group.fecha || '',
+      group.camion || '',
+      group.rutaNombre || group.zona || '',
+      group.codigo || '',
+      ...group.items.map(item => item.baseKey).filter(Boolean).sort()
+    ].join('||');
   }
 
   function isGroupSelected(group) {
@@ -2321,30 +2324,62 @@
     scheduleAutoSave();
   };
 
+  function getCalendarGroupsToMove(group) {
+    const selectedKeys = new Set(APP.selectedCalendarGroups || []);
+    const groupKey = getGroupSelectionKey(group);
+    const multiMove = selectedKeys.has(groupKey) && selectedKeys.size > 1;
+    return multiMove ? getSelectedGroups().map(match => match.group) : [group];
+  }
+
+  function splitAndMovePendingLine(item, nuevaFecha, nuevoCamion) {
+    const requested = num(item.cantidadSolicitada);
+    const invoiced = num(item.cantidadFacturada);
+    const pending = num(item.cantidadPendiente);
+    if (invoiced > 0 && pending > 0) {
+      const moved = { ...item };
+      moved.idInterno = (item.idInterno || item.baseKey || 'linea') + '-pend-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+      moved.cantidadSolicitada = pending;
+      moved.cantidadFacturada = 0;
+      moved.cantidadPendiente = pending;
+      moved.cantidadPendienteServir = pending;
+      moved.cantidadPendienteSinStock = 0;
+      moved.fechaPlanificada = nuevaFecha;
+      moved.camionAsignado = nuevoCamion;
+      moved.manualProgramado = true;
+      moved.origen = moved.origen === 'planificacion semanal' ? 'manual' : moved.origen;
+      moved.observaciones = text(moved.observaciones || '') || `Pendiente reprogramado desde ${item.fechaPlanificada || 'calendario'}`;
+      moved.fechaActualizacion = nowIso();
+
+      item.cantidadSolicitada = invoiced;
+      item.cantidadFacturada = invoiced;
+      item.cantidadPendiente = 0;
+      item.cantidadPendienteServir = 0;
+      item.cantidadPendienteSinStock = 0;
+      item.montoPlanificado = 0;
+      item.fechaActualizacion = nowIso();
+
+      APP.lineItems.push(moved);
+      return;
+    }
+
+    item.fechaPlanificada = nuevaFecha;
+    item.camionAsignado = nuevoCamion;
+    item.manualProgramado = true;
+    item.origen = item.origen === 'planificacion semanal' ? 'manual' : item.origen;
+    item.fechaActualizacion = nowIso();
+  }
+
   window.moverCliente = function moverClienteV2(fecha, camion, idx, nuevaFecha, nuevoCamion) {
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
     pushUndoState('mover pedido de ruta');
-    const selectedKeys = new Set(APP.selectedCalendarGroups || []);
-    const groupKey = getGroupSelectionKey(group);
-    const multiMove = selectedKeys.has(groupKey) && selectedKeys.size > 1;
-    const keys = new Set();
-    if (multiMove) {
-      getSelectedGroups().forEach(({ group: selectedGroup }) => {
-        selectedGroup.items.forEach(item => keys.add(item.baseKey));
+    const itemsToMove = [];
+    getCalendarGroupsToMove(group).forEach(currentGroup => {
+      (currentGroup.items || []).forEach(item => {
+        if (APP.lineItems.includes(item) && !itemsToMove.includes(item)) itemsToMove.push(item);
       });
-    } else {
-      group.items.forEach(item => keys.add(item.baseKey));
-    }
-    APP.lineItems.forEach(item => {
-      if (keys.has(item.baseKey)) {
-        item.fechaPlanificada = nuevaFecha;
-        item.camionAsignado = nuevoCamion;
-        item.manualProgramado = true;
-        item.origen = item.origen === 'planificacion semanal' ? 'manual' : item.origen;
-        item.fechaActualizacion = nowIso();
-      }
     });
+    itemsToMove.forEach(item => splitAndMovePendingLine(item, nuevaFecha, nuevoCamion));
     rebuildDerivedState();
     clearCalendarSelection();
     renderCalendario();
