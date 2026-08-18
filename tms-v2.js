@@ -34,6 +34,7 @@
     feriadosRD: APP.feriadosRD || (RD_HOLIDAYS[CURRENT_YEAR] || []),
     importFiles: APP.importFiles || { plan: '', control: '', solicitudesPlan: '', solicitudesControl: '' },
     importShipments: APP.importShipments || [],
+    transitMaterials: APP.transitMaterials || [],
     dailyPriorities: APP.dailyPriorities || [],
     prioritySpainTopics: APP.prioritySpainTopics || [],
     calendarNotes: APP.calendarNotes || [],
@@ -124,6 +125,7 @@
     comercial: 'Comercial',
     rutas: 'Rutas',
     importaciones: 'Importaciones',
+    materialesTransito: 'Materiales en tránsito',
     prioridades: 'Prioridades',
     incidenciasDespacho: 'Incidencias despacho',
     configuracion: 'Configuración',
@@ -466,6 +468,7 @@
       comercial: { ver: true, editar: true },
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
+      materialesTransito: { ver: true, editar: true, importar: true },
       prioridades: { ver: true, editar: true, importar: true },
       incidenciasDespacho: { ver: true, editar: true, importar: false },
       configuracion: { ver: true, editar: true, importar: true },
@@ -601,6 +604,7 @@
     'feriadosRD',
     'importFiles',
     'importShipments',
+    'transitMaterials',
     'dailyPriorities',
     'prioritySpainTopics',
     'calendarNotes',
@@ -980,6 +984,7 @@
       comercial: 'comercial',
       rutas: 'rutas',
       importaciones: 'importaciones',
+      materialesTransito: 'materialesTransito',
       prioridades: 'prioridades',
       incidenciasDespacho: 'incidenciasDespacho',
       configClientes: 'configuracion',
@@ -1019,7 +1024,7 @@
   }
 
   function getFirstAllowedView() {
-    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'importaciones', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'almacen', 'configClientes'];
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'importaciones', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'almacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || 'comercial';
   }
 
@@ -1040,6 +1045,7 @@
       comercial: 'comercial',
       rutas: 'rutas',
       importaciones: 'importaciones',
+      materialesTransito: 'materialesTransito',
       prioridades: 'prioridades',
       incidenciasDespacho: 'incidenciasDespacho',
       configClientes: 'configuracion',
@@ -1086,6 +1092,7 @@
       syncMobileModuleSelect();
       if (id === 'rutas') renderRouteCatalog();
       if (id === 'importaciones') renderImportaciones();
+      if (id === 'materialesTransito') renderMaterialesTransito();
       if (id === 'prioridades') renderPrioridades();
       if (id === 'incidenciasDespacho') renderIncidenciasDespacho();
       applyPermissionUi();
@@ -1491,6 +1498,7 @@
         feriadosRD: APP.feriadosRD,
         importFiles: APP.importFiles,
         importShipments: APP.importShipments,
+        transitMaterials: APP.transitMaterials,
         dailyPriorities: APP.dailyPriorities,
         prioritySpainTopics: APP.prioritySpainTopics,
         calendarNotes: APP.calendarNotes,
@@ -1797,6 +1805,7 @@
             const facturado = client.items.reduce((sum, item) => sum + (item.cantidadFacturada || 0), 0);
             const pendiente = client.items.reduce((sum, item) => sum + (item.cantidadPendiente || 0), 0);
             const monto = client.items.reduce((sum, item) => sum + (item.monto || getOperationalAmount(item.item || item) || 0), 0);
+            const transitRecommendation = transitRecommendationForLines(client.items);
             return `<div class="queue-card ${warn ? 'queue-card-new' : 'queue-card-plan'}" draggable="true"
               ondragstart="onDragStartQueue(event,${client.indexes[0]})"
               ondragend="APP.dragQueue=null;this.classList.remove('dragging')">
@@ -1805,6 +1814,7 @@
               <div class="queue-card-meta" style="margin-top:6px;">Referencias: <strong>${referencias.slice(0, 6).join(', ') || 'Sin referencia'}</strong>${referencias.length > 6 ? ' +' + (referencias.length - 6) : ''}</div>
               <div class="queue-card-meta" style="margin-top:6px;">Solicitado: <strong>${solicitado}</strong> · Facturado: <strong>${facturado}</strong> · Pendiente: <strong>${pendiente}</strong> · Monto: <strong>${formatMonto(monto)}</strong></div>
               ${alerts.length ? `<div style="font-size:11px;color:var(--danger);margin-top:6px;">${alerts.join(' · ')}</div>` : ''}
+              ${transitRecommendation ? `<div class="transit-alert">${escapeHtml(transitRecommendation)}</div>` : ''}
               <button class="btn btn-outline btn-sm" style="margin-top:8px;" onclick="abrirMoveQueueModal(${client.indexes[0]})">Asignar fecha/camión</button>
             </div>`;
           }).join('')}
@@ -1965,6 +1975,8 @@
             const alertHtml = group.alertas.length
               ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
               : '';
+            const transitRecommendation = transitRecommendationForLines(group.items || []);
+            const transitHtml = transitRecommendation ? `<div class="transit-alert">${escapeHtml(transitRecommendation)}</div>` : '';
             const evidenceBits = [
               group.precintoDespacho ? 'Precinto: ' + group.precintoDespacho : '',
               group.choferRuta ? 'Chofer/recibido: ' + group.choferRuta : '',
@@ -1987,6 +1999,7 @@
               <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · Carga ${formatLoadQty(group.cargaTotal)} uds · Valor ${formatMonto(group.totalPendiente)}${group.montoSolicitudes ? ` · Valor sol ${formatMonto(group.montoSolicitudes)}` : ''}</div>
               ${evidenceHtml}
               ${alertHtml}
+              ${transitHtml}
               <div class="cal-card-actions">
                 <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirMoveModal('${fecha}','${camion}',${realIdx})">✏️ Mover</button>
                 <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="toggleCumplida('${fecha}','${camion}',${realIdx})">${group.cumplida ? '↩️' : '✅'}</button>
@@ -4274,6 +4287,7 @@
       comercial: { ver: true, editar: true },
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
+      materialesTransito: { ver: true, editar: true, importar: true },
       prioridades: { ver: role === 'Admin' || scope === 'full', editar: role === 'Admin' || scope === 'full', importar: false },
       incidenciasDespacho: { ver: role === 'Admin' || scope === 'full', editar: role === 'Admin' || scope === 'full', importar: false },
       configuracion: { ver: true, editar: true, importar: true },
@@ -4296,6 +4310,7 @@
         comercial: { ver: true, editar: false },
         rutas: { ver: false, editar: false },
         importaciones: { ver: false, editar: false, importar: false },
+        materialesTransito: { ver: false, editar: false, importar: false },
         prioridades: { ver: false, editar: false, importar: false },
         incidenciasDespacho: { ver: false, editar: false, importar: false },
         configuracion: { ver: false, editar: false, importar: false },
@@ -4312,6 +4327,7 @@
         comercial: { ver: false, editar: false },
         rutas: { ver: false, editar: false },
         importaciones: { ver: false, editar: false, importar: false },
+        materialesTransito: { ver: false, editar: false, importar: false },
         prioridades: { ver: false, editar: false, importar: false },
         incidenciasDespacho: { ver: false, editar: false, importar: false },
         configuracion: { ver: false, editar: false, importar: false },
@@ -4327,6 +4343,7 @@
       comercial: { ver: true, editar: false },
       rutas: { ver: true, editar: true },
       importaciones: { ver: true, editar: true, importar: true },
+      materialesTransito: { ver: true, editar: true, importar: true },
       prioridades: { ver: false, editar: false, importar: false },
       incidenciasDespacho: { ver: false, editar: false, importar: false },
       configuracion: { ver: false, editar: false, importar: false },
@@ -5010,6 +5027,7 @@
         APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
         APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
         APP.importShipments = Array.isArray(settingsMap.app_state.importShipments) ? settingsMap.app_state.importShipments : (APP.importShipments || []);
+        APP.transitMaterials = Array.isArray(settingsMap.app_state.transitMaterials) ? settingsMap.app_state.transitMaterials : (APP.transitMaterials || []);
         APP.dailyPriorities = Array.isArray(settingsMap.app_state.dailyPriorities) ? settingsMap.app_state.dailyPriorities : (APP.dailyPriorities || []);
         APP.prioritySpainTopics = Array.isArray(settingsMap.app_state.prioritySpainTopics) ? settingsMap.app_state.prioritySpainTopics : (APP.prioritySpainTopics || []);
         APP.calendarNotes = Array.isArray(settingsMap.app_state.calendarNotes) ? settingsMap.app_state.calendarNotes : (APP.calendarNotes || []);
@@ -5100,6 +5118,7 @@
       renderSolicitudesAlmacen();
       renderAlmacen();
       renderPrioridades();
+      renderMaterialesTransito();
       renderIncidenciasDespacho();
       applyPermissionUi();
       saveLocalSnapshot();
@@ -5138,6 +5157,7 @@
       renderSolicitudesAlmacen();
       renderAlmacen();
       renderPrioridades();
+      renderMaterialesTransito();
       renderIncidenciasDespacho();
     }
   };
@@ -5178,7 +5198,8 @@
       const canWriteWarehouseHistory = adminCanManageUsers || hasPermission('solicitudesAlmacen', 'editar') || hasPermission('almacen', 'editar');
       const canWriteCalendarNotes = hasPermission('calendario', 'ver');
       const canWriteDispatchIncidents = adminCanManageUsers && hasPermission('incidenciasDespacho', 'editar');
-      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes || canWriteDispatchIncidents;
+      const canWriteTransitMaterials = adminCanManageUsers || hasPermission('materialesTransito', 'editar') || hasPermission('materialesTransito', 'importar');
+      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes || canWriteDispatchIncidents || canWriteTransitMaterials;
       const settingsRows = [
         ...((adminCanManageUsers || canWriteWarehouseHistory) ? [{ clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) }] : []),
         ...(adminCanManageUsers ? [{ clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) }] : []),
@@ -5195,6 +5216,7 @@
             feriadosRD: APP.feriadosRD || [],
             importFiles: APP.importFiles || {},
             importShipments: APP.importShipments || [],
+            transitMaterials: APP.transitMaterials || [],
             dailyPriorities: APP.dailyPriorities || [],
             prioritySpainTopics: APP.prioritySpainTopics || [],
             calendarNotes: APP.calendarNotes || [],
@@ -6543,6 +6565,7 @@
       #nav-comercial .nav-icon::before { content:'$'; }
       #nav-rutas .nav-icon::before { content:'⇄'; }
       #nav-importaciones .nav-icon::before { content:'↗'; }
+      #nav-materialesTransito .nav-icon::before { content:'⇥'; }
       #nav-prioridades .nav-icon::before { content:'!'; }
       #nav-incidenciasDespacho .nav-icon::before { content:'⚠'; }
       #nav-configClientes .nav-icon::before { content:'⚙'; }
@@ -6574,6 +6597,22 @@
       @media (max-width: 760px) { .route-add-form, .role-permission-toolbar, .incident-form-grid, .incident-report-grid { grid-template-columns:1fr; } }
       @media (max-width: 760px) { .theme-option-grid { grid-template-columns:1fr; } }
 
+
+      .transit-module { display:grid; gap:14px; }
+      .transit-hero { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; padding:18px; border:1px solid var(--border); border-radius:12px; background:var(--surface); box-shadow:var(--shadow-sm); }
+      .transit-hero h2 { margin:0 0 4px; font-size:20px; }
+      .transit-hero p { margin:0; color:var(--muted); font-size:13px; max-width:760px; line-height:1.5; }
+      .transit-form-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; align-items:end; }
+      .transit-kpis { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; }
+      .transit-kpi { border:1px solid var(--border); border-radius:10px; padding:12px; background:var(--surface); box-shadow:var(--shadow-sm); }
+      .transit-kpi strong { display:block; font-size:22px; }
+      .transit-kpi span { color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:800; }
+      .transit-table-wrap { overflow:auto; border:1px solid var(--border); border-radius:10px; background:var(--surface); }
+      .transit-table { width:100%; border-collapse:collapse; font-size:12px; }
+      .transit-table th, .transit-table td { padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+      .transit-table th { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); background:var(--bg); }
+      .transit-alert { margin-top:6px; padding:6px 8px; border-radius:8px; border:1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); background:color-mix(in srgb, var(--warning) 14%, transparent); color:var(--text); font-size:11px; line-height:1.35; }
+      @media (max-width: 760px) { .transit-hero { display:grid; } .transit-form-grid, .transit-kpis { grid-template-columns:1fr; } }
       .incident-module { display:grid; gap:14px; }
       .incident-hero { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; padding:18px; border:1px solid var(--border); border-radius:12px; background:var(--surface); box-shadow:var(--shadow-sm); }
       .incident-hero h2 { margin:0 0 4px; font-size:20px; }
@@ -6608,6 +6647,245 @@
     `;
     document.head.appendChild(style);
   }
+
+
+
+  function ensureTransitMaterials() {
+    APP.transitMaterials = Array.isArray(APP.transitMaterials) ? APP.transitMaterials : [];
+    APP.transitMaterials.forEach(item => {
+      item.id = item.id || ('tm-' + Date.now() + '-' + Math.random().toString(16).slice(2));
+      item.factura = text(item.factura || item.invoice || item.documento);
+      item.eta = parseImportBulkDate(item.eta || item.fechaLlegada || item.fecha || '');
+      item.codigoMaterial = text(item.codigoMaterial || item.material || item.articulo || item.codigo);
+      item.descripcion = text(item.descripcion || item.descripcionMaterial || item.descripcionArticulo);
+      item.cantidad = num(item.cantidad || item.qty || item.quantity);
+      item.cliente = text(item.cliente || item.clienteNombre || item.destino);
+      item.importacionId = text(item.importacionId || '');
+      item.createdAt = item.createdAt || nowIso();
+      item.updatedAt = item.updatedAt || item.createdAt;
+    });
+    APP.transitMaterials = APP.transitMaterials.filter(item => item.codigoMaterial && item.cantidad > 0);
+  }
+
+  function transitMaterialKey(value) {
+    return normKey(value);
+  }
+
+  function transitMaterialStatus(item) {
+    if (!item.eta) return 'Sin ETA';
+    const state = importEtaState({ eta: item.eta, etapa: 'embarcado' });
+    return state.label;
+  }
+
+  function getTransitMatchesForLine(line) {
+    ensureTransitMaterials();
+    const materialKey = transitMaterialKey(line && line.articulo);
+    if (!materialKey) return { total: 0, complete: false, eta: '', facturas: [], rows: [] };
+    const rows = APP.transitMaterials
+      .filter(item => transitMaterialKey(item.codigoMaterial) === materialKey)
+      .sort((a, b) => text(a.eta || '9999-99-99').localeCompare(text(b.eta || '9999-99-99')));
+    const pending = num(line && line.cantidadPendiente);
+    let running = 0;
+    let eta = '';
+    const used = [];
+    rows.forEach(item => {
+      if (running < pending) {
+        running += num(item.cantidad);
+        eta = item.eta || eta;
+        used.push(item);
+      }
+    });
+    return {
+      total: rows.reduce((sum, item) => sum + num(item.cantidad), 0),
+      complete: pending > 0 && running >= pending,
+      eta,
+      facturas: uniqueTexts(used.map(item => item.factura).filter(Boolean)),
+      rows
+    };
+  }
+
+  function transitRecommendationForLines(lines) {
+    const pendingLines = (lines || []).filter(item => num(item.cantidadPendiente) > 0);
+    const matches = pendingLines.map(line => ({ line, match: getTransitMatchesForLine(line.item || line) })).filter(row => row.match.total > 0);
+    if (!matches.length) return '';
+    const complete = matches.filter(row => row.match.complete);
+    const nextEta = matches.map(row => row.match.eta).filter(Boolean).sort()[0] || '';
+    const invoices = uniqueTexts(matches.flatMap(row => row.match.facturas)).slice(0, 4);
+    const label = complete.length === pendingLines.length
+      ? `Esperar importación ETA ${nextEta || 'por definir'} para despacho completo`
+      : `Factura en tránsito cubre ${complete.length}/${pendingLines.length} líneas; ETA ${nextEta || 'por definir'}`;
+    return `${label}${invoices.length ? ' · Factura: ' + invoices.join(', ') : ''}`;
+  }
+
+  function normalizeTransitMaterial(raw) {
+    const codigoMaterial = text(raw.codigoMaterial || raw.material || raw.articulo);
+    const cantidad = num(raw.cantidad);
+    if (!codigoMaterial || cantidad <= 0) return null;
+    const factura = text(raw.factura);
+    const eta = parseImportBulkDate(raw.eta);
+    const importMatch = factura ? (APP.importShipments || []).find(item => text(item.factura || item.referencia || item.booking).toLowerCase() === factura.toLowerCase()) : null;
+    return {
+      id: 'tm-' + normKey([factura, codigoMaterial, raw.descripcion, eta].join('-')) + '-' + Date.now().toString(36),
+      factura,
+      eta: eta || (importMatch && importMatch.eta) || '',
+      codigoMaterial,
+      descripcion: text(raw.descripcion),
+      cantidad,
+      cliente: text(raw.cliente),
+      importacionId: importMatch ? importMatch.id : '',
+      createdAt: nowIso(),
+      updatedAt: nowIso()
+    };
+  }
+
+  function parseTransitRowsFromObjects(rows, defaults) {
+    return (rows || []).map(row => {
+      const material = pickField(row, ['Código material', 'Codigo material', 'Material', 'Artículo', 'Articulo', 'SKU', 'Producto']);
+      const descripcion = pickField(row, ['Descripción', 'Descripcion', 'Descripción material', 'Descripcion material', 'Texto breve', 'Producto descripción', 'Producto descripcion']);
+      const cantidad = pickField(row, ['Cantidad', 'Cantidad factura', 'Qty', 'Quantity', 'Unidades']);
+      const factura = pickField(row, ['Factura', 'Invoice', 'Documento', 'Referencia']) || defaults.factura;
+      const eta = pickField(row, ['ETA', 'Fecha llegada', 'Fecha ETA', 'Llegada']) || defaults.eta;
+      const cliente = pickField(row, ['Cliente', 'Destino', 'Solicitante']) || defaults.cliente;
+      return normalizeTransitMaterial({ factura, eta, codigoMaterial: material, descripcion, cantidad, cliente });
+    }).filter(Boolean);
+  }
+
+  function parseTransitMaterialsFromText(rawText, defaults) {
+    const rows = String(rawText || '').replace(/\r/g, '\n').split('\n').map(line => text(line)).filter(Boolean);
+    return rows.map(line => {
+      const clean = line.replace(/\s{2,}/g, ' ');
+      const match = clean.match(/^([A-Z0-9._-]{4,})\s+(.+?)\s+(-?\d+(?:[,.]\d+)?)$/i);
+      if (!match) return null;
+      return normalizeTransitMaterial({ factura: defaults.factura, eta: defaults.eta, codigoMaterial: match[1], descripcion: match[2], cantidad: match[3], cliente: defaults.cliente });
+    }).filter(Boolean);
+  }
+
+  async function extractPdfText(file) {
+    if (!window.pdfjsLib) {
+      await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+    }
+    if (!window.pdfjsLib) throw new Error('No se pudo cargar el lector PDF.');
+    const buffer = await readArrayBufferFile(file);
+    const pdf = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+    const parts = [];
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+      const page = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+      const lines = {};
+      content.items.forEach(item => {
+        const y = Math.round((item.transform && item.transform[5]) || 0);
+        const x = (item.transform && item.transform[4]) || 0;
+        const key = String(y);
+        lines[key] = lines[key] || [];
+        lines[key].push({ x, text: item.str });
+      });
+      Object.keys(lines).sort((a, b) => Number(b) - Number(a)).forEach(key => {
+        parts.push(lines[key].sort((a, b) => a.x - b.x).map(part => part.text).join(' '));
+      });
+    }
+    return parts.join('\n');
+  }
+
+  async function parseTransitMaterialsFile(file, defaults) {
+    const name = (file.name || '').toLowerCase();
+    if (/\.(xlsx|xls|xml)$/.test(name)) {
+      const buffer = await readArrayBufferFile(file);
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      return parseTransitRowsFromObjects(XLSX.utils.sheet_to_json(sheet, { defval: '' }), defaults);
+    }
+    if (/\.pdf$/.test(name) || file.type === 'application/pdf') return parseTransitMaterialsFromText(await extractPdfText(file), defaults);
+    if (/\.(csv|txt)$/.test(name) || /^text\//.test(file.type || '')) return parseTransitMaterialsFromText(await readTextFile(file), defaults);
+    throw new Error('Sube un archivo Excel, PDF, CSV o TXT.');
+  }
+
+  function upsertTransitMaterials(rows) {
+    ensureTransitMaterials();
+    let created = 0;
+    let updated = 0;
+    rows.forEach(next => {
+      const key = [next.factura, next.codigoMaterial, next.eta, next.cliente].map(normKey).join('|');
+      const idx = APP.transitMaterials.findIndex(item => [item.factura, item.codigoMaterial, item.eta, item.cliente].map(normKey).join('|') === key);
+      if (idx >= 0) {
+        APP.transitMaterials[idx] = { ...APP.transitMaterials[idx], ...next, createdAt: APP.transitMaterials[idx].createdAt || nowIso(), updatedAt: nowIso() };
+        updated += 1;
+      } else {
+        APP.transitMaterials.push(next);
+        created += 1;
+      }
+    });
+    return { created, updated };
+  }
+
+  function transitAnalysis() {
+    ensureTransitMaterials();
+    const totalQty = APP.transitMaterials.reduce((sum, item) => sum + num(item.cantidad), 0);
+    const nextEta = APP.transitMaterials.map(item => item.eta).filter(Boolean).sort()[0] || '';
+    const materials = new Set(APP.transitMaterials.map(item => transitMaterialKey(item.codigoMaterial))).size;
+    const matches = (APP.queueSemana || []).map(item => getTransitMatchesForLine(item)).filter(match => match.total > 0);
+    return { totalQty, nextEta, materials, matches };
+  }
+
+  function renderTransitMaterialRows(rows) {
+    return rows.length ? rows.map(item => `<tr><td><strong>${escapeHtml(item.codigoMaterial)}</strong><br><small>${escapeHtml(item.descripcion || '')}</small></td><td>${escapeHtml(item.factura || 'Sin factura')}</td><td>${escapeHtml(item.eta || 'Sin ETA')}<br><small>${escapeHtml(transitMaterialStatus(item))}</small></td><td>${escapeHtml(item.cliente || 'No asignado')}</td><td style="text-align:right;"><strong>${num(item.cantidad).toLocaleString('es-DO')}</strong></td><td><button class="btn btn-outline btn-sm" onclick="eliminarMaterialTransito('${jsString(item.id)}')">Eliminar</button></td></tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px;">Sin materiales en tránsito.</td></tr>';
+  }
+
+  window.renderMaterialesTransito = function renderMaterialesTransito() {
+    const mount = document.getElementById('materialesTransitoMount');
+    if (!mount) return;
+    ensureTransitMaterials();
+    const canEdit = hasPermission('materialesTransito', 'editar');
+    const q = text((document.getElementById('transitSearch') || {}).value).toLowerCase();
+    const rows = APP.transitMaterials.filter(item => !q || [item.codigoMaterial, item.descripcion, item.factura, item.cliente].some(value => text(value).toLowerCase().includes(q)));
+    const analysis = transitAnalysis();
+    mount.innerHTML = `<div class="transit-module"><section class="transit-hero"><div><h2>Materiales en tránsito</h2><p>Carga materiales de facturas de importación con ETA. El TMS cruza el código de material contra la queue y recomienda esperar la importación cuando puede convertir un despacho parcial en completo.</p></div><div class="import-actions"><button class="btn btn-success btn-sm" onclick="exportarMaterialesTransitoExcel()">Excel</button></div></section><section class="card" style="display:${canEdit ? 'block' : 'none'};"><div class="card-title">Cargar factura / material en tránsito</div><div class="transit-form-grid"><input id="transitFactura" class="form-control" placeholder="Factura / referencia"><label class="form-row">ETA<input id="transitEta" class="form-control" type="date"></label><input id="transitCliente" class="form-control" placeholder="Cliente opcional"><input id="transitFile" class="form-control" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf"></div><div class="import-actions" style="margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" class="import-bulk-status"></span></div></section><section class="transit-kpis"><div class="transit-kpi"><strong>${APP.transitMaterials.length}</strong><span>Líneas en tránsito</span></div><div class="transit-kpi"><strong>${analysis.materials}</strong><span>Materiales únicos</span></div><div class="transit-kpi"><strong>${analysis.totalQty.toLocaleString('es-DO')}</strong><span>Cantidad total</span></div><div class="transit-kpi"><strong>${analysis.matches.length}</strong><span>Matches en queue</span></div></section><section class="card"><div class="view-toolbar" style="justify-content:space-between;"><input id="transitSearch" class="search-input" value="${escapeHtml(q)}" placeholder="Buscar material, factura o cliente" oninput="renderMaterialesTransito()" style="max-width:340px;"><span class="badge badge-warn">${analysis.nextEta ? 'Próxima ETA ' + analysis.nextEta : 'Sin ETA próxima'}</span></div></section><section class="transit-table-wrap"><table class="transit-table"><thead><tr><th>Material</th><th>Factura</th><th>ETA</th><th>Cliente</th><th style="text-align:right;">Cantidad</th><th></th></tr></thead><tbody>${renderTransitMaterialRows(rows)}</tbody></table></section></div>`;
+  };
+
+  window.importarMaterialesTransito = async function importarMaterialesTransito() {
+    if (!hasPermission('materialesTransito', 'importar')) return alert('Tu rol no puede importar materiales en tránsito.');
+    const file = (document.getElementById('transitFile') || {}).files?.[0];
+    if (!file) return alert('Selecciona un archivo Excel o PDF.');
+    const defaults = { factura: text((document.getElementById('transitFactura') || {}).value), eta: text((document.getElementById('transitEta') || {}).value), cliente: text((document.getElementById('transitCliente') || {}).value) };
+    try {
+      const status = document.getElementById('transitStatus');
+      if (status) status.textContent = 'Procesando archivo...';
+      const rows = await parseTransitMaterialsFile(file, defaults);
+      if (!rows.length) throw new Error('No detecté materiales y cantidades. En Excel usa columnas como Material, Descripción, Cantidad, Factura y ETA.');
+      pushUndoState('importar materiales en tránsito');
+      const result = upsertTransitMaterials(rows);
+      construirQueueSemana();
+      renderMaterialesTransito();
+      renderCalendario();
+      scheduleAutoSave();
+      alert(`Materiales en tránsito cargados: ${rows.length} líneas · ${result.created} nuevas · ${result.updated} actualizadas.`);
+    } catch (error) {
+      console.error('Error importando materiales en tránsito:', error);
+      const status = document.getElementById('transitStatus');
+      if (status) status.textContent = 'Error: ' + error.message;
+      alert('No se pudieron importar los materiales en tránsito: ' + error.message);
+    }
+  };
+
+  window.eliminarMaterialTransito = function eliminarMaterialTransito(id) {
+    if (!hasPermission('materialesTransito', 'editar')) return alert('Tu rol no puede editar materiales en tránsito.');
+    if (!confirm('¿Eliminar este material en tránsito?')) return;
+    pushUndoState('eliminar material en tránsito');
+    APP.transitMaterials = (APP.transitMaterials || []).filter(item => item.id !== id);
+    construirQueueSemana();
+    renderMaterialesTransito();
+    renderCalendario();
+    scheduleAutoSave();
+  };
+
+  window.exportarMaterialesTransitoExcel = function exportarMaterialesTransitoExcel() {
+    ensureTransitMaterials();
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.transitMaterials.map(item => ({ Factura: item.factura, ETA: item.eta, Material: item.codigoMaterial, Descripcion: item.descripcion, Cantidad: item.cantidad, Cliente: item.cliente }))), 'Materiales transito');
+    XLSX.writeFile(wb, 'TMS_Materiales_Transito.xlsx');
+  };
 
 
   const IMPORT_STAGES = [
@@ -8289,6 +8567,7 @@
     initThemeSettings();
     initConfigExtras();
     renderImportaciones();
+    renderMaterialesTransito();
     syncMoveOptions();
     initRouteFilterOptions();
     renderRouteCatalog();
