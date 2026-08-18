@@ -1420,15 +1420,15 @@
   function schedulePlanItems(items, fechaPlanBase) {
     const startDate = fechaInicioPlanificacion(fechaPlanBase || fechaToStr(new Date()));
     const candidateDates = appendWorkingDates(startDate, 15);
-    const orderGroups = new Map();
+    const clientGroups = new Map();
     items.forEach(item => {
-      const key = [item.clienteId, item.pedidoCliente || item.baseKey].join('|');
-      if (!orderGroups.has(key)) orderGroups.set(key, []);
-      orderGroups.get(key).push(item);
+      const key = text(item.clienteId) || normKey(item.clienteNombre);
+      if (!clientGroups.has(key)) clientGroups.set(key, []);
+      clientGroups.get(key).push(item);
     });
 
     const loadMap = {};
-    orderGroups.forEach(groupItems => {
+    clientGroups.forEach(groupItems => {
       const ref = groupItems[0];
       const preferredTruck = chooseTruckForItem(ref);
       const routeName = ref.rutaNombre || ref.zona;
