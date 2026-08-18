@@ -1428,24 +1428,41 @@
     });
 
     const loadMap = {};
-    clientGroups.forEach(groupItems => {
+    const routeMap = {};
+    const groupList = [...clientGroups.values()].sort((a, b) => {
+      const routeA = text((a[0] || {}).rutaNombre || (a[0] || {}).zona);
+      const routeB = text((b[0] || {}).rutaNombre || (b[0] || {}).zona);
+      return routeA.localeCompare(routeB, 'es') || text((a[0] || {}).clienteNombre).localeCompare(text((b[0] || {}).clienteNombre), 'es');
+    });
+
+    groupList.forEach(groupItems => {
       const ref = groupItems[0];
       const preferredTruck = chooseTruckForItem(ref);
       const routeName = ref.rutaNombre || ref.zona;
       const allowedDates = candidateDates.filter(date => clienteAllowsDate(ref, date) && routeAllowsDate(routeName, date));
       const datesToUse = allowedDates.length ? allowedDates : candidateDates.filter(date => !isNonWorkingDay(date));
-      let bestDate = datesToUse[0] || startDate;
-      let bestLoad = Infinity;
-      datesToUse.forEach(date => {
+      const routeFriendlyDates = datesToUse.filter(date => {
+        const routes = routeMap[date] || new Set();
+        return routes.has(routeName) || routes.size < 2;
+      });
+      const candidatePool = routeFriendlyDates.length ? routeFriendlyDates : datesToUse;
+      let bestDate = candidatePool[0] || startDate;
+      let bestScore = Infinity;
+      candidatePool.forEach(date => {
         const key = [date, preferredTruck].join('|');
+        const routes = routeMap[date] || new Set();
         const load = loadMap[key] || 0;
-        if (load < bestLoad) {
-          bestLoad = load;
+        const newRoutePenalty = routes.has(routeName) ? 0 : routes.size * 100000;
+        const score = newRoutePenalty + load;
+        if (score < bestScore) {
+          bestScore = score;
           bestDate = date;
         }
       });
       const key = [bestDate, preferredTruck].join('|');
       loadMap[key] = (loadMap[key] || 0) + groupItems.reduce((sum, item) => sum + (item.cantidadSolicitada || 1), 0);
+      if (!routeMap[bestDate]) routeMap[bestDate] = new Set();
+      routeMap[bestDate].add(routeName);
       groupItems.forEach(item => {
         item.fechaPlanificada = bestDate;
         item.camionAsignado = preferredTruck;
