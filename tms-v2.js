@@ -2635,6 +2635,113 @@
     }
   }
 
+  function downloadJsonFile(payload, filename) {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = event => resolve(String(event.target.result || ''));
+      reader.onerror = () => reject(reader.error || new Error('No se pudo leer el archivo.'));
+      reader.readAsText(file);
+    });
+  }
+
+  function normalizeImportedCalendarLine(item) {
+    const line = { ...item };
+    line.clienteId = text(line.clienteId || line.codigo);
+    line.clienteNombre = text(line.clienteNombre || line.nombre || line.razonSocial);
+    line.fechaPlanificada = text(line.fechaPlanificada || line.fecha);
+    line.camionAsignado = text(line.camionAsignado || line.camion) || 'CAMION 1';
+    line.rutaNombre = text(line.rutaNombre || line.zona || line.sector);
+    line.zona = line.rutaNombre || text(line.zona);
+    line.pedidoCliente = text(line.pedidoCliente || line.pedido || 'Sin pedido');
+    line.lineaPedidoCliente = text(line.lineaPedidoCliente || line.linea || '');
+    line.articulo = text(line.articulo || line.referencia || line.material || '');
+    line.descripcionArticulo = text(line.descripcionArticulo || line.descripcion || '');
+    line.cantidadSolicitada = num(line.cantidadSolicitada || line.cantidad || line.cantidadPendiente || 0);
+    line.cantidadFacturada = num(line.cantidadFacturada);
+    line.cantidadPendiente = num(line.cantidadPendiente || Math.max(line.cantidadSolicitada - line.cantidadFacturada, 0));
+    line.montoPlanificado = num(line.montoPlanificado);
+    line.montoEntregadoNoFacturado = num(line.montoEntregadoNoFacturado);
+    line.origen = text(line.origen || 'import calendario json');
+    line.manualProgramado = !!line.manualProgramado || line.origen === 'manual';
+    line.fechaActualizacion = nowIso();
+    line.fechaCreacion = line.fechaCreacion || nowIso();
+    line.idInterno = line.idInterno || ['calendar-json', line.clienteId, line.pedidoCliente, line.articulo, Date.now(), Math.random().toString(16).slice(2)].join('-');
+    line.baseKey = buildBaseItemKey(line);
+    line.sapMatchKey = buildSapMatchKey(line);
+    return line;
+  }
+
+  function getCalendarJsonPayload() {
+    return {
+      type: 'tms-calendar-backup',
+      version: 1,
+      exportedAt: nowIso(),
+      exportedBy: getCalendarNoteAuthor(),
+      month: APP.calMeses && APP.calMeses[APP.calMesIdx] ? APP.calMeses[APP.calMesIdx].key : '',
+      appState: {
+        lineItems: safeClone(APP.lineItems || []),
+        calendarNotes: safeClone(APP.calendarNotes || []),
+        routeConfigs: safeClone(APP.routeConfigs || []),
+        clienteConfig: safeClone(APP.clienteConfig || {}),
+        camionExtraEnabled: !!APP.camionExtraEnabled,
+        feriadosRD: safeClone(APP.feriadosRD || [])
+      }
+    };
+  }
+
+  window.exportarCalendarioJSON = function exportarCalendarioJSONV2() {
+    if (!APP.lineItems || !APP.lineItems.length) return alert('No hay calendario para exportar.');
+    const month = APP.calMeses && APP.calMeses[APP.calMesIdx];
+    const filename = 'TMS_Calendario_' + (month ? month.key : fechaToStr(new Date())) + '.json';
+    downloadJsonFile(getCalendarJsonPayload(), filename);
+  };
+
+  window.importarCalendarioJSON = async function importarCalendarioJSONV2(file) {
+    if (!file) return;
+    try {
+      const raw = await readFileAsText(file);
+      const parsed = JSON.parse(raw);
+      const state = parsed && parsed.appState ? parsed.appState : parsed;
+      const incomingLines = Array.isArray(state.lineItems) ? state.lineItems : [];
+      if (!incomingLines.length) throw new Error('El archivo no contiene líneas de calendario.');
+      const ok = confirm('Esto reemplazará el calendario actual por el archivo JSON seleccionado. ¿Continuar?');
+      if (!ok) return;
+      pushUndoState('importar calendario json');
+      APP.lineItems = incomingLines.map(normalizeImportedCalendarLine).filter(item => item.clienteId && item.fechaPlanificada);
+      APP.calendarNotes = Array.isArray(state.calendarNotes) ? state.calendarNotes : (APP.calendarNotes || []);
+      APP.routeConfigs = Array.isArray(state.routeConfigs) && state.routeConfigs.length ? state.routeConfigs : (APP.routeConfigs || []);
+      APP.clienteConfig = state.clienteConfig && typeof state.clienteConfig === 'object' ? state.clienteConfig : (APP.clienteConfig || {});
+      if (typeof state.camionExtraEnabled === 'boolean') APP.camionExtraEnabled = state.camionExtraEnabled;
+      if (Array.isArray(state.feriadosRD)) APP.feriadosRD = state.feriadosRD;
+      ensureCalendarNotes();
+      rebuildDerivedState();
+      actualizarDashboard();
+      renderCalendario();
+      renderRutas();
+      renderComercial();
+      renderAlmacen();
+      saveLocalSnapshot();
+      window.guardarEnSupabase({ silent: true }).catch(e => console.warn('No se pudo guardar calendario importado en nube:', e));
+      alert(`Calendario importado: ${APP.lineItems.length} líneas cargadas.`);
+    } catch (error) {
+      console.error('Error importando calendario JSON:', error);
+      alert('No se pudo importar el calendario JSON: ' + error.message);
+    }
+  };
+
   function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();

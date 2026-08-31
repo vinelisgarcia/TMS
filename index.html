@@ -1439,6 +1439,9 @@ html { -webkit-text-size-adjust: 100%; }
           </div>
           <input type="text" id="calSearch" class="search-input" placeholder="Buscar cliente..." oninput="renderCalendario()" style="max-width:200px;">
           <button class="btn btn-primary btn-sm" onclick="exportarCalendarioVisiblePDF()">Exportar PDF</button>
+          <button class="btn btn-outline btn-sm" onclick="exportarCalendarioJSON()">Exportar JSON</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('calendarJsonImport').click()">Importar JSON</button>
+          <input type="file" id="calendarJsonImport" accept=".json,application/json" style="display:none" onchange="importarCalendarioJSON(this.files[0]);this.value='';">
         </div>
         <div id="calMesNav"></div>
       </div>
@@ -4596,6 +4599,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260818-route-daily-cap"></script>
+<script src="./tms-v2.js?v=20260831-calendar-json-backup"></script>
 </body>
 </html>
