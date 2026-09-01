@@ -351,6 +351,17 @@
     return matches;
   }
 
+  function getCalendarLaneSelectionState(groups) {
+    const source = groups || [];
+    const selectable = source.filter(group => getGroupSelectionKey(group));
+    const selected = selectable.filter(group => isGroupSelected(group)).length;
+    return {
+      total: selectable.length,
+      selected,
+      allSelected: selectable.length > 0 && selected === selectable.length
+    };
+  }
+
   function getPlanningWindowDates(referenceDate) {
     const plannedDates = APP.lineItems
       .map(item => item.fechaPlanificada)
@@ -1979,12 +1990,16 @@
           });
           const load = getTruckLoadSummary(groups);
           const loadText = `Carga: ${formatLoadQty(load.total)} uds · Valor transportado: ${formatMonto(load.valorTransportado)}${load.solicitudes ? ` · Sol: ${formatLoadQty(load.solicitudes)} uds · Valor sol: ${formatMonto(load.montoSolicitudes)}` : ''}`;
+          const laneSelection = getCalendarLaneSelectionState(groups);
           html.push(`<div class="cal-carril"
             ondragover="event.preventDefault();this.classList.add('drag-over')"
             ondragleave="this.classList.remove('drag-over')"
             ondrop="onDropCal(event,'${fecha}','${camion}',this)">
             <span class="cal-carril-header ${truckClass}">
-              <span>${getTruckLabel(camion)} ${groups.length ? '(' + groups.length + ')' : ''}${load.rutas.length ? ` · ${load.rutas.join(', ')}` : ''}</span>
+              <span class="cal-carril-title">
+                <span>${getTruckLabel(camion)} ${groups.length ? '(' + groups.length + ')' : ''}${load.rutas.length ? ` · ${load.rutas.join(', ')}` : ''}</span>
+                ${laneSelection.total ? `<button class="calendar-lane-select" onclick="toggleSeleccionCarrilCalendario('${jsString(fecha)}','${jsString(camion)}', event)">${laneSelection.allSelected ? 'Quitar todo' : 'Seleccionar todo'}</button>` : ''}
+              </span>
               <small>${loadText}</small>
             </span>`);
 
@@ -2493,6 +2508,18 @@
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
     toggleCalendarSelection(group);
+    renderCalendario();
+  };
+
+  window.toggleSeleccionCarrilCalendario = function toggleSeleccionCarrilCalendarioV2(fecha, camion, event) {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    const groups = (APP.rutas[fecha] && APP.rutas[fecha][camion]) || [];
+    if (!groups.length) return;
+    const state = getCalendarLaneSelectionState(groups);
+    groups.forEach(group => toggleCalendarSelection(group, !state.allSelected));
     renderCalendario();
   };
 
@@ -6128,6 +6155,26 @@
       .calendar-pdf-export .calendar-selection-bar,
       .calendar-pdf-export button,
       .calendar-pdf-export input { display:none !important; }
+      .cal-carril-title {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+      }
+      .calendar-lane-select {
+        border:1px solid rgba(255,255,255,0.35);
+        border-radius:999px;
+        background:rgba(255,255,255,0.2);
+        color:inherit;
+        cursor:pointer;
+        font-size:9px;
+        font-weight:800;
+        line-height:1;
+        padding:4px 7px;
+        text-transform:none;
+        white-space:nowrap;
+      }
+      .calendar-lane-select:hover { background:rgba(255,255,255,0.32); }
       .cal-card-topline {
         display:flex;
         align-items:center;
