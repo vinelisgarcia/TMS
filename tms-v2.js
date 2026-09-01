@@ -739,7 +739,7 @@
     const banner = document.getElementById('sapEstadoBanner');
     if (banner) {
       banner.style.display = 'block';
-      banner.innerHTML = '<strong>Migración de nube pendiente.</strong><br>El sistema guardó en modo compatibilidad. Para guardado transaccional completo falta aplicar supabase/migrations/0004_atomic_replace_and_route_history.sql en Supabase.';
+      banner.innerHTML = '<strong>Migración de nube pendiente.</strong><br>El sistema guardó en modo compatibilidad. Para guardado transaccional completo falta aplicar las migraciones pendientes de Supabase, especialmente 0004_atomic_replace_and_route_history.sql y 0005_app_state_new_modules_policy.sql.';
     }
   }
 
@@ -5355,7 +5355,7 @@
       const canWriteWarehousePlan = adminCanManageUsers || canWriteImports || hasPermission('solicitudesAlmacen', 'editar');
       const canWriteWarehouseControl = adminCanManageUsers || canWriteImports || hasPermission('almacen', 'editar');
       const canWriteWarehouseHistory = adminCanManageUsers || hasPermission('solicitudesAlmacen', 'editar') || hasPermission('almacen', 'editar');
-      const canWriteCalendarNotes = hasPermission('calendario', 'ver');
+      const canWriteCalendarNotes = adminCanManageUsers || hasPermission('calendario', 'editar');
       const canWriteDispatchIncidents = adminCanManageUsers && hasPermission('incidenciasDespacho', 'editar');
       const canWriteTransitMaterials = adminCanManageUsers || hasPermission('materialesTransito', 'editar') || hasPermission('materialesTransito', 'importar');
       const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes || canWriteDispatchIncidents || canWriteTransitMaterials;
@@ -5461,13 +5461,24 @@
         fuente: row.fuente || ''
       })).filter(row => row.fecha && row.cliente_id);
 
+      const nonCriticalSaveErrors = [];
       if (settingsRows.length) {
         await runSupabaseQuery(client.from('tms_settings').upsert(settingsRows, { onConflict: 'clave' }), 'No se pudieron guardar los ajustes');
       }
       if (adminCanManageUsers) {
-        await replaceSupabaseTable('tms_user_profiles', userRows);
+        try {
+          await replaceSupabaseTable('tms_user_profiles', userRows);
+        } catch (profileError) {
+          nonCriticalSaveErrors.push(profileError);
+          console.warn('No se pudieron guardar perfiles de usuario; continúo con datos operativos:', profileError);
+        }
       } else if (currentUserProfileRow) {
-        await runSupabaseQuery(client.from('tms_user_profiles').upsert(currentUserProfileRow, { onConflict: 'email' }), 'No se pudo actualizar tu estado de acceso');
+        try {
+          await runSupabaseQuery(client.from('tms_user_profiles').upsert(currentUserProfileRow, { onConflict: 'email' }), 'No se pudo actualizar tu estado de acceso');
+        } catch (profileError) {
+          nonCriticalSaveErrors.push(profileError);
+          console.warn('No se pudo actualizar el estado de acceso; continúo con datos operativos:', profileError);
+        }
       }
       if (adminCanManageUsers || canWriteConfig || canWriteRoutes) await replaceSupabaseTable('tms_route_configs', routeRows);
       if (adminCanManageUsers || canWriteConfig || canWriteRoutes) await replaceSupabaseTable('tms_client_configs', clientRows);
@@ -5478,11 +5489,15 @@
       if (canWriteWarehouseHistory) await replaceSupabaseTable('tms_warehouse_history', warehouseHistoryRows);
 
       if (btn) {
-        btn.textContent = APP.cloudMigrationPending ? 'Nube modo compat.' : 'Guardado en nube';
+        btn.textContent = nonCriticalSaveErrors.length ? 'Nube parcial' : (APP.cloudMigrationPending ? 'Nube modo compat.' : 'Guardado en nube');
+      }
+      if (nonCriticalSaveErrors.length && !silent && !window._tmsProfileSaveNoticeShown) {
+        window._tmsProfileSaveNoticeShown = true;
+        alert('Los cambios operativos se guardaron en la nube, pero no se pudieron actualizar perfiles de usuario. Detalle: ' + nonCriticalSaveErrors.map(err => err.message || err).join(' | '));
       }
       if (APP.cloudMigrationPending && !silent && !window._tmsMigrationPendingNoticeShown) {
         window._tmsMigrationPendingNoticeShown = true;
-        alert('Cambios guardados en la nube en modo compatibilidad. Falta aplicar la migración 0004 en Supabase para activar guardado transaccional completo.');
+        alert('Cambios guardados en la nube en modo compatibilidad. Falta aplicar las migraciones 0004 y 0005 en Supabase para activar guardado transaccional completo.');
       }
       return true;
     } catch (error) {
