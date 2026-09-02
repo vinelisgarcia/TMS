@@ -5,6 +5,7 @@
 
   const LOCAL_KEY = 'tms_alvarez_v2_state';
   const THEME_KEY = 'tms_alvarez_visual_theme';
+  const DEFAULT_ADMIN_EMAIL = 'vinelis.garcia@hbyalvarez.com';
   const CURRENT_YEAR = new Date().getFullYear();
   const RD_HOLIDAYS = {
     2026: [
@@ -542,12 +543,15 @@
 
   function getPermissionsForRole(role) {
     APP.rolePermissions = APP.rolePermissions || buildDefaultRolePermissions();
+    if (role === 'Sin perfil') {
+      return Object.fromEntries(Object.keys(MODULE_LABELS).map(module => [module, { ver: false, editar: false, importar: false }]));
+    }
     return safeClone(APP.rolePermissions[role] || APP.rolePermissions['Solo lectura'] || buildPermissions('read_only', role));
   }
 
   function ensureAdminProfile() {
     const { userEmail } = getSessionInfo();
-    const fallbackEmail = userEmail || 'vinelis.garcia@tms-alvarez.local';
+    const fallbackEmail = DEFAULT_ADMIN_EMAIL;
     let adminProfile = APP.userProfiles.find(profile => profile.rol === 'Admin');
     if (!adminProfile) {
       adminProfile = {
@@ -569,14 +573,40 @@
     }
     ensureRolePermissions();
     APP.currentUserProfile =
-      APP.userProfiles.find(profile => text(profile.email).toLowerCase() === fallbackEmail.toLowerCase()) ||
-      (userEmail ? null : adminProfile) ||
+      APP.userProfiles.find(profile => text(profile.email).toLowerCase() === text(userEmail).toLowerCase()) ||
+      (!userEmail ? adminProfile : null) ||
       null;
   }
 
   function getSessionInfo() {
     const email = (document.getElementById('userEmail') || {}).textContent || '';
     return { userEmail: email.trim() };
+  }
+
+  function getProfileForAuthUser(user) {
+    if (!user) return null;
+    const email = text(user.email).toLowerCase();
+    const id = text(user.id);
+    return (APP.userProfiles || []).find(profile => {
+      if (profile.activo === false) return false;
+      const profileEmail = text(profile.email).toLowerCase();
+      const authUserId = text(profile.authUserId || profile.auth_user_id);
+      return (id && authUserId && authUserId === id) || (email && profileEmail === email);
+    }) || null;
+  }
+
+  function setCurrentUserProfileFromAuth(user, fallbackRole) {
+    const profile = getProfileForAuthUser(user);
+    APP.currentUserProfile = profile || {
+      userId: (user && user.id) || 'unprofiled-user',
+      authUserId: (user && user.id) || '',
+      nombre: (user && user.email) || 'Usuario sin perfil',
+      email: (user && user.email) || '',
+      rol: fallbackRole || 'Sin perfil',
+      permisosPorModulo: getPermissionsForRole(fallbackRole || 'Sin perfil'),
+      activo: true
+    };
+    return APP.currentUserProfile;
   }
 
   function getSupabaseClient() {
@@ -1039,7 +1069,7 @@
 
   function getFirstAllowedView() {
     const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'importaciones', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'almacen', 'configClientes'];
-    return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || 'comercial';
+    return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || '';
   }
 
   function enforceCurrentViewPermission() {
@@ -1047,6 +1077,15 @@
     const activeId = active && active.id;
     if (!activeId || hasPermission(moduleFromViewId(activeId), 'ver')) return;
     const nextView = getFirstAllowedView();
+    if (!nextView) {
+      document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+      const dashboard = document.getElementById('dashboard');
+      if (dashboard) {
+        dashboard.classList.add('active');
+        dashboard.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><p>Tu usuario no tiene un rol activo asignado. Solicita al administrador que revise tu perfil.</p></div>';
+      }
+      return;
+    }
     const nextBtn = document.getElementById('nav-' + nextView);
     if (typeof window.cambiarVista === 'function') window.cambiarVista(nextView, nextBtn);
   }
@@ -5107,14 +5146,7 @@
       ensureAdminProfile();
       if (!client || !user) {
         if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
-          APP.currentUserProfile = {
-            userId: 'local-readonly',
-            nombre: 'Usuario local',
-            email: (user && user.email) || '',
-            rol: 'Solo lectura',
-            permisosPorModulo: getPermissionsForRole('Solo lectura'),
-            activo: true
-          };
+          setCurrentUserProfileFromAuth(user, 'Sin perfil');
           updateSolicitudesImportStatus();
           actualizarEstadoBanner();
           actualizarDashboard();
@@ -5279,17 +5311,7 @@
       APP.solicitudesLoaded = APP.solicitudesLoaded || !!(APP.solicitudesPlanAlmacen.length || APP.solicitudesControlAlmacen.length);
 
       ensureAdminProfile();
-      APP.currentUserProfile =
-        APP.userProfiles.find(profile => text(profile.email).toLowerCase() === text(user.email).toLowerCase()) ||
-        {
-          userId: user.id || 'unprofiled-user',
-          authUserId: user.id || '',
-          nombre: user.email || 'Usuario sin perfil',
-          email: (user && user.email) || '',
-          rol: 'Solo lectura',
-          permisosPorModulo: getPermissionsForRole('Solo lectura'),
-          activo: true
-        };
+      setCurrentUserProfileFromAuth(user, 'Sin perfil');
 
       rebuildDerivedState();
       await enforcePasswordChangeIfNeeded();
@@ -5311,6 +5333,7 @@
     } catch (error) {
       console.warn('Fallo la carga remota, usando respaldo local si existe:', error);
       if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
+        setCurrentUserProfileFromAuth(await getAuthenticatedUser(), 'Sin perfil');
         updateSolicitudesImportStatus();
         actualizarEstadoBanner();
         actualizarDashboard();
@@ -5323,6 +5346,7 @@
         renderAlmacen();
         renderPrioridades();
         renderIncidenciasDespacho();
+        applyPermissionUi();
         return;
       }
       APP.lineItems = [];
@@ -5362,18 +5386,7 @@
     try {
       if (!client || !user) throw new Error('No hay sesión autenticada para guardar en Supabase.');
       ensureAdminProfile();
-      APP.currentUserProfile =
-        APP.userProfiles.find(profile => text(profile.email).toLowerCase() === text(user.email).toLowerCase()) ||
-        APP.currentUserProfile ||
-        {
-          userId: user.id || 'unprofiled-user',
-          authUserId: user.id || '',
-          nombre: user.email || 'Usuario sin perfil',
-          email: (user && user.email) || '',
-          rol: 'Solo lectura',
-          permisosPorModulo: getPermissionsForRole('Solo lectura'),
-          activo: true
-        };
+      setCurrentUserProfileFromAuth(user, 'Sin perfil');
 
       const adminCanManageUsers = isAdminUser();
       const canWriteImports = adminCanManageUsers || hasPermission('importar', 'editar') || hasPermission('importar', 'importar');
