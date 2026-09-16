@@ -514,6 +514,13 @@
       Object.keys(MODULE_LABELS).forEach(module => {
         const current = APP.rolePermissions[role] && APP.rolePermissions[role][module];
         if (!current && defaultPerms[module]) normalized[module] = safeClone(defaultPerms[module]);
+        if (role !== 'Admin' && defaultPerms[module]) {
+          normalized[module] = {
+            ver: !!(normalized[module] && normalized[module].ver && defaultPerms[module].ver),
+            editar: !!(normalized[module] && normalized[module].editar && defaultPerms[module].editar),
+            importar: !!(normalized[module] && normalized[module].importar && defaultPerms[module].importar)
+          };
+        }
       });
       APP.rolePermissions[role] = normalized;
     });
@@ -4521,10 +4528,21 @@
     };
     if (role === 'Admin' || scope === 'full') return all;
     if (scope === 'read_only') {
-      return Object.fromEntries(Object.keys(all).map(key => [
-        key,
-        ['prioridades', 'incidenciasDespacho'].includes(key) ? { ver: false, editar: false, importar: false } : { ver: true, editar: false, importar: false }
-      ]));
+      return {
+        importar: { ver: false, editar: false, importar: false },
+        dashboard: { ver: true, editar: false, importar: false },
+        calendario: { ver: true, editar: false, importar: false },
+        reportes: { ver: true, editar: false, importar: false },
+        comercial: { ver: true, editar: false, importar: false },
+        rutas: { ver: false, editar: false, importar: false },
+        importaciones: { ver: false, editar: false, importar: false },
+        materialesTransito: { ver: false, editar: false, importar: false },
+        prioridades: { ver: false, editar: false, importar: false },
+        incidenciasDespacho: { ver: false, editar: false, importar: false },
+        configuracion: { ver: false, editar: false, importar: false },
+        solicitudesAlmacen: { ver: false, editar: false, importar: false },
+        almacen: { ver: false, editar: false, importar: false }
+      };
     }
     if (scope === 'commercial') {
       return {
