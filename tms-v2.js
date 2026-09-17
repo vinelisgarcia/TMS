@@ -868,12 +868,17 @@
   }
 
   function buildOrderLineDbRows(items, dataset) {
+    const occurrences = new Map();
     return items.map(item => {
       const routeCfg = getRouteConfigByName(item.rutaNombre || item.zona || '');
       const routeId = routeCfg && isUuid(routeCfg.id) ? routeCfg.id : null;
       const baseKey = item.baseKey || buildBaseItemKey(item);
+      // Preserve every line, including split deliveries sharing SAP identifiers.
+      const identity = JSON.stringify([dataset, baseKey, item.fechaPlanificada || '', item.fechaControl || '', item.camionAsignado || '']);
+      const occurrence = occurrences.get(identity) || 0;
+      occurrences.set(identity, occurrence + 1);
       return {
-        clave_unica: [dataset, baseKey, item.fechaPlanificada || '', item.fechaControl || '', item.camionAsignado || ''].join('|'),
+        clave_unica: JSON.stringify([identity, occurrence]),
         cliente_id: text(item.clienteId),
         cliente_nombre: text(item.clienteNombre),
         ruta_id: routeId,
@@ -1672,7 +1677,7 @@
       const group = grouped.get(key);
       group.items.push(item);
       group.pedidos = uniqueTexts([...group.pedidos, item.pedidoCliente]);
-      group.solicitudes = uniqueTexts([...group.solicitudes, item.solicitudAlmacen]);
+      group.solicitudes = uniqueTexts([...group.solicitudes, ...text(item.solicitudAlmacen).split(', ')]);
       group.referencias = uniqueTexts([...group.referencias, item.articulo]);
       group.pedidoCliente = group.pedidos.join(', ') || 'Sin pedido';
       group.cantidadPedidos = group.pedidos.length || group.items.length;
@@ -1683,7 +1688,7 @@
       group.cargaSolicitudes += item.cantidadAlmacenSolicitada || 0;
       group.cargaTotal = group.cantidadSolicitada + group.cargaSolicitudes;
       if (item.solicitudAlmacen || item.cantidadAlmacenSolicitada) {
-        group.montoSolicitudes += getOperationalAmount(item);
+        group.montoSolicitudes += num(item.montoAlmacenLiberado);
       }
       group.totalPendiente += getOperationalAmount(item);
       group.cumplida = group.items.every(current => deriveItemStatus(current) === 'entregado');
@@ -2077,7 +2082,8 @@
               </div>
               <div class="cal-card-name">${group.nombre}</div>
               <div class="queue-card-meta">${group.codigo} · ${group.cantidadPedidos || 1} pedidos: ${group.pedidoCliente}</div>
-              <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · Carga ${formatLoadQty(group.cargaTotal)} uds · Valor ${formatMonto(group.totalPendiente)}${group.montoSolicitudes ? ` · Valor sol ${formatMonto(group.montoSolicitudes)}` : ''}</div>
+              <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · Carga ${formatLoadQty(group.cargaTotal)} uds · Valor ${formatMonto(group.totalPendiente)}</div>
+              ${group.cantidadSolicitudes ? `<div style="color:#b91c1c;font-size:11px;font-weight:700">Liberado a almacén: ${formatMonto(group.montoSolicitudes)}</div>` : ''}
               ${evidenceHtml}
               ${alertHtml}
               ${transitHtml}
@@ -3118,29 +3124,38 @@
   };
 
   function matchWarehouseToOrders() {
-    const warehouseItems = [
+    const warehouseItems = [...new Map([
       ...(APP.solicitudesPlanAlmacen || []),
       ...(APP.solicitudesControlAlmacen || [])
-    ];
+    ].map(item => [JSON.stringify([item.solicitud, buildSapMatchKey(item)]), item])).values()];
     const byFullKey = new Map();
-    const byLooseKey = new Map();
     warehouseItems.forEach(item => {
       const fullKey = buildSapMatchKey(item);
-      const looseKey = [item.pedidoCliente, item.lineaPedidoCliente, item.articulo].map(normKey).join('|');
-      if (fullKey) byFullKey.set(fullKey, item);
-      if (looseKey) byLooseKey.set(looseKey, item);
+      if (!byFullKey.has(fullKey)) byFullKey.set(fullKey, []);
+      byFullKey.get(fullKey).push(item);
     });
-    [...(APP.lineItems || []), ...(APP.planLineItems || []), ...(APP.controlLineItems || [])].forEach(item => {
+    [APP.lineItems || [], APP.planLineItems || [], APP.controlLineItems || []].forEach(lines => {
+    const quantities = new Map();
+    lines.forEach(item => {
+      const key = buildSapMatchKey(item);
+      quantities.set(key, (quantities.get(key) || 0) + num(item.cantidadSolicitada));
+    });
+    lines.forEach(item => {
       const fullKey = buildSapMatchKey(item);
-      const looseKey = [item.pedidoCliente, item.lineaPedidoCliente, item.articulo].map(normKey).join('|');
-      const match = byFullKey.get(fullKey) || byLooseKey.get(looseKey);
+      const matches = byFullKey.get(fullKey) || [];
       item.sapMatchKey = fullKey;
-      if (!match) return;
-      item.solicitudAlmacen = match.solicitud || '';
-      item.cantidadAlmacenSolicitada = match.cantidadSolicitada || 0;
-      item.cantidadAlmacenProcesada = match.cantidadCompletada || 0;
-      item.cantidadAlmacenPendiente = match.cantidadPendiente || 0;
-      item.estadoAlmacen = match.estado || '';
+      item.solicitudAlmacen = uniqueTexts(matches.map(match => match.solicitud)).join(', ');
+      const share = quantities.get(fullKey) > 0 ? num(item.cantidadSolicitada) / quantities.get(fullKey) : 0;
+      item.cantidadAlmacenSolicitada = share * matches.reduce((sum, match) => sum + num(match.cantidadSolicitada), 0);
+      item.cantidadAlmacenProcesada = share * matches.reduce((sum, match) => sum + num(match.cantidadCompletada), 0);
+      item.cantidadAlmacenPendiente = share * matches.reduce((sum, match) => sum + num(match.cantidadPendiente), 0);
+      item.estadoAlmacen = uniqueTexts(matches.map(match => match.estado)).join(', ');
+      const releasedQty = matches.filter(match => normKey(match.estadoProceso) === 'liberado')
+        .reduce((sum, match) => sum + num(match.cantidadSolicitada), 0);
+      const orderQty = quantities.get(fullKey);
+      item.montoAlmacenLiberado = orderQty > 0
+        ? getConfirmedUndeliveredAmount(item) * Math.min(releasedQty / orderQty, 1) : 0;
+    });
     });
   }
 
@@ -3260,6 +3275,7 @@
         renderAlmacen();
         renderSolicitudesAlmacen();
         progressEl.style.width = '100%';
+        updateSolicitudesImportStatus();
 
         setTimeout(() => {
           loadingEl.style.display = 'none';
@@ -3336,7 +3352,7 @@
         cantidadCompletada,
         cantidadPendiente,
         estadoComunicacion: text(pickField(row, ['Estado de comunicación', 'Estado de comunicacion'])),
-        estadoProceso: text(pickField(row, ['Estado de procesamiento', 'Estado proceso'])),
+        estadoProceso: text(pickField(row, ['Estado de procesamiento', 'Estado proceso', 'Estado'])),
         fechaLiberacion: toDateLabel(pickField(row, ['Fecha de creación', 'Fecha de creacion', 'Fecha de liberación', 'Fecha de liberacion'])),
         fechaFinalizada: toDateLabel(pickField(row, ['Fecha finalizada'])),
         fechaEnvio: fecha,
@@ -3365,6 +3381,7 @@
           ...item,
           tipoSolicitudArchivo: mode === 'control' ? 'control diario' : 'plan semanal'
         }));
+        if (!parsed.length) throw new Error('No se encontraron solicitudes válidas. Revisa las columnas de cliente, solicitud y pedido. Los datos anteriores se conservaron.');
         pushUndoState(mode === 'control' ? 'importar solicitudes de control' : 'importar solicitudes de planificación');
         if (mode === 'control') {
           APP.solicitudesControlAlmacen = parsed;
@@ -3383,6 +3400,7 @@
         updateSolicitudesImportStatus();
         renderSolicitudesAlmacen();
         renderAlmacen();
+        renderCalendario();
         actualizarEstadoBanner();
         saveLocalSnapshot();
         window.guardarEnSupabase().catch(e => console.warn('Error guardando solicitudes:', e));
@@ -3390,8 +3408,14 @@
       } catch (error) {
         console.error('Error procesando solicitudes:', error);
         alert('No se pudo procesar el archivo de solicitudes: ' + error.message);
+      } finally {
+        ['solicitudesPlanFileImport', 'solicitudesControlFileImport', 'solicitudesFile'].forEach(id => {
+          const input = document.getElementById(id);
+          if (input) input.value = '';
+        });
       }
     };
+    reader.onerror = () => alert('No se pudo leer el archivo de solicitudes. Intenta seleccionarlo nuevamente.');
     reader.readAsArrayBuffer(file);
   };
 
@@ -3462,14 +3486,7 @@
   }
 
   function getWarehouseRequestAmount(item) {
-    const exact = (APP.lineItems || []).filter(line =>
-      text(line.clienteId) === text(item.codigo) &&
-      (!item.pedidoCliente || text(line.pedidoCliente) === text(item.pedidoCliente)) &&
-      (!item.articulo || text(line.articulo) === text(item.articulo))
-    );
-    const source = exact.length ? exact : (APP.lineItems || []).filter(line => text(line.clienteId) === text(item.codigo));
-    const amount = source.reduce((sum, line) => sum + getOperationalAmount(line), 0);
-    return amount || num(item.costeSolicitud || APP.warehouseSettings.costoSolicitud || 0);
+    return getCommercialLineAmount(item);
   }
 
   function getWarehouseRowsForView(mode) {
@@ -3664,11 +3681,7 @@
         line.clienteId || ''
       ].map(normKey).join('|');
       return lineKey === targetKey;
-    }) || candidates.find(line =>
-      normKey(line.pedidoCliente) === normKey(item.pedidoCliente) &&
-      normKey(line.articulo) === normKey(item.articulo) &&
-      normKey(line.clienteId) === normKey(item.codigo || item.clienteId)
-    ) || null;
+    }) || null;
   }
 
   function getCommercialWarehouseQty(item) {
@@ -5611,6 +5624,11 @@
     if (ctrlStatus) ctrlStatus.textContent = APP.importFiles.solicitudesControl || 'Sin archivo de control';
     const newCount = document.getElementById('solNewRequestsCount');
     if (newCount) newCount.textContent = getSolicitudesNewCount();
+    const source = APP.solicitudesPlanAlmacen || [];
+    const unmatched = source.filter(item => !findOrderLineForWarehouseItem(item)).length;
+    if (planStatus && source.length) planStatus.textContent += unmatched
+      ? ` · ${unmatched} líneas pendientes de cruce: carga los pedidos correspondientes para calcular su monto.`
+      : ' · Todas las líneas cruzadas con pedidos.';
     updateImportExcelTableStatus();
   }
 
