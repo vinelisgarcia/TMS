@@ -993,6 +993,7 @@ html { -webkit-text-size-adjust: 100%; }
 }
 #logoutBtn:hover { background: rgba(255,255,255,0.28); }
 </style>
+<link rel="stylesheet" href="./tms-glass.css?v=20261022-audit">
 </head>
 <body>
 
@@ -1319,7 +1320,7 @@ html { -webkit-text-size-adjust: 100%; }
 
       <!-- Gráfico 3: Top clientes por monto (barras horizontales CSS) -->
       <div class="chart-card" style="margin-bottom:16px;">
-        <div class="chart-card-title">Top 10 clientes por monto pendiente</div>
+        <div class="chart-card-title">Top 10 · Confirmado no entregado</div>
         <div id="dashTopClientes"></div>
       </div>
 
@@ -2971,13 +2972,20 @@ async function iniciarSesion() {
   const errEl = document.getElementById('loginError');
   if (!email || !pass) { errEl.textContent = 'Completa todos los campos.'; return; }
   btn.disabled = true; btn.textContent = 'Entrando...'; errEl.textContent = '';
-  const { data, error } = await SB.auth.signInWithPassword({ email, password: pass });
-  if (error) {
-    errEl.textContent = 'Correo o contraseña incorrectos.';
-    btn.disabled = false; btn.textContent = 'Entrar →'; return;
+  try {
+    const { data, error } = await SB.auth.signInWithPassword({ email, password: pass });
+    if (error) {
+      const invalid = error.code === 'invalid_credentials' || /invalid login credentials/i.test(error.message || '');
+      errEl.textContent = invalid ? 'Correo o contraseña incorrectos.' : 'No se pudo conectar con el servicio de acceso. Reintenta; si persiste, revisa el estado de Supabase.';
+      return;
+    }
+    mostrarApp(data.user);
+    await cargarDesdeSupabase();
+  } catch (error) {
+    errEl.textContent = 'Servicio de acceso no disponible. Revisa la conexión y vuelve a intentar.';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Entrar →';
   }
-  mostrarApp(data.user);
-  await cargarDesdeSupabase();
 }
 
 async function cerrarSesion() {
@@ -4599,6 +4607,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-v2.js?v=20260917-warehouse-cloud-match"></script>
+<script src="./tms-domain.js?v=20261022-audit"></script>
+<script src="./tms-v2.js?v=20261022-audit"></script>
+<script src="./tms-audit-ui.js?v=20261022-audit"></script>
 </body>
 </html>

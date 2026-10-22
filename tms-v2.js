@@ -44,7 +44,8 @@
     visualTheme: APP.visualTheme || localStorage.getItem(THEME_KEY) || 'light',
     undoStack: APP.undoStack || [],
     pendingTruckPhoto: APP.pendingTruckPhoto || null,
-    appVersion: 'v2'
+    costSettings: APP.costSettings || {},
+    appVersion: 'v3-audit'
   });
 
   function nowIso() {
@@ -185,11 +186,15 @@
   };
 
   function num(value) {
-    if (value == null || value === '') return 0;
-    if (typeof value === 'number') return isNaN(value) ? 0 : value;
-    const cleaned = String(value).replace(/\s/g, '').replace(/,/g, '');
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? 0 : parsed;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    let raw = String(value ?? '').trim().replace(/[^0-9,.-]/g, '');
+    if (raw.includes(',') && raw.includes('.')) {
+      raw = raw.lastIndexOf(',') > raw.lastIndexOf('.') ? raw.replace(/\./g, '').replace(',', '.') : raw.replace(/,/g, '');
+    } else if (raw.includes(',')) {
+      raw = /^-?\d{1,3}(,\d{3})+$/.test(raw) ? raw.replace(/,/g, '') : raw.replace(',', '.');
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   function normalizeRow(row) {
@@ -660,7 +665,8 @@
     'prioritySpainTopics',
     'calendarNotes',
     'dispatchIncidents',
-    'visualTheme'
+    'visualTheme',
+    'costSettings'
   ];
 
   function updateUndoButton() {
@@ -861,7 +867,10 @@
       fechaCierreRuta: metadata.fechaCierreRuta || '',
       queueId: metadata.queueId || '',
       manualProgramado: !!row.manual_programado,
-      asignado: !!metadata.asignado
+      asignado: !!metadata.asignado,
+      archivedAt: metadata.archivedAt || '',
+      queueReason: metadata.queueReason || '',
+      tripId: metadata.tripId || '1'
     };
     item.baseKey = buildBaseItemKey(item);
     return item;
@@ -914,7 +923,10 @@
           fechaCierreRuta: item.fechaCierreRuta || '',
           queueId: item.queueId || '',
           zona: item.zona || item.rutaNombre || '',
-          asignado: !!item.asignado
+          asignado: !!item.asignado,
+          archivedAt: item.archivedAt || '',
+          queueReason: item.queueReason || '',
+          tripId: item.tripId || '1'
         })
       };
     });
@@ -1080,7 +1092,7 @@
   }
 
   function getFirstAllowedView() {
-    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'rutas', 'importaciones', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'almacen', 'configClientes'];
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'almacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || '';
   }
 
@@ -1321,6 +1333,7 @@
   }
 
   function rebuildDerivedState() {
+    TMSDomain.archiveSplitResidues(APP.lineItems, nowIso());
     APP.lineItems.forEach(item => {
       item.estadoEntrega = deriveItemStatus(item);
       item.estadoPlanificacion = item.manualProgramado ? 'manual' : 'planificado';
@@ -1480,57 +1493,35 @@
   }
 
   function schedulePlanItems(items, fechaPlanBase) {
-    const startDate = fechaInicioPlanificacion(fechaPlanBase || fechaToStr(new Date()));
-    const candidateDates = appendWorkingDates(startDate, 15);
-    const clientGroups = new Map();
+    const dates = appendWorkingDates(fechaInicioPlanificacion(fechaPlanBase || fechaToStr(new Date())), 30);
+    const routes = new Map();
     items.forEach(item => {
-      const key = text(item.clienteId) || normKey(item.clienteNombre);
-      if (!clientGroups.has(key)) clientGroups.set(key, []);
-      clientGroups.get(key).push(item);
+      const cfg = getClienteConfigV2(item.clienteId, item.clienteNombre);
+      const route = cfg.rutaAsignada || '';
+      item.fechaPlanificada = '';
+      item.camionAsignado = '';
+      item.queueReason = route ? '' : 'Cliente pendiente de configurar ruta';
+      item.rutaNombre = route || item.rutaNombre || item.zona || '';
+      item.zona = item.rutaNombre;
+      const groupKey = route || ('sin-ruta-' + item.clienteId);
+      if (!routes.has(groupKey)) routes.set(groupKey, []);
+      routes.get(groupKey).push(item);
     });
-
-    const loadMap = {};
-    const routeMap = {};
-    const groupList = [...clientGroups.values()].sort((a, b) => {
-      const routeA = text((a[0] || {}).rutaNombre || (a[0] || {}).zona);
-      const routeB = text((b[0] || {}).rutaNombre || (b[0] || {}).zona);
-      return routeA.localeCompare(routeB, 'es') || text((a[0] || {}).clienteNombre).localeCompare(text((b[0] || {}).clienteNombre), 'es');
-    });
-
-    groupList.forEach(groupItems => {
-      const ref = groupItems[0];
-      const preferredTruck = chooseTruckForItem(ref);
-      const routeName = ref.rutaNombre || ref.zona;
-      const allowedDates = candidateDates.filter(date => clienteAllowsDate(ref, date) && routeAllowsDate(routeName, date));
-      const datesToUse = allowedDates.length ? allowedDates : candidateDates.filter(date => !isNonWorkingDay(date));
-      const routeFriendlyDates = datesToUse.filter(date => {
-        const routes = routeMap[date] || new Set();
-        return routes.has(routeName) || routes.size < 2;
-      });
-      const candidatePool = routeFriendlyDates.length ? routeFriendlyDates : datesToUse;
-      let bestDate = candidatePool[0] || startDate;
-      let bestScore = Infinity;
-      candidatePool.forEach(date => {
-        const key = [date, preferredTruck].join('|');
-        const routes = routeMap[date] || new Set();
-        const load = loadMap[key] || 0;
-        const newRoutePenalty = routes.has(routeName) ? 0 : routes.size * 100000;
-        const score = newRoutePenalty + load;
-        if (score < bestScore) {
-          bestScore = score;
-          bestDate = date;
-        }
-      });
-      const key = [bestDate, preferredTruck].join('|');
-      loadMap[key] = (loadMap[key] || 0) + groupItems.reduce((sum, item) => sum + (item.cantidadSolicitada || 1), 0);
-      if (!routeMap[bestDate]) routeMap[bestDate] = new Set();
-      routeMap[bestDate].add(routeName);
-      groupItems.forEach(item => {
-        item.fechaPlanificada = bestDate;
-        item.camionAsignado = preferredTruck;
-        item.rutaNombre = routeName;
-        item.zona = routeName;
-      });
+    const dayLoad = {};
+    routes.forEach(group => {
+      const route = getClienteConfigV2(group[0].clienteId).rutaAsignada;
+      const routeCfg = getRouteConfigByName(route);
+      const trucks = [...new Set(group.map(chooseTruckForItem))];
+      const compatible = route && routeCfg && routeCfg.activa !== false && trucks.length === 1
+        ? dates.filter(date => group.every(item => clienteAllowsDate(item, date)) && routeAllowsDate(route, date)) : [];
+      if (!compatible.length) {
+        group.forEach(item => { item.queueReason = item.queueReason || 'Ruta sin fecha o camión común; asignar desde la cola'; });
+        return;
+      }
+      const truck = trucks[0];
+      const date = [...compatible].sort((a,b) => (dayLoad[a+'|'+truck] || 0) - (dayLoad[b+'|'+truck] || 0))[0];
+      group.forEach(item => { item.fechaPlanificada = date; item.camionAsignado = truck; item.queueReason = ''; });
+      dayLoad[date+'|'+truck] = (dayLoad[date+'|'+truck] || 0) + group.reduce((sum,item)=>sum+num(item.cantidadSolicitada),0);
     });
   }
 
@@ -1585,7 +1576,8 @@
         prioritySpainTopics: APP.prioritySpainTopics,
         calendarNotes: APP.calendarNotes,
         dispatchIncidents: APP.dispatchIncidents,
-        visualTheme: APP.visualTheme
+        visualTheme: APP.visualTheme,
+        costSettings: APP.costSettings || {}
       }
     };
     localStorage.setItem(LOCAL_KEY, JSON.stringify(payload));
@@ -1638,7 +1630,7 @@
   function buildRouteGroups() {
     const routes = {};
     const grouped = new Map();
-    APP.lineItems.forEach(item => {
+    APP.lineItems.filter(item => item.fechaPlanificada && !item.archivedAt).forEach(item => {
       const key = buildDeliveryGroupKey(item);
       if (!grouped.has(key)) {
         grouped.set(key, {
@@ -1749,7 +1741,7 @@
 
   window.buildCalStructure = function buildCalStructureV2() {
     const prevMonthKey = APP.calMeses && APP.calMeses[APP.calMesIdx] ? APP.calMeses[APP.calMesIdx].key : null;
-    const fechas = [...new Set(APP.lineItems.map(item => item.fechaPlanificada).filter(Boolean))].sort((a, b) => fechaToDate(a) - fechaToDate(b));
+    const fechas = [...new Set(APP.lineItems.filter(item => !item.archivedAt).map(item => item.fechaPlanificada).filter(Boolean))].sort((a, b) => fechaToDate(a) - fechaToDate(b));
     APP.calSemanas = construirSemanasCalendario().filter(semana => semana.dias.some(fecha => fechas.includes(fecha)));
     fechas.forEach(fecha => {
       const weekKey = fechaToStr(lunesDeSemana(fecha));
@@ -1790,9 +1782,7 @@
   };
 
   window.construirQueueSemana = function construirQueueSemanaV2() {
-    const plannedKeys = new Set(APP.lineItems.map(item => item.baseKey));
-    const queue = APP.controlLineItems
-      .filter(item => (item.cantidadPendiente || 0) > 0 && !plannedKeys.has(item.baseKey))
+    const queue = TMSDomain.buildQueue(APP)
       .map(item => {
         const cfg = getClienteConfigV2(item.clienteId, item.clienteNombre);
         const routeName = item.rutaNombre || item.zona || inferRouteName(item.clienteNombre, item.clienteId);
@@ -1818,6 +1808,7 @@
           asignado: false,
           fechaAsignada: '',
           camionAsignado: '',
+          queueReason: item.queueReason || '',
           item
         };
       });
@@ -1834,7 +1825,7 @@
     const resumen = document.getElementById('queueSemanaResumen');
     if (!section || !cont || !resumen) return;
 
-    if (!APP.controlLoaded) {
+    if (!APP.planLoaded && !APP.controlLoaded) {
       section.style.display = 'none';
       cont.innerHTML = '';
       return;
@@ -1880,6 +1871,7 @@
             const cfg = getClienteConfigV2(client.codigo, client.nombre);
             const alerts = [];
             if (!cfg.configuracionCompleta) alerts.push('Cliente sin configuración');
+            client.items.forEach(row => { if (row.queueReason && !alerts.includes(row.queueReason)) alerts.push(row.queueReason); });
             if (!cfg.rutaAsignada && !client.routeName) alerts.push('Cliente sin ruta asignada');
             const pedidos = uniqueTexts(client.items.map(item => item.pedidoCliente));
             const referencias = uniqueTexts(client.items.map(item => item.articulo));
@@ -2122,7 +2114,7 @@
     if (!code) return;
     [APP.lineItems, APP.planLineItems, APP.controlLineItems].forEach(list => {
       (list || []).forEach(item => {
-        if (item.clienteId !== code) return;
+        if (item.clienteId !== code || item.archivedAt || item.fechaCierreRuta) return;
         item.rutaNombre = route;
         item.zona = route;
         item.fechaActualizacion = nowIso();
@@ -2361,30 +2353,20 @@
     return APP.rutas[fecha] && APP.rutas[fecha][camion] ? APP.rutas[fecha][camion][idx] : null;
   }
 
-  window.asignarQueueACalendario = function asignarQueueACalendarioV2(idx, fecha, camion) {
-    const queueItem = APP.queueSemana[idx];
-    if (!queueItem) return;
-    pushUndoState('asignar pedido al calendario');
-    const item = { ...queueItem.item };
-    item.fechaPlanificada = fecha;
-    item.camionAsignado = camion;
-    item.origen = 'manual';
-    item.manualProgramado = true;
-    item.fechaActualizacion = nowIso();
-    APP.lineItems.push(item);
-    APP.queueSemana.splice(idx, 1);
-    rebuildDerivedState();
-    actualizarDashboard();
-    renderCalendario();
-    renderRutas();
-    renderComercial();
-    renderAlmacen();
-    scheduleAutoSave();
+  window.asignarQueueACalendario = function asignarQueueACalendarioV3(idx, fecha, camion) {
+    const row = APP.queueSemana[idx];
+    if (!row) return;
+    const selected = APP.queueSemana.filter(item => item.codigo === row.codigo && queueByRouteName(item) === queueByRouteName(row));
+    if (selected.some(item => !clienteAllowsDate(item.item, fecha))) return alert('La fecha no cumple los días de recepción o de ruta. Revisa la configuración.');
+    pushUndoState('asignar cliente al calendario');
+    selected.forEach(entry => APP.lineItems.push({ ...entry.item, fechaPlanificada: fecha, camionAsignado: camion, origen: 'manual', manualProgramado: true, queueReason: '', fechaActualizacion: nowIso() }));
+    rebuildDerivedState(); actualizarDashboard(); renderCalendario(); renderRutas(); renderComercial(); renderAlmacen(); scheduleAutoSave();
   };
 
   window.asignarRutaQueueACalendario = function asignarRutaQueueACalendarioV2(routeName, fecha, camion) {
     const selected = APP.queueSemana.filter(item => queueByRouteName(item) === routeName);
     if (!selected.length) return;
+    if (selected.some(row => !clienteAllowsDate(row.item, fecha))) return alert('Hay clientes con restricciones para esa fecha. Revisa la configuración antes de asignar toda la ruta.');
     pushUndoState('asignar ruta al calendario');
     const selectedIds = new Set(selected.map(item => item.queueId + '|' + item.fechaControl));
     selected.forEach(queueItem => {
@@ -2440,8 +2422,11 @@
       item.cantidadPendienteServir = 0;
       item.cantidadPendienteSinStock = 0;
       item.montoPlanificado = 0;
+      item.montoEntregadoNoFacturado = 0;
+      item.archivedAt = nowIso();
       item.fechaActualizacion = nowIso();
 
+      moved.archivedAt = '';
       APP.lineItems.push(moved);
       return;
     }
@@ -2482,9 +2467,9 @@
     }
     pushUndoState('deshacer ruta cumplida');
     const newQty = group.cumplida ? 0 : null;
-    const keys = new Set(group.items.map(item => item.baseKey));
+    const selectedItems = new Set(group.items);
     APP.lineItems.forEach(item => {
-      if (!keys.has(item.baseKey)) return;
+      if (!selectedItems.has(item)) return;
       item.cantidadFacturada = newQty === null ? (item.cantidadSolicitada || item.cantidadFacturada || 0) : 0;
       item.cantidadPendiente = Math.max((item.cantidadSolicitada || 0) - (item.cantidadFacturada || 0), 0);
       item.fechaActualizacion = nowIso();
@@ -2995,15 +2980,17 @@
     const precinto = text((document.getElementById('precintoInput') || {}).value);
     const comentarioRuta = text((document.getElementById('comentarioRutaInput') || {}).value);
     const choferRuta = text((document.getElementById('choferRutaInput') || {}).value);
+    const tripId = text((document.getElementById('auditTripInput') || {}).value) || '1';
     const currentPhoto = APP.pendingTruckPhoto || (group.fotoCamion ? { dataUrl: group.fotoCamion, name: group.fotoCamionNombre } : null);
-    const keys = new Set(group.items.map(item => item.baseKey));
+    const selectedItems = new Set(group.items);
     let photoStored = false;
     APP.lineItems.forEach(item => {
-      if (!keys.has(item.baseKey)) return;
+      if (!selectedItems.has(item)) return;
       item.observaciones = nota;
       item.incidencia = incidencia;
       item.precintoDespacho = precinto;
       item.comentarioRuta = comentarioRuta;
+      item.tripId = tripId;
       item.choferRuta = choferRuta;
       item.fotoCamion = currentPhoto && !photoStored ? currentPhoto.dataUrl : '';
       item.fotoCamionNombre = currentPhoto ? currentPhoto.name : '';
@@ -3239,7 +3226,7 @@
           });
           schedulePlanItems(items, APP.planFecha);
           APP.planLineItems = items.map(item => ({ ...item }));
-          APP.lineItems = items.map(item => ({ ...item }));
+          APP.lineItems = items.filter(item => item.fechaPlanificada).map(item => ({ ...item }));
         } else {
           APP.importFiles.control = file.name;
           APP.controlFecha = parsed.fecha;
@@ -3249,14 +3236,15 @@
             fechaControl: parsed.fecha,
             origen: 'control diario'
           }));
-          APP.lineItems.forEach(item => {
+          APP.lineItems.filter(item => !item.archivedAt).forEach(item => {
             const match = APP.controlLineItems.find(controlItem => controlItem.baseKey === buildBaseItemKey(item));
             if (!match) return;
-            item.cantidadFacturada = match.cantidadFacturada || item.cantidadFacturada || 0;
-            item.cantidadPendiente = match.cantidadPendiente || Math.max((item.cantidadSolicitada || 0) - (item.cantidadFacturada || 0), 0);
-            item.montoPlanificado = match.montoPlanificado || item.montoPlanificado || 0;
-            item.montoEntregadoNoFacturado = match.montoEntregadoNoFacturado || item.montoEntregadoNoFacturado || 0;
-            item.montoPendienteSinStock = match.montoPendienteSinStock || item.montoPendienteSinStock || 0;
+            item.cantidadFacturada = num(match.cantidadFacturada);
+            item.cantidadPendiente = num(match.cantidadPendiente);
+            item.cantidadPendienteSinStock = num(match.cantidadPendienteSinStock);
+            item.montoPlanificado = num(match.montoPlanificado);
+            item.montoEntregadoNoFacturado = num(match.montoEntregadoNoFacturado);
+            item.montoPendienteSinStock = num(match.montoPendienteSinStock);
             item.fechaActualizacion = nowIso();
           });
         }
@@ -3660,9 +3648,13 @@
   };
 
   function getCommercialWarehouseSource() {
-    const planRequests = APP.solicitudesPlanAlmacen || [];
-    const activeRequests = APP.solicitudesAlmacen || [];
-    return planRequests.length ? planRequests : activeRequests;
+    const source = APP.solicitudesPlanAlmacen.length ? APP.solicitudesPlanAlmacen : (APP.solicitudesAlmacen || []);
+    const known = new Set(source.map(TMSDomain.orderKey));
+    const missing = TMSDomain.latestOrders(APP).filter(line => !known.has(TMSDomain.orderKey(line))).map(line => ({
+      ...line, codigo: line.clienteId, cliente: line.clienteNombre, auditWithoutWarehouse: true,
+      fechaEnvio: line.fechaPlanificada || '', cantidadAlmacenSolicitada: 0, cantidadAlmacenProcesada: 0
+    }));
+    return [...source, ...missing];
   }
 
   function findOrderLineForWarehouseItem(item) {
@@ -3672,7 +3664,7 @@
       item.articulo || '',
       item.codigo || item.clienteId || ''
     ].map(normKey).join('|');
-    const candidates = [...(APP.lineItems || []), ...(APP.planLineItems || []), ...(APP.controlLineItems || [])];
+    const candidates = TMSDomain.latestOrders(APP);
     return candidates.find(line => {
       const lineKey = [
         line.pedidoCliente || '',
@@ -3685,6 +3677,7 @@
   }
 
   function getCommercialWarehouseQty(item) {
+    if (item.auditWithoutWarehouse) return 0;
     const requested = num(item.cantidadAlmacenSolicitada !== undefined ? item.cantidadAlmacenSolicitada : item.cantidadSolicitada);
     const processed = num(item.cantidadAlmacenProcesada !== undefined ? item.cantidadAlmacenProcesada : item.cantidadCompletada);
     return requested > 0 ? requested : processed;
@@ -3771,10 +3764,12 @@
         referencia: item.articulo || '',
         descripcion: item.descripcionArticulo || '',
         solicitud: item.solicitud || item.solicitudAlmacen || '',
-        cantidadPedida: orderLine ? num(orderLine.cantidadSolicitada) : num(item.cantidadSolicitadaOriginal || item.cantidadSolicitada),
+        cantidadPedida: orderLine ? num(orderLine.cantidadSolicitadaOriginal ?? orderLine.cantidadSolicitada) : num(item.cantidadSolicitadaOriginal || item.cantidadSolicitada),
         cantidadPlanificada: warehouseQty,
         cantidadFacturada: orderLine ? num(orderLine.cantidadFacturada) : num(item.cantidadCompletada),
         monto: getCommercialLineAmount(item),
+        transitNote: orderLine ? TMSDomain.transitForLine(orderLine, APP.transitMaterials).note : '',
+        pendingWithoutStock: orderLine ? num(orderLine.cantidadPendienteSinStock) : 0,
         estado: section === 'en_ruta' ? text(item.estado || item.estadoAlmacen || deriveItemStatus(item)) : 'No considerado en ruta',
         section
       };
@@ -3782,21 +3777,11 @@
   }
 
   function renderCommercialRowsTable(rows, extraClass) {
-    return `<div class="commercial-table-wrap ${extraClass || ''}">
-      <table class="commercial-detail-table">
-        <thead><tr><th>Pedido</th><th>Solicitud</th><th>Ref.</th><th>Descripción</th><th>Pedida</th><th>En ruta</th><th>Fact.</th><th>Monto</th></tr></thead>
-        <tbody>${rows.map(row => `<tr>
-          <td>${row.pedido || '—'}</td>
-          <td>${row.solicitud || '—'}</td>
-          <td>${row.referencia || '—'}</td>
-          <td>${row.descripcion || '—'}</td>
-          <td>${row.cantidadPedida}</td>
-          <td>${row.cantidadPlanificada}</td>
-          <td>${row.cantidadFacturada}</td>
-          <td>${formatMonto(row.monto)}</td>
-        </tr>`).join('')}</tbody>
-      </table>
-    </div>`;
+    if (!rows.length) return '';
+    return `<div class="commercial-table-wrap ${extraClass || ''}"><table class="commercial-detail-table">
+      <thead><tr><th>Pedido</th><th>Solicitud</th><th>Ref.</th><th>Descripción</th><th>Pedida</th><th>En ruta</th><th>Fact.</th><th>Monto</th></tr></thead>
+      <tbody>${rows.map(row => `<tr><td>${escapeHtml(row.pedido || '—')}</td><td>${escapeHtml(row.solicitud || '—')}</td><td>${escapeHtml(row.referencia || '—')}</td><td>${escapeHtml(row.descripcion || '—')}</td><td>${row.cantidadPedida}</td><td>${row.cantidadPlanificada}</td><td>${row.cantidadFacturada}</td><td>${formatMonto(row.monto)}</td></tr>`).join('')}</tbody>
+    </table></div>${rows.filter(row => row.transitNote || row.pendingWithoutStock > 0).map(row => `<div class="commercial-transit-note"><strong>Pedido ${escapeHtml(row.pedido)} · ${escapeHtml(row.referencia)}</strong><p>${escapeHtml(row.transitNote || `${row.pendingWithoutStock} uds sin confirmar · Sin coincidencia de tránsito identificada`)}</p></div>`).join('')}`;
   }
 
   function getCommercialFilteredItems() {
@@ -3873,18 +3858,18 @@
     const totalMonto = deliveryRows.reduce((sum, row) => sum + row.monto, 0);
     const totalPlanificada = deliveryRows.reduce((sum, row) => sum + row.cantidadPlanificada, 0);
     const totalFacturada = deliveryRows.reduce((sum, row) => sum + row.cantidadFacturada, 0);
-    const pedidos = new Set(deliveryRows.map(row => row.pedido).filter(Boolean));
+    const pedidos = new Set(rows.map(row => row.codigoCliente+'|'+row.pedido).filter(Boolean));
 
     const ck1 = document.getElementById('ck1');
     const ck2 = document.getElementById('ck2');
     const ck3 = document.getElementById('ck3');
     const ck4 = document.getElementById('ck4');
-    if (ck1) ck1.textContent = new Set(deliveryRows.map(row => row.codigoCliente)).size;
+    if (ck1) ck1.textContent = new Set(rows.map(row => row.codigoCliente)).size;
     if (ck2) ck2.textContent = pedidos.size;
     if (ck3) ck3.textContent = totalPlanificada;
     if (ck4) ck4.textContent = formatMonto(totalMonto);
 
-    if (!rows.length || !deliveryRows.length) {
+    if (!rows.length) {
       const message = APP.solicitudesLoaded
         ? 'No hay productos con cantidad solicitada al almacén para los filtros aplicados.'
         : 'Carga primero las solicitudes realizadas al almacén para construir la vista comercial.';
@@ -3913,7 +3898,7 @@
           });
           return `<section class="commercial-day">
             <div class="commercial-day-head">
-              <div><strong>${fechaLabel(date)}</strong><span>${date}</span></div>
+              <div><strong>${date === 'Sin fecha' ? 'Pendiente de programar' : fechaLabel(date)}</strong><span>${escapeHtml(date)}</span></div>
               <div>${Object.keys(byClient).length} clientes · ${dayPedidos} pedidos · ${formatMonto(dayMonto)}</div>
             </div>
             <div class="commercial-client-grid">
@@ -3923,15 +3908,14 @@
                 const excludedRows = clientRows.filter(row => row.section !== 'en_ruta');
                 const visibleRows = routeRows.length ? routeRows : clientRows;
                 const clientMonto = routeRows.reduce((sum, row) => sum + row.monto, 0);
-                const clientPedidos = new Set(routeRows.map(row => row.pedido).filter(Boolean)).size;
+                const clientPedidos = new Set(clientRows.map(row => row.pedido).filter(Boolean)).size;
                 return `<article class="commercial-client-card">
                   <div class="commercial-client-head">
                     <div><strong>${visibleRows[0].cliente}</strong><span>${visibleRows[0].codigoCliente} · ${visibleRows[0].ruta || 'Sin ruta'} · ${visibleRows[0].camion || 'Sin camión'}</span></div>
                     <div>${clientPedidos} pedidos<br>${formatMonto(clientMonto)}</div>
                   </div>
-                  <div class="commercial-section-label">En ruta según solicitudes a almacén</div>
-                  ${renderCommercialRowsTable(routeRows, '')}
-                  ${excludedRows.length ? `<div class="commercial-section-label muted">No considerado en ruta</div>${renderCommercialRowsTable(excludedRows, 'commercial-muted-table')}` : ''}
+                  ${routeRows.length ? `<div class="commercial-section-label">En ruta según solicitudes a almacén</div>${renderCommercialRowsTable(routeRows, '')}` : ''}
+                  ${excludedRows.length ? `<div class="commercial-section-label muted">Pendiente de confirmar / sin solicitud de almacén</div>${renderCommercialRowsTable(excludedRows, 'commercial-muted-table')}` : ''}
                 </article>`;
               }).join('')}
             </div>
@@ -3957,6 +3941,8 @@
       'Cantidad facturada': row.cantidadFacturada,
       'Monto': row.monto,
       'Estado': row.estado,
+      'Pendiente sin stock': row.pendingWithoutStock,
+      'Información de tránsito': row.transitNote,
       'Sección': row.section === 'en_ruta' ? 'En ruta' : 'No considerado en ruta'
     }));
     if (!data.length) {
@@ -4037,7 +4023,7 @@
   };
 
   function parseReceptionDays(raw) {
-    const map = { lun: 1, lunes: 1, mar: 2, martes: 2, mie: 3, miercoles: 3, miercoles: 3, mié: 3, jue: 4, jueves: 4, vie: 5, viernes: 5 };
+    const map = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, sab: 6, sabado: 6, lun: 1, lunes: 1, mar: 2, martes: 2, mie: 3, miercoles: 3, miercoles: 3, mié: 3, jue: 4, jueves: 4, vie: 5, viernes: 5 };
     return text(raw).split(/[,;/]+/).map(part => map[normKey(part)]).filter(Boolean);
   }
 
@@ -4053,7 +4039,7 @@
     const resumen = document.getElementById('configResumen');
     if (!list || !resumen) return;
     const search = text((document.getElementById('configSearch') || {}).value).toLowerCase();
-    const baseClients = dedupeBy(APP.planificacion.length ? APP.planificacion : APP.clientes, item => item.codigo);
+    const baseClients = dedupeBy([...(APP.planificacion || []), ...(APP.clientes || []), ...Object.values(APP.clienteConfig || {}).map(cfg => ({ codigo: cfg.codigoCliente, nombre: cfg.nombreCliente }))], item => item.codigo);
     const filtered = baseClients.filter(item => !search || [item.codigo, item.nombre].some(value => text(value).toLowerCase().includes(search)));
     resumen.textContent = `${filtered.filter(item => clienteTieneConfigV2(item.codigo)).length} configurados`;
     if (!filtered.length) {
@@ -4064,9 +4050,9 @@
     const pendingHelp = '<div class="config-help-note"><strong>Pendiente</strong> significa que falta guardar la configuración completa del cliente: ruta asignada, días de recepción y horario de almacén.</div>';
     list.innerHTML = filtered.map(item => {
       const cfg = getClienteConfigV2(item.codigo, item.nombre);
-      return `<button class="config-client-item ${APP.configClienteSel === item.codigo ? 'active' : ''}" onclick="seleccionarConfigCliente('${item.codigo}')">
-        <strong>${item.nombre}</strong>${cfg.configuracionCompleta ? '<span class="badge badge-ok" style="float:right;">Completa</span>' : '<span class="badge badge-warn" style="float:right;">Pendiente</span>'}<br>
-        <span style="font-size:11px;color:var(--muted);">${item.codigo} · ${cfg.rutaAsignada || item.zona || 'Sin ruta'}</span>
+      return `<button class="config-client-item ${APP.configClienteSel === item.codigo ? 'active' : ''}" onclick="seleccionarConfigCliente('${escapeHtml(item.codigo)}')">
+        <strong>${escapeHtml(item.nombre)}</strong>${cfg.configuracionCompleta ? '<span class="badge badge-ok" style="float:right;">Completa</span>' : '<span class="badge badge-warn" style="float:right;">Pendiente</span>'}<br>
+        <span style="font-size:11px;color:var(--muted);">${escapeHtml(item.codigo)} · ${cfg.rutaAsignada || item.zona || 'Sin ruta'}</span>
       </button>`;
     }).join('') + pendingHelp;
     renderConfigEditor();
@@ -4076,7 +4062,7 @@
   window.renderConfigEditor = function renderConfigEditorV2() {
     const editor = document.getElementById('configEditor');
     if (!editor) return;
-    const client = (APP.planificacion.find(item => item.codigo === APP.configClienteSel) || APP.clientes.find(item => item.codigo === APP.configClienteSel));
+    const client = APP.planificacion.find(item => item.codigo === APP.configClienteSel) || APP.clientes.find(item => item.codigo === APP.configClienteSel) || (APP.clienteConfig[APP.configClienteSel] ? { codigo: APP.configClienteSel, nombre: APP.clienteConfig[APP.configClienteSel].nombreCliente } : null);
     if (!client) {
       editor.innerHTML = '<div class="empty-state"><div class="empty-icon">👈</div><p>Selecciona un cliente.</p></div>';
       return;
@@ -4087,8 +4073,8 @@
       { id: '', nombre: client.zona || inferRouteName(client.nombre, client.codigo), zona: client.zona || '', activa: true }
     ], item => item.nombre || item.zona);
     editor.innerHTML = `
-      <div class="card-title" style="margin-bottom:4px;">${client.nombre}</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">${client.codigo} · ${cfg.rutaAsignada || client.zona || 'Sin ruta'}</div>
+      <div class="card-title" style="margin-bottom:4px;">${escapeHtml(client.nombre)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">${escapeHtml(client.codigo)} · ${cfg.rutaAsignada || client.zona || 'Sin ruta'}</div>
       <div class="form-row"><label>Ruta / zona asignada</label>
         <select id="cfgRuta" class="form-control">
           <option value="">Sin asignar</option>
@@ -4096,10 +4082,10 @@
         </select>
       </div>
       <div class="form-row"><label>Días de recepción</label><input id="cfgDias" class="form-control" value="${(cfg.diasRecepcion || []).join(',')}" placeholder="1,2,4,5 = Lun,Mar,Jue,Vie"></div>
-      <div class="form-row"><label>Horario almacén</label><input id="cfgHorario" class="form-control" value="${cfg.horarioAlmacen || ''}" placeholder="08:00 - 14:00"></div>
-      <div class="form-row"><label>Contacto</label><input id="cfgContacto" class="form-control" value="${cfg.contacto || ''}" placeholder="Nombre / teléfono / correo"></div>
-      <div class="form-row"><label>Condiciones especiales</label><textarea id="cfgCondiciones" class="form-control" style="min-height:70px;">${cfg.condicionesEspeciales || ''}</textarea></div>
-      <div class="form-row"><label>Observaciones</label><textarea id="cfgNota" class="form-control" style="min-height:90px;">${cfg.observaciones || ''}</textarea></div>
+      <div class="form-row"><label>Horario almacén</label><input id="cfgHorario" class="form-control" value="${escapeHtml(cfg.horarioAlmacen || '')}" placeholder="08:00 - 14:00"></div>
+      <div class="form-row"><label>Contacto</label><input id="cfgContacto" class="form-control" value="${escapeHtml(cfg.contacto || '')}" placeholder="Nombre / teléfono / correo"></div>
+      <div class="form-row"><label>Condiciones especiales</label><textarea id="cfgCondiciones" class="form-control" style="min-height:70px;">${escapeHtml(cfg.condicionesEspeciales || '')}</textarea></div>
+      <div class="form-row"><label>Observaciones</label><textarea id="cfgNota" class="form-control" style="min-height:90px;">${escapeHtml(cfg.observaciones || '')}</textarea></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-primary" onclick="guardarConfigCliente()">Guardar configuración</button>
         <button class="btn btn-outline" onclick="limpiarConfigCliente()">Limpiar</button>
@@ -4111,7 +4097,7 @@
     const codigo = APP.configClienteSel;
     if (!codigo) return;
     pushUndoState('guardar configuración de cliente');
-    const client = APP.planificacion.find(item => item.codigo === codigo) || APP.clientes.find(item => item.codigo === codigo) || {};
+    const client = APP.planificacion.find(item => item.codigo === codigo) || APP.clientes.find(item => item.codigo === codigo) || { nombre: (APP.clienteConfig[codigo] || {}).nombreCliente || '' };
     const rutaAsignada = text(document.getElementById('cfgRuta').value);
     const diasRecepcion = text(document.getElementById('cfgDias').value).split(',').map(part => parseInt(part, 10)).filter(Boolean);
     APP.clienteConfig[codigo] = {
@@ -4787,7 +4773,7 @@
     const routeCfg = getRouteConfigByName(row.rutaNombre || row.ruta || '') || null;
     const importePlanificado = num(row.importePlanificado);
     const importeReal = num(row.importeReal);
-    const coste = routeCfg ? num(routeCfg.costeRuta) : num(row.coste);
+    const coste = row.coste !== undefined && row.coste !== null ? num(row.coste) : (routeCfg ? num(routeCfg.costeRuta) : 0);
     return {
       ...row,
       rutaId: (routeCfg && routeCfg.id) || row.rutaId || row.rutaNombre || '',
@@ -5098,7 +5084,7 @@
   const originalActualizarDashboard = window.actualizarDashboard;
   window.actualizarDashboard = function actualizarDashboardV2() {
     if (typeof originalActualizarDashboard === 'function') originalActualizarDashboard();
-    const clients = APP.clientes || [];
+    const clients = aggregateClientRows(TMSDomain.latestOrders(APP));
     const confirmedTotal = clients.reduce((sum, client) => sum + getClientConfirmedUndelivered(client), 0);
     const deliveredPendingTotal = clients.reduce((sum, client) => sum + getClientDeliveredNotInvoiced(client), 0);
     const operationalTotal = clients.reduce((sum, client) => sum + getClientOperationalAmount(client), 0);
@@ -5108,11 +5094,18 @@
     if (confirmedEl) confirmedEl.textContent = formatMonto(confirmedTotal);
     if (pendingEl) pendingEl.textContent = formatMonto(deliveredPendingTotal);
     if (totalEl) totalEl.textContent = formatMonto(operationalTotal);
+    const clientsEl = document.getElementById('dashClientes');
+    if (clientsEl) clientsEl.textContent = new Set(clients.map(client => client.codigo)).size;
     renderControlHistoryPanel();
     const topDiv = document.getElementById('dashTopClientes');
     if (topDiv) {
-      const top10 = [...clients]
-        .map(client => ({ ...client, montoOperativo: getClientOperationalAmount(client) }))
+      const byClient = new Map();
+      clients.forEach(client => {
+        const current = byClient.get(client.codigo) || { ...client, montoOperativo: 0 };
+        current.montoOperativo += getClientConfirmedUndelivered(client);
+        byClient.set(client.codigo, current);
+      });
+      const top10 = [...byClient.values()]
         .filter(client => client.montoOperativo > 0)
         .sort((a, b) => b.montoOperativo - a.montoOperativo)
         .slice(0, 10);
@@ -5282,6 +5275,7 @@
         APP.calendarNotes = Array.isArray(settingsMap.app_state.calendarNotes) ? settingsMap.app_state.calendarNotes : (APP.calendarNotes || []);
         APP.dispatchIncidents = Array.isArray(settingsMap.app_state.dispatchIncidents) ? settingsMap.app_state.dispatchIncidents : (APP.dispatchIncidents || []);
         APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
+        APP.costSettings = settingsMap.app_state.costSettings || APP.costSettings || {};
         APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
         applyVisualTheme(APP.visualTheme, true);
       }
@@ -5361,6 +5355,7 @@
       renderIncidenciasDespacho();
       applyPermissionUi();
       saveLocalSnapshot();
+      if (isAdminUser()) scheduleAutoSave();
     } catch (error) {
       console.warn('Fallo la carga remota, usando respaldo local si existe:', error);
       if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
@@ -5452,6 +5447,7 @@
             calendarNotes: APP.calendarNotes || [],
             dispatchIncidents: APP.dispatchIncidents || [],
             controlHistory: APP.controlHistory || [],
+            costSettings: APP.costSettings || {},
             visualTheme: APP.visualTheme || 'light'
           })
         }] : [])
@@ -6952,7 +6948,7 @@
     const materialKey = transitMaterialKey(line && line.articulo);
     if (!materialKey) return { total: 0, complete: false, eta: '', facturas: [], rows: [] };
     const rows = APP.transitMaterials
-      .filter(item => transitMaterialKey(item.codigoMaterial) === materialKey)
+      .filter(item => TMSDomain.activeTransit(item) && transitMaterialKey(item.codigoMaterial) === materialKey && (!item.cliente || [line.clienteId, line.clienteNombre].some(value => normKey(value) === normKey(item.cliente))))
       .sort((a, b) => text(a.eta || '9999-99-99').localeCompare(text(b.eta || '9999-99-99')));
     const pending = num(line && line.cantidadPendiente);
     let running = 0;
@@ -6975,16 +6971,11 @@
   }
 
   function transitRecommendationForLines(lines) {
-    const pendingLines = (lines || []).filter(item => num(item.cantidadPendiente) > 0);
-    const matches = pendingLines.map(line => ({ line, match: getTransitMatchesForLine(line.item || line) })).filter(row => row.match.total > 0);
-    if (!matches.length) return '';
-    const complete = matches.filter(row => row.match.complete);
-    const nextEta = matches.map(row => row.match.eta).filter(Boolean).sort()[0] || '';
-    const invoices = uniqueTexts(matches.flatMap(row => row.match.facturas)).slice(0, 4);
-    const label = complete.length === pendingLines.length
-      ? `Esperar importación ETA ${nextEta || 'por definir'} para despacho completo`
-      : `Factura en tránsito cubre ${complete.length}/${pendingLines.length} líneas; ETA ${nextEta || 'por definir'}`;
-    return `${label}${invoices.length ? ' · Factura: ' + invoices.join(', ') : ''}`;
+    return (lines || []).map(row => {
+      const line = row.item || row;
+      const info = TMSDomain.transitForLine(line, APP.transitMaterials);
+      return info.note ? `Pedido ${line.pedidoCliente || 'sin identificar'} · ${line.articulo || ''}: ${info.note}` : '';
+    }).filter(Boolean).join(' · ');
   }
 
   function normalizeTransitMaterial(raw) {
@@ -6993,7 +6984,7 @@
     if (!codigoMaterial || cantidad <= 0) return null;
     const factura = text(raw.factura);
     const eta = parseImportBulkDate(raw.eta);
-    const importMatch = factura ? (APP.importShipments || []).find(item => text(item.factura || item.referencia || item.booking).toLowerCase() === factura.toLowerCase()) : null;
+    const importMatch = null; // Factura y ETA se gestionan directamente en Materiales en tránsito.
     return {
       id: 'tm-' + normKey([factura, codigoMaterial, raw.descripcion, eta].join('-')) + '-' + Date.now().toString(36),
       factura,
@@ -7061,7 +7052,7 @@
 
   async function parseTransitMaterialsFile(file, defaults) {
     const name = (file.name || '').toLowerCase();
-    if (/\.(xlsx|xls|xml)$/.test(name)) {
+    if (/\.(xlsx|xls|xml|csv)$/.test(name)) {
       const buffer = await readArrayBufferFile(file);
       const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
       const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -7092,9 +7083,10 @@
 
   function transitAnalysis() {
     ensureTransitMaterials();
-    const totalQty = APP.transitMaterials.reduce((sum, item) => sum + num(item.cantidad), 0);
-    const nextEta = APP.transitMaterials.map(item => item.eta).filter(Boolean).sort()[0] || '';
-    const materials = new Set(APP.transitMaterials.map(item => transitMaterialKey(item.codigoMaterial))).size;
+    const active = APP.transitMaterials.filter(TMSDomain.activeTransit);
+    const totalQty = active.reduce((sum, item) => sum + num(item.cantidad), 0);
+    const nextEta = active.map(item => item.eta).filter(Boolean).sort()[0] || '';
+    const materials = new Set(active.map(item => transitMaterialKey(item.codigoMaterial))).size;
     const matches = (APP.queueSemana || []).map(item => getTransitMatchesForLine(item)).filter(match => match.total > 0);
     return { totalQty, nextEta, materials, matches };
   }
@@ -7909,7 +7901,8 @@
   ];
 
   function todayIsoDate() {
-    return new Date().toISOString().slice(0, 10);
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
 
   function priorityStatusLabel(status) {
@@ -7934,6 +7927,9 @@
 
   function ensureDailyPriorities() {
     APP.dailyPriorities = Array.isArray(APP.dailyPriorities) ? APP.dailyPriorities : [];
+    if (isAdminUser() && typeof TMSDomain !== 'undefined') TMSDomain.reminderSeeds().forEach(seed => {
+      if (!APP.dailyPriorities.some(row => row.id === seed.id)) APP.dailyPriorities.push({ ...seed, orden: APP.dailyPriorities.length + 1 });
+    });
     APP.dailyPriorities.forEach(item => {
       item.id = item.id || ('prio-' + Date.now() + '-' + Math.random().toString(16).slice(2));
       item.fecha = isoDateFromAny(item.fecha || item.createdAt, todayIsoDate());
@@ -8859,6 +8855,8 @@
       renderRouteCatalog();
     }
   });
+
+  window.TMSAuditCore = { pushUndoState, hasPermission, isAdminUser, rebuildDerivedState, parseWorkbookRows: rowsFromWorksheet, getClienteConfigV2, ensureRouteConfig, saveLocalSnapshot };
 
   window.iniciarConDemo = function iniciarConDemoDisabled() {
     alert('Los datos demo fueron deshabilitados. Importa una planificación real para comenzar.');
