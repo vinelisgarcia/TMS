@@ -195,17 +195,19 @@
     save(`Facturación cargada: ${rows.length} líneas.`);ensureDashboard();ensureConfig();
   }
   function retireModules(){
-    ['rutas','importaciones'].forEach(id=>{
+    ['rutas','importaciones','almacen'].forEach(id=>{
       const nav=document.getElementById('nav-'+id);if(nav)nav.remove();
       const option=document.querySelector(`#mobileModuleSelect option[value="${id}"]`);if(option)option.remove();
     });
     const imports=document.getElementById('importaciones');if(imports)imports.hidden=true;
     const routes=document.getElementById('rutas');if(routes)routes.hidden=true;
+    const warehouse=document.getElementById('almacen');if(warehouse)warehouse.hidden=true;
   }
   const oldView=window.cambiarVista;
   window.cambiarVista=function(id,button){
     if(id==='importaciones')id='materialesTransito';
     if(id==='rutas')id='configClientes';
+    if(id==='almacen')id='solicitudesAlmacen';
     oldView(id,document.getElementById('nav-'+id) || button);
     const content=document.getElementById('content');if(content)content.scrollTop=0;
     if(innerWidth<=900)window.scrollTo(0,0);

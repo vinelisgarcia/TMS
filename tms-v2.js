@@ -1092,7 +1092,7 @@
   }
 
   function getFirstAllowedView() {
-    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'almacen', 'configClientes'];
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || '';
   }
 
@@ -2048,7 +2048,6 @@
 
           groups.forEach(group => {
             const realIdx = (dayRoutes[camion] || []).indexOf(group);
-            const status = group.cumplida ? '✅' : group.cantidadFacturada > 0 ? '🟡' : '🔄';
             const selected = isGroupSelected(group);
             const alertHtml = group.alertas.length
               ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
@@ -2080,10 +2079,9 @@
               ${alertHtml}
               ${transitHtml}
               <div class="cal-card-actions">
-                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirMoveModal('${fecha}','${camion}',${realIdx})">✏️ Mover</button>
-                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="toggleCumplida('${fecha}','${camion}',${realIdx})">${group.cumplida ? '↩️' : '✅'}</button>
-                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirNotaModal('${fecha}','${camion}',${realIdx})">📝</button>
-                <span>${status}</span>
+                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirMoveModal('${fecha}','${camion}',${realIdx})">Mover</button>
+                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="toggleCumplida('${fecha}','${camion}',${realIdx})">${group.cumplida ? 'Reabrir' : 'Completar'}</button>
+                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirNotaModal('${fecha}','${camion}',${realIdx})">Nota</button>
               </div>
             </div>`);
           });
@@ -2875,78 +2873,71 @@
     }
   };
 
+  // Export business data instead of capturing operational cards, notes and controls.
   window.exportarCalendarioVisiblePDF = async function exportarCalendarioVisiblePDFV2() {
-    const el = document.getElementById('calExportArea');
-    if (!el || !el.innerHTML.trim()) {
-      alert('No hay calendario visible para exportar.');
-      return;
-    }
-    let pdfTools;
-    try {
-      pdfTools = await ensurePdfTools();
-    } catch (error) {
-      console.error('Error cargando PDF:', error);
-      alert(error.message || 'La librería de PDF no está disponible en este momento.');
-      return;
-    }
     const month = APP.calMeses && APP.calMeses[APP.calMesIdx];
-    const filename = 'RouteControl_Calendario_' + (month ? month.key : 'visible') + '.pdf';
-    const wrapper = document.createElement('div');
-    wrapper.className = 'calendar-pdf-stage';
-    const clone = el.cloneNode(true);
-    clone.classList.add('calendar-pdf-export');
-    clone.querySelectorAll('.cal-card-topline, .cal-card-actions, .calendar-selection-bar, button, input').forEach(node => node.remove());
-    wrapper.innerHTML = `
-      <div class="calendar-pdf-title">
-        <strong>Calendario de Entregas</strong>
-        <span>${month ? month.label : 'Vista actual'}</span>
-      </div>
-    `;
-    wrapper.appendChild(clone);
-    document.body.appendChild(wrapper);
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    if (!wrapper.scrollWidth || !wrapper.scrollHeight || !wrapper.textContent.trim()) {
-      wrapper.remove();
-      alert('No se pudo preparar el contenido del calendario para PDF.');
-      return;
-    }
-    try {
-      const canvas = await pdfTools.html2canvas(wrapper, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        width: wrapper.scrollWidth,
-        height: wrapper.scrollHeight,
-        windowWidth: wrapper.scrollWidth,
-        windowHeight: wrapper.scrollHeight,
-        scrollX: 0,
-        scrollY: 0
+    const search = text((document.getElementById('calSearch') || {}).value).toLowerCase();
+    const departures = [];
+    (month ? month.semanas : []).forEach(week => week.dias.forEach(date => {
+      const day = APP.rutas[date] || {};
+      getTruckOptions().forEach(truck => {
+        const trips = new Map();
+        (day[truck] || []).forEach(group => {
+          if (search && ![group.nombre, group.codigo, group.pedidoCliente, group.zona].some(value => text(value).toLowerCase().includes(search))) return;
+          (group.items || []).forEach(item => {
+            const trip = text(item.tripId) || '1';
+            if (!trips.has(trip)) trips.set(trip, {date, truck, trip, clients: new Map(), routes: new Set(), total: 0});
+            const row = trips.get(trip), id = group.codigo || group.nombre;
+            // Same pending amount used by the calendar; never actual invoicing.
+            const amount = getOperationalAmount(item);
+            const client = row.clients.get(id) || {name: group.nombre, amount: 0};
+            client.amount += amount; row.clients.set(id, client); row.total += amount;
+            if (item.rutaNombre || item.zona) row.routes.add(item.rutaNombre || item.zona);
+          });
+        });
+        departures.push(...trips.values());
       });
-      if (!canvasHasVisibleContent(canvas)) {
-        throw new Error('La captura del calendario salió vacía.');
+    }));
+    if (!departures.length) return alert('No hay rutas en el mes y filtro visibles para exportar.');
+    try {
+      const { JsPDF } = await ensurePdfTools();
+      const pdf = new JsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+      let y = 0;
+      const header = () => {
+        pdf.setFont('helvetica','bold'); pdf.setFontSize(17);
+        pdf.text('Resumen de rutas',16,20);
+        pdf.setFont('helvetica','normal'); pdf.setFontSize(10);
+        pdf.text(month ? month.label : 'Calendario visible',16,27); y=38;
+      };
+      const room = height => { if (y + height > 277) {pdf.addPage(); header();} };
+      header();
+      departures.forEach((row,index) => {
+        if(index) y+=7;
+        room(36);
+        pdf.setFont('helvetica','bold');pdf.setFontSize(12);
+        pdf.text(fechaLabel(row.date)+' - '+row.date,16,y);y+=7;
+        pdf.setFont('helvetica','normal');pdf.setFontSize(10);
+        const title=pdf.splitTextToSize(getTruckLabel(row.truck)+' - Salida '+row.trip+' - '+[...row.routes].join(', '),178);
+        pdf.text(title,16,y);y+=title.length*5+2;
+        pdf.setFont('helvetica','bold');
+        pdf.text('Monto total de ruta: '+formatMonto(row.total),16,y);y+=8;
+        pdf.setFontSize(9);pdf.text('CLIENTE',16,y);pdf.text('MONTO A RUTA (RD$)',194,y,{align:'right'});y+=7;
+        row.clients.forEach(client => {
+          const lines=pdf.splitTextToSize(client.name,125),height=Math.max(7,lines.length*5+3);
+          const previousPage=pdf.internal.getNumberOfPages();room(height);
+          if(pdf.internal.getNumberOfPages()!==previousPage){pdf.setFont('helvetica','bold');pdf.text('Continuación - '+row.date+' - '+getTruckLabel(row.truck)+' - Salida '+row.trip,16,y);y+=8;}
+          pdf.setFont('helvetica','normal');pdf.setFontSize(10);
+          pdf.text(lines,16,y);pdf.text(formatMonto(client.amount),194,y,{align:'right'});y+=height;
+        });
+      });
+      for(let i=1;i<=pdf.internal.getNumberOfPages();i++){
+        pdf.setPage(i);pdf.setFont('helvetica','normal');pdf.setFontSize(8);
+        pdf.text('Página '+i+' de '+pdf.internal.getNumberOfPages(),194,289,{align:'right'});
       }
-      const pdf = new pdfTools.JsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 4;
-      const maxW = pageW - margin * 2;
-      const maxH = pageH - margin * 2;
-      const ratio = canvas.width / canvas.height;
-      let imgW = maxW;
-      let imgH = imgW / ratio;
-      if (imgH > maxH) {
-        imgH = maxH;
-        imgW = imgH * ratio;
-      }
-      const x = (pageW - imgW) / 2;
-      const y = (pageH - imgH) / 2;
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, imgW, imgH);
-      downloadPdf(pdf, filename);
-    } catch (error) {
-      console.error('Error exportando calendario:', error);
-      alert('No se pudo exportar el calendario: ' + error.message);
-    } finally {
-      wrapper.remove();
+      downloadPdf(pdf,'TMS_Resumen_Rutas_'+month.key+'.pdf');
+    } catch(error) {
+      console.error('Error exportando resumen de rutas:',error);
+      alert('No se pudo exportar el resumen: '+error.message);
     }
   };
 
