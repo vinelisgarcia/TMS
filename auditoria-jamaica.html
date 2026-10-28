@@ -19,9 +19,9 @@
 <label>Factura(s) comercial(es)<input type="file" id="invoices" accept=".xlsx,.xls,.csv,.pdf" multiple></label>
 <label>Preliquidación / eSAD (líneas exportadas)<input type="file" id="declaration" accept=".xlsx,.xls,.csv,.pdf"></label>
 <label>Packing list (opcional)<input type="file" id="packing" accept=".xlsx,.xls,.csv,.pdf"></label>
-</div><div class="actions"><button onclick="audit()">Comparar documentos</button><button class="secondary" onclick="downloadTemplate()">Descargar plantilla Excel</button></div><p class="hint">PDF con texto: extracción local por páginas y exportación de evidencia a Excel. PDF escaneado: requiere OCR (no disponible en esta versión). Las líneas del PDF no se transforman automáticamente en referencias para conciliación: usa Excel/CSV para esa comparación. No se consultan tasas oficiales. Los documentos se procesan en el navegador sin enviarlos a un servicio OCR externo.</p></div>
-<div class="card"><h2>Documentos PDF recibidos</h2><p class="muted">Consulta el texto extraído por página y exporta la evidencia a Excel. Revisa el resultado contra el PDF original antes de transcribir líneas.</p><div id="pdfStatus" class="muted">Sin PDF procesados.</div><div class="scroll"><table><thead><tr><th>Documento</th><th>Página</th><th>Texto extraído (vista previa)</th><th>Estado</th></tr></thead><tbody id="pdfResults"></tbody></table></div></div>
-<div class="card"><h2>3. Revisión de valor y tributos</h2><div class="grid">
+</div><div class="actions"><button onclick="audit()">Procesar documentos</button><button class="secondary" onclick="compareConfirmed()">Comparar líneas confirmadas</button><button class="secondary" onclick="downloadTemplate()">Descargar plantilla Excel</button></div><p class="hint">PDF con texto: extracción local por páginas y exportación de evidencia a Excel. PDF escaneado: requiere OCR (no disponible en esta versión). Se detectan referencias y cantidades candidatas en PDF de texto; debes confirmarlas antes de incluirlas en la conciliación. No se consultan tasas oficiales. Los documentos se procesan en el navegador sin enviarlos a un servicio OCR externo.</p></div>
+<div class="card"><h2>Documentos PDF recibidos</h2><p class="muted">Consulta el texto extraído y revisa candidatos de materiales. Solo los candidatos que apruebes se incluirán en la conciliación.</p><div id="pdfStatus" class="muted">Sin PDF procesados.</div><div class="scroll"><table><thead><tr><th>Documento</th><th>Página</th><th>Texto extraído (vista previa)</th><th>Estado</th></tr></thead><tbody id="pdfResults"></tbody></table></div></div>
+<div class="card"><h2>Candidatos de artículos extraídos de PDF</h2><p class="muted">Extracción heurística: funciona únicamente para líneas con referencia, descripción y cantidad en una misma línea del PDF. Revisa cada registro con el PDF original. No se aprueban automáticamente.</p><div class="scroll"><table><thead><tr><th>Usar</th><th>Tipo</th><th>Archivo / página</th><th>Referencia</th><th>Descripción</th><th>Cantidad</th></tr></thead><tbody id="candidateResults"><tr><td colspan="6" class="muted">Sin candidatos.</td></tr></tbody></table></div></div><div class="card"><h2>3. Revisión de valor y tributos</h2><div class="grid">
 <label>Valor FOB (moneda factura)<input id="fob" type="number" step="0.01" min="0"></label>
 <label>Flete<input id="freight" type="number" step="0.01" min="0"></label>
 <label>Seguro<input id="insurance" type="number" step="0.01" min="0"></label>
@@ -34,7 +34,7 @@
 <div class="card"><h2>5. Controles de auditoría</h2><div id="checklist" class="grid"></div><div class="actions"><button onclick="downloadReport()">Exportar auditoría detallada a Excel</button></div><p class="muted">La exportación contiene expediente, conciliación por material, alertas, valores y controles. No equivale a aprobación automática.</p></div>
 </main><script>
 const controls=['Importador y datos generales','Todas las facturas incluidas','BL/AWB y contenedor','Régimen aduanero','Referencia y pedidos','Cantidades y unidades','Bultos y pesos','Precio y moneda','FOB y ajustes de valor','Flete y seguro','CIF y tipo de cambio','Origen y preferencias','Partidas arancelarias','Import Duty / GCT / SCT / otros','Permisos y exenciones','Total liquidado y autorización'];
-const $=id=>document.getElementById(id); let lines=[],alerts=[],values={},pdfPages=[];
+const $=id=>document.getElementById(id); let lines=[],alerts=[],values={},pdfPages=[],pdfCandidates=[];
 $('checklist').innerHTML=controls.map((t,i)=>'<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" style="width:auto" id="control'+i+'">'+t+'</label>').join('');
 function norm(v){return String(v??'').trim().toUpperCase().replace(/\s+/g,' ')}
 function val(v){const n=Number(v);return Number.isFinite(n)?n:0}
@@ -54,8 +54,26 @@ async function readPdf(f,role){
       groups.get(y).push({x:item.transform?.[4]||0,s:item.str||''});
     }
     const text=[...groups.entries()].sort((a,b)=>b[0]-a[0]).map(([y,parts])=>parts.sort((a,b)=>a.x-b.x).map(i=>i.s).join(' ')).join('\n');
-    pdfPages.push({documento:f.name,tipo:role,pagina:p,texto:text,estado:text.trim()?'Texto extraído; validar manualmente':'Sin capa de texto (OCR requerido)'});
+    const record={documento:f.name,tipo:role,pagina:p,texto:text,estado:text.trim()?'Texto extraído; validar manualmente':'Sin capa de texto (OCR requerido)'};pdfPages.push(record);collectCandidates(record);
   }
+}
+function collectCandidates(page){
+  const rows=page.texto.split(/\r?\n/);
+  for(const line of rows){
+    const raw=line.trim();
+    // Conservative: reference must begin line, quantity must be a separate number after description.
+    const match=raw.match(/^([A-Z0-9][A-Z0-9._\/-]{3,25})\s+(.{4,100}?)\s+(\d{1,7}(?:[.,]\d{1,3})?)(?:\s+(?:EA|PCS|UNITS|UND|KG|BOX|CTN|PCE|SET|UNIT))?(?:\s+|$)/i);
+    if(!match || !/[A-Z]/i.test(match[1]) || /^\d{4,}$/.test(match[1]))continue;
+    const qty=Number(match[3].replace(',','.'));
+    if(!(qty>0))continue;
+    pdfCandidates.push({tipo:page.tipo,documento:page.documento,pagina:page.pagina,referencia:match[1],descripcion:match[2].trim(),cantidad:qty,confirmado:false});
+  }
+}
+function renderCandidates(){
+ $('candidateResults').innerHTML=pdfCandidates.length?pdfCandidates.map((p,i)=>'<tr><td><input aria-label="Confirmar línea '+(i+1)+'" type="checkbox" '+(p.confirmado?'checked':'')+' onchange="pdfCandidates['+i+'].confirmado=this.checked"></td><td>'+safe(p.tipo)+'</td><td>'+safe(p.documento)+' / '+p.pagina+'</td><td>'+safe(p.referencia)+'</td><td>'+safe(p.descripcion)+'</td><td>'+p.cantidad+'</td></tr>').join(''):'<tr><td colspan="6">No se detectaron candidatos; usa Excel/CSV o revisión manual.</td></tr>';
+}
+function confirmedCandidates(role){
+ return pdfCandidates.filter(p=>p.tipo===role && p.confirmado).map(p=>({referencia:p.referencia,descripcion:p.descripcion,cantidad:p.cantidad,_source:p.documento,_sheet:'PDF página '+p.pagina}));
 }
 function renderPdf(){
  $('pdfStatus').textContent=pdfPages.length+' página(s) procesada(s); no se han convertido a líneas verificadas.';
@@ -71,10 +89,24 @@ async function readFiles(id){
  return a;
 }
 function group(rows){const m=new Map();for(const r of rows){const k=norm(r.referencia||r.sku||r.codigo||r.item);if(!k)continue;if(!m.has(k))m.set(k,{ref:k,description:r.descripcion||r.description||'',qty:0,hs:new Set(),sources:new Set()});const t=m.get(k);t.qty+=val(r.cantidad||r.quantity);if(r.partida||r.hs_code)t.hs.add(norm(r.partida||r.hs_code));t.sources.add(r._source||'')}return m}
-async function audit(){try{alerts=[];pdfPages=[];const inv=await readFiles('invoices'), dec=await readFiles('declaration'), pack=await readFiles('packing');renderPdf();if(!inv.length||!dec.length){$('mStatus').textContent='PDF pendiente de validación';alert('PDF procesados como evidencia. Para comparar automáticamente materiales, carga también las líneas verificadas en Excel/CSV de factura y declaración.');return}const A=group(inv),B=group(dec),C=group(pack),all=new Set([...A.keys(),...B.keys(),...C.keys()]);lines=[];for(const ref of all){const a=A.get(ref),b=B.get(ref),c=C.get(ref),issues=[];if(!a)issues.push('Adicional en declaración/packing');if(!b)issues.push('Ausente en declaración');if(a&&b&&Math.abs(a.qty-b.qty)>0.00001)issues.push('Cantidad distinta');if(c&&a&&Math.abs(c.qty-a.qty)>0.00001)issues.push('Packing distinto');if(a&&b&&a.hs.size&&b.hs.size&&[...a.hs].sort().join('|')!==[...b.hs].sort().join('|'))issues.push('Partida diferente');const row={referencia:ref,descripcion:a?.description||b?.description||c?.description||'',cantidad_factura:a?.qty??'',cantidad_declaracion:b?.qty??'',cantidad_packing:c?.qty??'',partida_factura:a?[...a.hs].join(', '):'',partida_declaracion:b?[...b.hs].join(', '):'',estado:issues.length?issues.join('; '):'Sin diferencia de cantidad/partida'};lines.push(row);for(const issue of issues)alerts.push({referencia:ref,alerta:issue})}render();}catch(e){alert('No se pudieron leer los archivos: '+e.message)}}
+async function audit(){try{alerts=[];pdfPages=[];pdfCandidates=[];const inv=await readFiles('invoices'), dec=await readFiles('declaration'), pack=await readFiles('packing');renderPdf();renderCandidates();if(!inv.length||!dec.length){$('mStatus').textContent='PDF pendiente de validación';alert('PDF procesados como evidencia. Para comparar automáticamente materiales, carga también las líneas verificadas en Excel/CSV de factura y declaración.');return}const A=group(inv),B=group(dec),C=group(pack),all=new Set([...A.keys(),...B.keys(),...C.keys()]);lines=[];for(const ref of all){const a=A.get(ref),b=B.get(ref),c=C.get(ref),issues=[];if(!a)issues.push('Adicional en declaración/packing');if(!b)issues.push('Ausente en declaración');if(a&&b&&Math.abs(a.qty-b.qty)>0.00001)issues.push('Cantidad distinta');if(c&&a&&Math.abs(c.qty-a.qty)>0.00001)issues.push('Packing distinto');if(a&&b&&a.hs.size&&b.hs.size&&[...a.hs].sort().join('|')!==[...b.hs].sort().join('|'))issues.push('Partida diferente');const row={referencia:ref,descripcion:a?.description||b?.description||c?.description||'',cantidad_factura:a?.qty??'',cantidad_declaracion:b?.qty??'',cantidad_packing:c?.qty??'',partida_factura:a?[...a.hs].join(', '):'',partida_declaracion:b?[...b.hs].join(', '):'',estado:issues.length?issues.join('; '):'Sin diferencia de cantidad/partida'};lines.push(row);for(const issue of issues)alerts.push({referencia:ref,alerta:issue})}render();}catch(e){alert('No se pudieron leer los archivos: '+e.message)}}
+function compareConfirmed(){
+ const inv=confirmedCandidates('invoices'),dec=confirmedCandidates('declaration'),pack=confirmedCandidates('packing');
+ if(!inv.length||!dec.length){alert('Confirma al menos una línea PDF de factura y una de declaración.');return}
+ const A=group(inv),B=group(dec),C=group(pack),all=new Set([...A.keys(),...B.keys(),...C.keys()]);
+ lines=[];alerts=[];
+ for(const ref of all){const a=A.get(ref),b=B.get(ref),c=C.get(ref),issues=[];
+ if(!a)issues.push('Adicional en declaración/packing');if(!b)issues.push('Ausente en declaración');
+ if(a&&b&&Math.abs(a.qty-b.qty)>0.00001)issues.push('Cantidad distinta');
+ if(a&&c&&Math.abs(a.qty-c.qty)>0.00001)issues.push('Packing distinto');
+ const row={referencia:ref,descripcion:a?.description||b?.description||c?.description||'',cantidad_factura:a?.qty??'',cantidad_declaracion:b?.qty??'',cantidad_packing:c?.qty??'',partida_factura:'No extraída del PDF',partida_declaracion:'No extraída del PDF',estado:issues.length?issues.join('; '):'Cantidades coinciden; partida no verificada'};
+ lines.push(row);for(const issue of issues)alerts.push({referencia:ref,alerta:issue});
+ }
+ render();$('mStatus').textContent='Revisión aduanera pendiente';
+}
 function render(){$('mLines').textContent=lines.length;$('mFlags').textContent=alerts.length;$('mStatus').textContent=alerts.length?'Requiere revisión':'Revisión manual pendiente';$('results').innerHTML=lines.map(r=>'<tr>'+Object.values(r).map((v,i)=>'<td class="'+(i===7?(v.startsWith('Sin diferencia')?'ok':'bad'):'')+'">'+safe(v)+'</td>').join('')+'</tr>').join('')||'<tr><td colspan="8">Sin líneas</td></tr>'}
 function checkValues(){const inputs=['fob','freight','insurance','fx','cifDeclared','taxDeclared'];values=Object.fromEntries(inputs.map(i=>[i,$(i).value]));const mandatory=['fob','freight','insurance','fx','cifDeclared'];if(mandatory.some(i=>$(i).value==='')){alert('Completa FOB, flete, seguro, cambio y CIF declarado.');return}const cif=(val(values.fob)+val(values.freight)+val(values.insurance))*val(values.fx),difference=cif-val(values.cifDeclared);values.cif_calculado_jmd=cif;values.diferencia_cif_jmd=difference;if(Math.abs(difference)>0.01)alerts.push({referencia:'VALOR CIF',alerta:'Diferencia CIF JMD '+difference.toFixed(2)});render();alert('CIF estimado: JMD '+cif.toFixed(2)+' | Diferencia: JMD '+difference.toFixed(2)+'. Confirma Incoterm y ajustes de valoración.')}
 function sheet(rows){return XLSX.utils.json_to_sheet(rows.length?rows:[{estado:'Sin datos'}])}
-function downloadReport(){const wb=XLSX.utils.book_new(), meta=['ref','importer','date','invoiceRef','bl','currency'].map(id=>({campo:id,valor:$(id).value}));XLSX.utils.book_append_sheet(wb,sheet(meta),'Expediente');XLSX.utils.book_append_sheet(wb,sheet(lines),'Conciliacion');XLSX.utils.book_append_sheet(wb,sheet(alerts),'Alertas');XLSX.utils.book_append_sheet(wb,sheet(pdfPages),'Evidencia PDF');XLSX.utils.book_append_sheet(wb,sheet(Object.entries(values).map(([campo,valor])=>({campo,valor}))),'Valores');XLSX.utils.book_append_sheet(wb,sheet(controls.map((c,i)=>({control:c,verificado:$('control'+i).checked?'Si':'No'}))),'Checklist');XLSX.writeFile(wb,'Auditoria_Jamaica_'+(norm($('ref').value)||'EXPEDIENTE').replace(/[^A-Z0-9_-]/g,'_')+'.xlsx')}
+function downloadReport(){const wb=XLSX.utils.book_new(), meta=['ref','importer','date','invoiceRef','bl','currency'].map(id=>({campo:id,valor:$(id).value}));XLSX.utils.book_append_sheet(wb,sheet(meta),'Expediente');XLSX.utils.book_append_sheet(wb,sheet(lines),'Conciliacion');XLSX.utils.book_append_sheet(wb,sheet(alerts),'Alertas');XLSX.utils.book_append_sheet(wb,sheet(pdfPages),'Evidencia PDF');XLSX.utils.book_append_sheet(wb,sheet(pdfCandidates),'Candidatos PDF');XLSX.utils.book_append_sheet(wb,sheet(Object.entries(values).map(([campo,valor])=>({campo,valor}))),'Valores');XLSX.utils.book_append_sheet(wb,sheet(controls.map((c,i)=>({control:c,verificado:$('control'+i).checked?'Si':'No'}))),'Checklist');XLSX.writeFile(wb,'Auditoria_Jamaica_'+(norm($('ref').value)||'EXPEDIENTE').replace(/[^A-Z0-9_-]/g,'_')+'.xlsx')}
 function downloadTemplate(){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1,precio_unitario:100,moneda:'USD',origen:'ES',partida:''}]),'Factura');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1,precio_unitario:100,moneda:'USD',origen:'ES',partida:'',valor_declarado:100}]),'Declaracion');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1}]),'Packing');XLSX.writeFile(wb,'Plantilla_Auditoria_Jamaica.xlsx')}
 </script></body></html>
