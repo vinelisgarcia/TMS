@@ -1036,13 +1036,14 @@ html { -webkit-text-size-adjust: 100%; }
 
   <div id="mobileModuleNav">
     <label for="mobileModuleSelect">Módulo
-      <select id="mobileModuleSelect" onchange="cambiarVista(this.value, document.getElementById('nav-' + this.value))">
+      <select id="mobileModuleSelect" onchange="this.value === 'auditoriaJamaica' ? window.open('./auditoria-jamaica.html', '_blank', 'noopener,noreferrer') : cambiarVista(this.value, document.getElementById('nav-' + this.value))">
         <option value="importar">Importar SAP</option>
         <option value="dashboard">Dashboard</option>
         <option value="calendario">Calendario</option>
         <option value="comercial">Vista Comercial</option>
         <option value="rutas">Rutas</option>
         <option value="importaciones">Importaciones</option>
+        <option value="auditoriaJamaica">Auditoría Jamaica</option>
         <option value="materialesTransito">Materiales en tránsito</option>
         <option value="prioridades">Prioridades</option>
         <option value="incidenciasDespacho">Incidencias Despacho</option>
@@ -1073,6 +1074,7 @@ html { -webkit-text-size-adjust: 100%; }
     <button class="nav-btn" id="nav-importaciones" onclick="cambiarVista('importaciones',this)">
       <span class="nav-icon">↗</span><span class="nav-label">Importaciones</span>
     </button>
+    <button class="nav-btn" id="nav-auditoriaJamaica" onclick="window.open('./auditoria-jamaica.html', '_blank', 'noopener,noreferrer')"><span class="nav-icon">📋</span><span class="nav-label">Auditoría Jamaica</span></button>
     <button class="nav-btn" id="nav-materialesTransito" onclick="cambiarVista('materialesTransito',this)">
       <span class="nav-icon">⇥</span><span class="nav-label">Materiales en tránsito</span>
     </button>
