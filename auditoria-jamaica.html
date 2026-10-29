@@ -6,7 +6,7 @@
 :root{font-family:system-ui,Segoe UI,sans-serif;color:#172033;background:#eef2f6}*{box-sizing:border-box}body{margin:0}header{background:#0b1220;color:white;padding:16px 28px;display:flex;align-items:center;justify-content:space-between}header a{color:white;text-decoration:none}.brand{font-size:20px;font-weight:750}main{max-width:1180px;margin:26px auto;padding:0 20px}.title{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}.muted{color:#667085;font-size:13px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:white;border:1px solid #dce2ea;border-radius:13px;padding:20px;margin:16px 0;box-shadow:0 1px 2px #0000000b}h1{margin:0}h2{font-size:17px;margin:0 0 14px}label{font-size:13px;display:block;margin:8px 0}input,select{width:100%;padding:10px;border:1px solid #cdd5df;border-radius:8px;background:#fff}input[type=file]{font-size:12px}button{background:#00a676;color:white;border:0;padding:11px 17px;border-radius:8px;font-weight:700;cursor:pointer}button.secondary{background:#172033}button:disabled{opacity:.5;cursor:default}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:10px;border-bottom:1px solid #e5eaf0;text-align:left}th{background:#f5f7fa} .scroll{overflow:auto}.pill{padding:4px 8px;background:#fef0db;color:#9a5600;border-radius:20px;font-size:12px;font-weight:700}.bad{color:#b42318;font-weight:700}.ok{color:#078359;font-weight:700}.warning{color:#b36b00;font-weight:700}.metric{font-size:26px;font-weight:800}.hint{background:#fff8e7;border-radius:8px;padding:12px;font-size:13px;color:#7a4c0b}.actions{display:flex;gap:10px;flex-wrap:wrap}@media(max-width:760px){.grid{grid-template-columns:1fr}} </style></head>
 <body><header><div class="brand">ÁLVAREZ · TMS <span style="font-size:14px;color:#f5c542">/ Auditoría Jamaica</span></div><a href="./index.html">← Volver al TMS</a></header>
 <main><div class="title"><div><h1>Verificación de preliquidaciones · Jamaica</h1><p class="muted">Conciliación documental y alertas de revisión | JCA · eSAD / ASYCUDA</p></div><span class="pill">Revisión asistida — no sustituye validación aduanera</span></div>
-<div class="card"><h2>1. Identificación del expediente</h2><div class="grid">
+<div class="card"><h2>Auditoría integral del expediente</h2><p class="muted">Selecciona los cinco documentos y ejecuta el análisis de una vez. Las comprobaciones sin datos verificables aparecerán como pendientes, nunca como conformes.</p><div class="actions"><button onclick="runFullAudit()">Ejecutar auditoría de cinco documentos</button></div><div id="fullAuditState" class="hint">Sin ejecutar.</div><div class="scroll"><table><thead><tr><th>Verificación</th><th>Resultado</th><th>Detalle / acción</th></tr></thead><tbody id="fullAuditResults"><tr><td colspan="3">Pendiente de cargar documentos</td></tr></tbody></table></div></div><div class="card"><h2>1. Identificación del expediente</h2><div class="grid">
 <label>Expediente / referencia<input id="ref" placeholder="IMP-JM-2026-001"></label>
 <label>Importador<input id="importer" placeholder="Nombre de importador"></label>
 <label>Fecha de declaración<input id="date" type="date"></label>
@@ -48,7 +48,7 @@
 <div class="card"><h2>5. Controles de auditoría</h2><div id="checklist" class="grid"></div><div class="actions"><button onclick="downloadReport()">Exportar auditoría detallada a Excel</button></div><p class="muted">La exportación contiene expediente, conciliación por material, alertas, valores y controles. No equivale a aprobación automática.</p></div>
 </main><script>
 const controls=['Importador y datos generales','Todas las facturas incluidas','BL/AWB y contenedor','Régimen aduanero','Referencia y pedidos','Cantidades y unidades','Bultos y pesos','Precio y moneda','FOB y ajustes de valor','Flete y seguro','CIF y tipo de cambio','Origen y preferencias','Partidas arancelarias','Import Duty / GCT / SCT / otros','Permisos y exenciones','Total liquidado y autorización'];
-const $=id=>document.getElementById(id); let lines=[],alerts=[],values={},pdfPages=[],pdfCandidates=[],assessmentCharges=[],chargeChecks=[],chargeRecords=[];
+const $=id=>document.getElementById(id); let lines=[],alerts=[],values={},pdfPages=[],pdfCandidates=[],assessmentCharges=[],chargeChecks=[],chargeRecords=[],fullAuditRows=[];
 $('checklist').innerHTML=controls.map((t,i)=>'<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" style="width:auto" id="control'+i+'">'+t+'</label>').join('');
 function norm(v){return String(v??'').trim().toUpperCase().replace(/\s+/g,' ')}
 function val(v){const n=Number(v);return Number.isFinite(n)?n:0}
@@ -280,7 +280,62 @@ async function compareCharges(){
  }catch(e){alert('No se pudo comparar el Charge Sheet: '+e.message)}
 }
 
+
+function fullRow(control,status,detail){
+ fullAuditRows.push({control,estado:status,detalle:detail});
+ if(status==='Diferencia')alerts.push({referencia:control,alerta:detail});
+}
+function drawFullAudit(){
+ $('fullAuditResults').innerHTML=fullAuditRows.map(r=>'<tr><td>'+safe(r.control)+'</td><td class="'+(r.estado==='Diferencia'?'bad':r.estado==='Conforme'?'ok':'warning')+'">'+safe(r.estado)+'</td><td>'+safe(r.detalle)+'</td></tr>').join('');
+ $('fullAuditState').textContent=fullAuditRows.filter(r=>r.estado==='Diferencia').length+' diferencias, '+fullAuditRows.filter(r=>r.estado==='Pendiente').length+' controles pendientes y '+fullAuditRows.filter(r=>r.estado==='Conforme').length+' controles de coincidencia.';
+}
+function assessmentTotalFromText(){
+ const matches=pdfPages.filter(p=>p.tipo==='assessment').flatMap(p=>[...p.texto.matchAll(/Total amount to be paid\s*:?\s*([\d,]+\.\d{2})/gi)].map(m=>currencyValue(m[1])));
+ return matches.length===1?matches[0]:null;
+}
+async function runFullAudit(){
+ const required=['invoices','packing','declaration','assessmentFile','chargeFile'];
+ const missing=required.filter(id=>!$(id).files.length);
+ if(missing.length){$('fullAuditState').textContent='Documentos faltantes: '+missing.join(', ');return}
+ fullAuditRows=[];pdfPages=[];pdfCandidates=[];alerts=[];lines=[];
+ $('fullAuditState').textContent='Analizando documentos...';
+ try{
+  const inv=await readFiles('invoices'),packing=await readFiles('packing'),declaration=await readFiles('declaration');
+  renderPdf();renderCandidates();
+  const I=group(inv),P=group(packing),D=group(declaration);
+  if(!inv.length||!packing.length)fullRow('Factura ↔ Packing List','Pendiente','Se requiere extracción estructurada de las líneas; no se interpretan PDF como Excel.');
+  else{
+   const refs=new Set([...I.keys(),...P.keys()]);let differences=0;
+   for(const ref of refs){
+    const a=I.get(ref),b=P.get(ref);
+    if(!a||!b||Math.abs(a.qty-b.qty)>0.00001){differences++;alerts.push({referencia:ref,alerta:'Factura ↔ Packing: faltante o cantidad diferente'})}
+   }
+   fullRow('Factura ↔ Packing List',differences?'Diferencia':'Conforme',differences?differences+' referencias con diferencias':'Referencias y cantidades coinciden en los datos estructurados');
+  }
+  if(!declaration.length||!inv.length)fullRow('Factura ↔ SAD','Pendiente','SAD PDF no tiene mapeo seguro a referencias individuales; requiere conciliación de agrupaciones por clasificación, origen y valor.');
+  else{
+   let mismatches=0;
+   for(const ref of new Set([...I.keys(),...D.keys()])){const a=I.get(ref),b=D.get(ref);if(!a||!b||Math.abs(a.qty-b.qty)>0.00001)mismatches++}
+   fullRow('Factura ↔ SAD',mismatches?'Diferencia':'Conforme',mismatches?mismatches+' referencias con diferencias':'Coincidencia de referencias/cantidades; clasificación y valoración necesitan revisión');
+  }
+  await importAssessment();
+  const declaredTotal=assessmentTotalFromText();
+  if(declaredTotal!==null && !$('assessmentTotal').value)$('assessmentTotal').value=declaredTotal.toFixed(2);
+  if(declaredTotal===null)fullRow('Total Assessment Notice','Pendiente','No se identificó de forma inequívoca el total a pagar.');
+  else fullRow('Total Assessment Notice','Conforme','Importe extraído: '+money(declaredTotal)+'; no verifica legalidad ni exactitud fiscal.');
+  await compareCharges();
+  for(const ch of chargeChecks){
+   if(ch.control.startsWith('Respaldo/tarifa'))fullRow(ch.control,'Pendiente','Requiere tarifa acordada o comprobante de terceros.');
+   else fullRow(ch.control,ch.estado==='Diferencia'?'Diferencia':ch.estado==='Conforme'?'Conforme':'Pendiente',
+    'Documento '+ch.documento+'; esperado '+(ch.esperado===null?'no disponible':money(ch.esperado))+'; cobrado '+(ch.declarado===null?'no extraído':money(ch.declarado)));
+  }
+  fullRow('Impuestos SAD ↔ Assessment','Pendiente','Validar agregación de las 62 líneas SAD por concepto y las tasas aplicables; no inferir conformidad solo por coincidencia global.');
+  fullRow('Tarifas de agente ↔ acuerdo','Pendiente','No se adjuntó tarifario o contrato del agente.');
+  drawFullAudit();render();
+ }catch(e){$('fullAuditState').textContent='No se completó el análisis: '+e.message;fullRow('Lectura documental','Pendiente',e.message);drawFullAudit();}
+}
+
 function sheet(rows){return XLSX.utils.json_to_sheet(rows.length?rows:[{estado:'Sin datos'}])}
-function downloadReport(){const wb=XLSX.utils.book_new(), meta=['ref','importer','date','invoiceRef','bl','currency'].map(id=>({campo:id,valor:$(id).value}));XLSX.utils.book_append_sheet(wb,sheet(meta),'Expediente');XLSX.utils.book_append_sheet(wb,sheet(lines),'Conciliacion');XLSX.utils.book_append_sheet(wb,sheet(alerts),'Alertas');XLSX.utils.book_append_sheet(wb,sheet(pdfPages),'Evidencia PDF');XLSX.utils.book_append_sheet(wb,sheet(pdfCandidates),'Candidatos PDF');XLSX.utils.book_append_sheet(wb,sheet(assessmentCharges),'Assessment Cargos');XLSX.utils.book_append_sheet(wb,sheet(chargeRecords),'Cargos Agente');XLSX.utils.book_append_sheet(wb,sheet(chargeChecks),'Control de Cargos');XLSX.utils.book_append_sheet(wb,sheet([{total_indicado:$('assessmentTotal').value,suma_confirmados:assessmentCharges.filter(x=>x.incluir).reduce((a,b)=>a+Number(b.monto||0),0)}]),'Assessment Resumen');XLSX.utils.book_append_sheet(wb,sheet(Object.entries(values).map(([campo,valor])=>({campo,valor}))),'Valores');XLSX.utils.book_append_sheet(wb,sheet(controls.map((c,i)=>({control:c,verificado:$('control'+i).checked?'Si':'No'}))),'Checklist');XLSX.writeFile(wb,'Auditoria_Jamaica_'+(norm($('ref').value)||'EXPEDIENTE').replace(/[^A-Z0-9_-]/g,'_')+'.xlsx')}
+function downloadReport(){const wb=XLSX.utils.book_new(), meta=['ref','importer','date','invoiceRef','bl','currency'].map(id=>({campo:id,valor:$(id).value}));XLSX.utils.book_append_sheet(wb,sheet(meta),'Expediente');XLSX.utils.book_append_sheet(wb,sheet(lines),'Conciliacion');XLSX.utils.book_append_sheet(wb,sheet(alerts),'Alertas');XLSX.utils.book_append_sheet(wb,sheet(pdfPages),'Evidencia PDF');XLSX.utils.book_append_sheet(wb,sheet(pdfCandidates),'Candidatos PDF');XLSX.utils.book_append_sheet(wb,sheet(assessmentCharges),'Assessment Cargos');XLSX.utils.book_append_sheet(wb,sheet(chargeRecords),'Cargos Agente');XLSX.utils.book_append_sheet(wb,sheet(chargeChecks),'Control de Cargos');XLSX.utils.book_append_sheet(wb,sheet(fullAuditRows),'Auditoria Integral');XLSX.utils.book_append_sheet(wb,sheet([{total_indicado:$('assessmentTotal').value,suma_confirmados:assessmentCharges.filter(x=>x.incluir).reduce((a,b)=>a+Number(b.monto||0),0)}]),'Assessment Resumen');XLSX.utils.book_append_sheet(wb,sheet(Object.entries(values).map(([campo,valor])=>({campo,valor}))),'Valores');XLSX.utils.book_append_sheet(wb,sheet(controls.map((c,i)=>({control:c,verificado:$('control'+i).checked?'Si':'No'}))),'Checklist');XLSX.writeFile(wb,'Auditoria_Jamaica_'+(norm($('ref').value)||'EXPEDIENTE').replace(/[^A-Z0-9_-]/g,'_')+'.xlsx')}
 function downloadTemplate(){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1,precio_unitario:100,moneda:'USD',origen:'ES',partida:''}]),'Factura');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1,precio_unitario:100,moneda:'USD',origen:'ES',partida:'',valor_declarado:100}]),'Declaracion');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1}]),'Packing');XLSX.writeFile(wb,'Plantilla_Auditoria_Jamaica.xlsx')}
 </script></body></html>
