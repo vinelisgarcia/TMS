@@ -79,6 +79,44 @@ function auditValuation(term,invoiceRows,sadText){
 }
 
 
+
+function extractShipmentKeys(text){
+ const t=String(text||'').toUpperCase(), out=new Set();
+ for(const re of [/\b(?:BL|B\/L|AWB|BILL OF LADING)\s*(?:NO\.?|NUMBER|#|:)?\s*([A-Z0-9-]{7,25})/g,/\b([A-Z]{4}\d{7})\b/g,/\b(?:INVOICE|FACTURA)\s*(?:NO\.?|NUMBER|#|:)?\s*([A-Z0-9-]{6,30})/g]){
+  for(const m of t.matchAll(re))out.add(m[1]);
+ }return [...out];
+}
+function allocateByValue(cost,rows){
+ const bases=rows.map(r=>({reference:rowRef(r),value:parseNumber(r.total??r.valor_total??r.importe)??((rowQty(r)??0)*(parseNumber(r.precio_unitario)??0))})).filter(r=>r.reference&&r.value>0);
+ const total=bases.reduce((a,b)=>a+b.value,0);
+ if(!total||!Number.isFinite(cost))return [];
+ let balance=Math.round(cost*100),allocated=[];
+ for(let i=0;i<bases.length;i++){const cents=i===bases.length-1?balance:Math.round(cost*100*bases[i].value/total);balance-=cents;allocated.push({referencia:bases[i].reference,importe:cents/100,base:bases[i].value,metodo:'Prorrateo por valor de factura'})}
+ return allocated;
+}
+function linkAndAllocateCosts(docs,invoiceRows,sadText){
+ const sadKeys=extractShipmentKeys(sadText);
+ const matched=[],unknown=[];
+ for(const d of docs){
+  const keys=extractShipmentKeys(d.text);
+  const common=keys.filter(x=>sadKeys.includes(x));
+  const related=common.length>0;
+  (related?matched:unknown).push({...d,claves:keys.join(', '),coincidencias:common.join(', ')});
+ }
+ tables.vinculos=matched.map(x=>({documento:x.source,referencias:x.coincidencias,estado:'Relacionado por referencia'})).concat(unknown.map(x=>({documento:x.source,referencias:x.claves,estado:'No vinculable automáticamente'})));
+ if(unknown.length)add('Pendiente','Vínculo de gastos con embarque',unknown.length+' documentos no presentan una referencia de BL, contenedor o factura que coincida inequívocamente con el SAD.',unknown.map(x=>x.source).join(' | '));
+ if(!matched.length){add('Pendiente','Prorrateo de costos','Sin documentación de gastos vinculada y cuantificada no es posible prorratear ni reconstruir CIF.');return}
+ const candidates=scanCostEvidence(matched);
+ const usable=candidates.filter(x=>x.monto!==null&&x.moneda!=='NO IDENTIFICADA');
+ if(!usable.length){add('Pendiente','Prorrateo de costos','Los gastos relacionados no contienen montos y monedas inequívocos para calcular prorrateo.');return}
+ const currencies=[...new Set(usable.map(x=>x.moneda))];
+ if(currencies.length!==1){add('Pendiente','Conversión monetaria','Se encontraron gastos en diferentes monedas: '+currencies.join(', ')+'. Hace falta tasa aplicable por moneda y fecha.');return}
+ const totals=usable.reduce((a,c)=>a+c.monto,0);
+ tables.prorrateo=allocateByValue(totals,invoiceRows);
+ if(!tables.prorrateo.length){add('Pendiente','Prorrateo por valor de factura','No se identificaron valores monetarios suficientes por referencia de mercancía.');return}
+ add('Pendiente','Prorrateo documental calculado','Se preparó distribución indicativa de '+totals.toFixed(2)+' '+currencies[0]+' entre '+tables.prorrateo.length+' referencias. Aún falta verificar inclusión de cada gasto, conversión de moneda y valor CIF contra SAD.');
+}
+
 function scanCostEvidence(costDocs){
  const categories=[
   ['FLETE_INTERNACIONAL',/\b(?:OCEAN FREIGHT|AIR FREIGHT|INTERNATIONAL FREIGHT|FLETE INTERNACIONAL)\b/i],
@@ -117,7 +155,7 @@ const data={};for(const role of [...roles,'costs']){data[role]={rows:[],pages:[]
 meta={archivos:[...files.values()].map(f=>({nombre:f.name,tipo:classify(f.name)||'sin identificar'})),fecha:new Date().toISOString()};
 compareRefs(data.invoice.rows,data.packing.rows);
 const sad=data.sad.pages.map(p=>p.text).join('\n'),assessment=data.assessment.pages.map(p=>p.text).join('\n'),charges=data.charges.pages.map(p=>p.text).join('\n');
-const termCheck=detectIncoterm([...data.invoice.pages.map(p=>({text:p.text,source:p.file+' p.'+p.page})),...data.sad.pages.map(p=>({text:p.text,source:p.file+' p.'+p.page}))]);meta.incoterm=termCheck;const costEvidence=[...data.invoice.pages,...data.costs.pages,...data.sad.pages].map(p=>({text:p.text,source:p.file+' p.'+p.page}));auditCostComponents(termCheck.term,costEvidence); if(termCheck.status==='Conflicto')add('Diferencia','Incoterm contradictorio','Los documentos indican diferentes Incoterms: '+termCheck.evidence.map(x=>x.term+' '+x.fuente).join(' | '));auditValuation(termCheck.term,data.invoice.rows,sad);const an=rowsMoney(assessment,anLabels),ch=rowsMoney(charges,chargeLabels);compareCharges(an,ch);
+const termCheck=detectIncoterm([...data.invoice.pages.map(p=>({text:p.text,source:p.file+' p.'+p.page})),...data.sad.pages.map(p=>({text:p.text,source:p.file+' p.'+p.page}))]);meta.incoterm=termCheck;const costEvidence=[...data.invoice.pages,...data.costs.pages,...data.sad.pages].map(p=>({text:p.text,source:p.file+' p.'+p.page}));auditCostComponents(termCheck.term,costEvidence);linkAndAllocateCosts(costEvidence,data.invoice.rows,sad); if(termCheck.status==='Conflicto')add('Diferencia','Incoterm contradictorio','Los documentos indican diferentes Incoterms: '+termCheck.evidence.map(x=>x.term+' '+x.fuente).join(' | '));auditValuation(termCheck.term,data.invoice.rows,sad);const an=rowsMoney(assessment,anLabels),ch=rowsMoney(charges,chargeLabels);compareCharges(an,ch);
 const sadDeclared=(sad.match(/Total declaration\s+([\d,]+\.\d{2})/i)||[])[1];const anValue=choose(an,'TOTAL_PAYABLE');if(sadDeclared&&anValue!==null)add(Math.abs(parseNumber(sadDeclared.replace(/,/g,''))-anValue)<=.02?'Conforme':'Diferencia','Total SAD vs Assessment',money(parseNumber(sadDeclared.replace(/,/g,'')))+' vs '+money(anValue),'SAD p.1 / Assessment Notice');else add('Pendiente','Total SAD vs Assessment','No se detectaron importes totales inequívocos.');
 const sadItems=(sad.match(/\b5 Items\s+6\. Total packages\s+7\. Commercial[\s\S]{0,80}?\b(\d+)\s+(\d+)\s+2026/i)||[]);if(sadItems[2])meta.bultosSAD=Number(sadItems[2]);
 const packingGrid=selected.packing?.length?await Promise.all(selected.packing.filter(f=>/\.xlsx?$/i.test(f.name)).map(async f=>{const w=XLSX.read(await f.arrayBuffer(),{type:'array'});return XLSX.utils.sheet_to_json(w.Sheets[w.SheetNames[0]],{header:1,defval:''}).slice(0,5)})):[];
@@ -129,6 +167,6 @@ if(!charges.trim())add('Pendiente','PDF Charge Sheet','No se extrajo texto del P
 draw()}catch(err){add('Pendiente','Error de lectura',String(err.message||err));draw()}finally{$('run').disabled=false}}
 function draw(){$('report').classList.remove('hidden');for(const [id,state] of [['okCount','Conforme'],['badCount','Diferencia'],['pendingCount','Pendiente']])$(id).textContent=reportRows.filter(x=>x.estado===state).length;$('findings').innerHTML=reportRows.map(r=>'<tr><td class="'+(r.estado==='Conforme'?'ok':r.estado==='Diferencia'?'bad':'pending')+'">'+escapeHtml(r.estado)+'</td><td>'+escapeHtml(r.control)+'</td><td>'+escapeHtml(r.detalle)+'</td><td>'+escapeHtml(r.evidencia)+'</td></tr>').join('');$('summary').textContent='Resultado documental preliminar. '+reportRows.filter(x=>x.estado==='Diferencia').length+' diferencias y '+reportRows.filter(x=>x.estado==='Pendiente').length+' verificaciones pendientes.';$('status').textContent='Análisis completado. Revisa los hallazgos y descarga el informe.'}
 function sheet(data){return XLSX.utils.json_to_sheet(data?.length?data:[{informacion:'Sin filas'}])}
-function exportExcel(){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,sheet([{control:'Incoterm',fuente:'Detección automática por embarque',valor:meta.incoterm?.term||'No determinado'},{control:'Partida arancelaria',fuente:'Factura comercial'},{control:'País de origen',fuente:'Factura comercial'},{control:'Tasas',fuente:'Jamaica Customs Integrated Tariff / JTIP',estado:'Consulta oficial automática pendiente de implementar'}]),'Reglas de Auditoria');for(const [name,rows] of [['Resumen',reportRows],['Referencias',tables.referencias],['Costos detectados',tables.costos],['Assessment',tables.assessment],['Charge Sheet',tables.cargos],['Archivos',meta.archivos]])XLSX.utils.book_append_sheet(wb,sheet(rows),name);XLSX.writeFile(wb,'Auditoria_Jamaica_Informe.xlsx')}
+function exportExcel(){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,sheet([{control:'Incoterm',fuente:'Detección automática por embarque',valor:meta.incoterm?.term||'No determinado'},{control:'Partida arancelaria',fuente:'Factura comercial'},{control:'País de origen',fuente:'Factura comercial'},{control:'Tasas',fuente:'Jamaica Customs Integrated Tariff / JTIP',estado:'Consulta oficial automática pendiente de implementar'}]),'Reglas de Auditoria');for(const [name,rows] of [['Resumen',reportRows],['Referencias',tables.referencias],['Costos detectados',tables.costos],['Vinculos de gastos',tables.vinculos],['Prorrateo',tables.prorrateo],['Assessment',tables.assessment],['Charge Sheet',tables.cargos],['Archivos',meta.archivos]])XLSX.utils.book_append_sheet(wb,sheet(rows),name);XLSX.writeFile(wb,'Auditoria_Jamaica_Informe.xlsx')}
 function exportPdf(){if(!window.jspdf){alert('No está disponible el generador PDF.');return}const doc=new jspdf.jsPDF(),W=190;doc.setFillColor(16,24,39);doc.rect(0,0,210,39,'F');doc.setTextColor(255,255,255);doc.setFontSize(18);doc.text('ALVAREZ  |  Auditoria Aduanera Jamaica',12,20);doc.setFontSize(10);doc.text('Informe documental ejecutivo',12,30);doc.setTextColor(30,42,59);let y=50;for(const row of reportRows){const l=doc.splitTextToSize(row.estado+'  |  '+row.control+'  |  '+row.detalle,W);if(y+l.length*5>277){doc.addPage();y=18}doc.setFontSize(9);doc.text(l,12,y);y+=l.length*5+6}doc.save('Auditoria_Jamaica_Informe.pdf')}
 </script></body></html>
