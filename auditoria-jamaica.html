@@ -43,7 +43,7 @@ function detectIncoterm(documents){
  for(const item of documents){
   const content=String(item.text||'').toUpperCase();
   const expressions=[...content.matchAll(/\b(?:INCOTERM(?:S)?|DELIVERY TERMS|TERMS OF DELIVERY)\s*[:\-]?\s*(EXW|FCA|FAS|FOB|CFR|CIF|CPT|CIP|DAP|DPU|DDP)\b/g)];
-  const values=expressions.length?expressions.map(m=>m[1]):[...content.matchAll(/\b(EXW|FCA|FAS|FOB|CFR|CIF|CPT|CIP|DAP|DPU|DDP)\b/g)].map(m=>m[1])];
+  const values=expressions.length?expressions.map(m=>m[1]):[...content.matchAll(/\b(EXW|FCA|FAS|FOB|CFR|CIF|CPT|CIP|DAP|DPU|DDP)\b/g)].map(m=>m[1]);
   // Text-only fallback should not certify an Incoterm from unrelated mentions.
   for(const v of (expressions.length?values:[]))evidence.push({term:v,fuente:item.source});
  }
