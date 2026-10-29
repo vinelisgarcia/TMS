@@ -32,6 +32,9 @@
 <div><div class="muted">Cargos incluidos</div><div id="assessmentSum" class="metric">JMD 0.00</div></div>
 <div><div class="muted">Diferencia respecto al total indicado</div><div id="assessmentDifference" class="metric warning">Pendiente</div></div>
 </div><p class="hint">El total se comprueba contra el monto que ingreses del documento original. La extracción no determina por sí sola si cada cargo es legalmente correcto. Revisa duplicados, descuentos, pagos previos y el significado de los totales.</p></div>
+<div class="card"><h2>Charge Sheet · Factura del agente aduanal</h2><p class="muted">Carga la factura del agente para comprobar automáticamente sus sumas y cotejar el concepto Duties and Taxes con el Assessment Notice. Los cargos de terceros y honorarios sin tarifas o justificantes quedarán como pendientes.</p>
+<label>Charge Sheet (PDF, Excel o CSV)<input id="chargeFile" type="file" accept=".pdf,.xlsx,.xls,.csv"></label><div class="actions"><button onclick="compareCharges()">Comparar Assessment y Charge Sheet</button></div>
+<div id="automaticChecks" class="scroll"><table><thead><tr><th>Control</th><th>Documento</th><th>Esperado</th><th>Declarado</th><th>Estado</th></tr></thead><tbody id="chargeChecks"><tr><td colspan="5">Pendiente de archivos</td></tr></tbody></table></div></div>
 <div class="card"><h2>3. Revisión de valor y tributos</h2><div class="grid">
 <label>Valor FOB (moneda factura)<input id="fob" type="number" step="0.01" min="0"></label>
 <label>Flete<input id="freight" type="number" step="0.01" min="0"></label>
@@ -45,7 +48,7 @@
 <div class="card"><h2>5. Controles de auditoría</h2><div id="checklist" class="grid"></div><div class="actions"><button onclick="downloadReport()">Exportar auditoría detallada a Excel</button></div><p class="muted">La exportación contiene expediente, conciliación por material, alertas, valores y controles. No equivale a aprobación automática.</p></div>
 </main><script>
 const controls=['Importador y datos generales','Todas las facturas incluidas','BL/AWB y contenedor','Régimen aduanero','Referencia y pedidos','Cantidades y unidades','Bultos y pesos','Precio y moneda','FOB y ajustes de valor','Flete y seguro','CIF y tipo de cambio','Origen y preferencias','Partidas arancelarias','Import Duty / GCT / SCT / otros','Permisos y exenciones','Total liquidado y autorización'];
-const $=id=>document.getElementById(id); let lines=[],alerts=[],values={},pdfPages=[],pdfCandidates=[],assessmentCharges=[];
+const $=id=>document.getElementById(id); let lines=[],alerts=[],values={},pdfPages=[],pdfCandidates=[],assessmentCharges=[],chargeChecks=[],chargeRecords=[];
 $('checklist').innerHTML=controls.map((t,i)=>'<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" style="width:auto" id="control'+i+'">'+t+'</label>').join('');
 function norm(v){return String(v??'').trim().toUpperCase().replace(/\s+/g,' ')}
 function val(v){const n=Number(v);return Number.isFinite(n)?n:0}
@@ -201,7 +204,83 @@ function renderAssessment(){
  renderAssessmentSummary();
 }
 
+
+const chargeLabels=[
+ ['BROKERAGE FEE','Brokerage Fee'],['DELIVERY FEE','Delivery Fee'],['THIRD PARTY CHARGES','Third Party Charges'],
+ ['DUTIES AND TAXES','Duties and Taxes'],['ADMIN FEE','Admin Fee'],['HANDLING FEE','Handling Fee'],
+ ['SUB TOTAL','Subtotal'],['SUBTOTAL','Subtotal'],['TAX','Tax'],['TOTAL DUE','Total Due']];
+function lastMoney(text){const matches=String(text).match(/-?\(?[\d,]+\.\d{2}\)?/g)||[];return matches.length?currencyValue(matches[matches.length-1]):null}
+async function extractChargeRows(file){
+ const out=[];
+ if(/\.pdf$/i.test(file.name)){
+  if(!window.pdfjsLib)throw Error('PDF.js no disponible');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const doc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+  for(let n=1;n<=doc.numPages;n++){
+   const page=await doc.getPage(n),items=(await page.getTextContent()).items;
+   const grouped=new Map();
+   for(const it of items){const y=Math.round(it.transform?.[5]||0);if(!grouped.has(y))grouped.set(y,[]);grouped.get(y).push({x:it.transform?.[4]||0,str:it.str||''})}
+   for(const [,bits] of [...grouped].sort((a,b)=>b[0]-a[0])){
+    const line=bits.sort((a,b)=>a.x-b.x).map(b=>b.str).join(' ');
+    const upper=norm(line);
+    for(const [label] of chargeLabels){
+     if(new RegExp('(?:^|\\W)'+label.replace(/\s+/g,'\\s+')+'(?:$|\\W)','i').test(upper)){
+      const amount=lastMoney(line);if(amount!==null)out.push({codigo:label,monto:amount,origen:file.name,pagina:n,linea:line});
+      break;
+     }
+    }
+   }
+  }
+ }else{
+  const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+  for(const name of wb.SheetNames)for(const raw of XLSX.utils.sheet_to_json(wb.Sheets[name],{defval:''})){
+   const row=keys(raw),label=norm(row.concepto||row.descripcion||row.description||row.charge||row.item||'');
+   const amount=currencyValue(row.monto??row.total??row.amount??row.valor);
+   if(label&&amount!==null)out.push({codigo:label,monto:amount,origen:file.name,pagina:name,linea:JSON.stringify(raw)});
+  }
+ }
+ return out;
+}
+function checkRow(control,expected,actual,origin){
+ const match=expected!==null&&actual!==null&&Math.abs(expected-actual)<=0.02;
+ const status=expected===null||actual===null?'Pendiente':match?'Conforme':'Diferencia';
+ chargeChecks.push({control,documento:origin,esperado:expected,declarado:actual,estado:status});
+ if(status==='Diferencia')alerts.push({referencia:control,alerta:'Diferencia '+money(actual-expected)});
+}
+function chargeAmount(label){const rows=chargeRecords.filter(x=>x.codigo===label);return rows.length===1?rows[0].monto:null}
+async function compareCharges(){
+ const file=$('chargeFile').files[0];
+ if(!file){alert('Carga el Charge Sheet del agente.');return}
+ try{
+  chargeRecords=await extractChargeRows(file);chargeChecks=[];
+  const accepted=assessmentCharges.filter(x=>x.incluir);
+  // Auto-confirm only an unambiguous total line in Assessment Notice textual pages, not speculative charge lines.
+  const assessedPages=pdfPages.filter(p=>p.tipo==='assessment');
+  const totals=assessedPages.flatMap(p=>[...p.texto.matchAll(/Total amount to be paid\s*:?\s*([\d,]+\.\d{2})/gi)].map(m=>currencyValue(m[1])));
+  const assessmentTotal=$('assessmentTotal').value!==''?Number($('assessmentTotal').value):totals.length===1?totals[0]:null;
+  const duties=chargeAmount('DUTIES AND TAXES');
+  checkRow('Impuestos: Charge Sheet vs Assessment Notice',assessmentTotal,duties,file.name);
+  if(accepted.length){
+   const sum=accepted.reduce((a,b)=>a+Number(b.monto||0),0);
+   checkRow('Cargos Assessment confirmados vs su total',assessmentTotal,sum,'Assessment Notice');
+  }
+  const items=['BROKERAGE FEE','DELIVERY FEE','THIRD PARTY CHARGES','DUTIES AND TAXES','ADMIN FEE','HANDLING FEE'];
+  const missing=items.filter(k=>chargeAmount(k)===null);
+  const subtotal=chargeAmount('SUB TOTAL')??chargeAmount('SUBTOTAL');
+  const calculated=missing.length?null:items.reduce((a,k)=>a+chargeAmount(k),0);
+  checkRow('Subtotal de factura del agente',calculated,subtotal,file.name);
+  const tax=chargeAmount('TAX'),total=chargeAmount('TOTAL DUE');
+  checkRow('Total del Charge Sheet',subtotal===null||tax===null?null:subtotal+tax,total,file.name);
+  for(const k of ['BROKERAGE FEE','DELIVERY FEE','THIRD PARTY CHARGES','ADMIN FEE','HANDLING FEE']){
+   chargeChecks.push({control:'Respaldo/tarifa '+k,documento:file.name,esperado:null,declarado:chargeAmount(k),estado:'Pendiente: aportar tarifa o comprobante'});
+  }
+  $('chargeChecks').innerHTML=chargeChecks.map(r=>'<tr><td>'+safe(r.control)+'</td><td>'+safe(r.documento)+'</td><td>'+(r.esperado===null?'—':money(r.esperado))+'</td><td>'+(r.declarado===null?'—':money(r.declarado))+'</td><td>'+safe(r.estado)+'</td></tr>').join('');
+  render();
+  alert('Comparación ejecutada. Revisa los controles, los cargos sin respaldo y el Excel.');
+ }catch(e){alert('No se pudo comparar el Charge Sheet: '+e.message)}
+}
+
 function sheet(rows){return XLSX.utils.json_to_sheet(rows.length?rows:[{estado:'Sin datos'}])}
-function downloadReport(){const wb=XLSX.utils.book_new(), meta=['ref','importer','date','invoiceRef','bl','currency'].map(id=>({campo:id,valor:$(id).value}));XLSX.utils.book_append_sheet(wb,sheet(meta),'Expediente');XLSX.utils.book_append_sheet(wb,sheet(lines),'Conciliacion');XLSX.utils.book_append_sheet(wb,sheet(alerts),'Alertas');XLSX.utils.book_append_sheet(wb,sheet(pdfPages),'Evidencia PDF');XLSX.utils.book_append_sheet(wb,sheet(pdfCandidates),'Candidatos PDF');XLSX.utils.book_append_sheet(wb,sheet(assessmentCharges),'Assessment Cargos');XLSX.utils.book_append_sheet(wb,sheet([{total_indicado:$('assessmentTotal').value,suma_confirmados:assessmentCharges.filter(x=>x.incluir).reduce((a,b)=>a+Number(b.monto||0),0)}]),'Assessment Resumen');XLSX.utils.book_append_sheet(wb,sheet(Object.entries(values).map(([campo,valor])=>({campo,valor}))),'Valores');XLSX.utils.book_append_sheet(wb,sheet(controls.map((c,i)=>({control:c,verificado:$('control'+i).checked?'Si':'No'}))),'Checklist');XLSX.writeFile(wb,'Auditoria_Jamaica_'+(norm($('ref').value)||'EXPEDIENTE').replace(/[^A-Z0-9_-]/g,'_')+'.xlsx')}
+function downloadReport(){const wb=XLSX.utils.book_new(), meta=['ref','importer','date','invoiceRef','bl','currency'].map(id=>({campo:id,valor:$(id).value}));XLSX.utils.book_append_sheet(wb,sheet(meta),'Expediente');XLSX.utils.book_append_sheet(wb,sheet(lines),'Conciliacion');XLSX.utils.book_append_sheet(wb,sheet(alerts),'Alertas');XLSX.utils.book_append_sheet(wb,sheet(pdfPages),'Evidencia PDF');XLSX.utils.book_append_sheet(wb,sheet(pdfCandidates),'Candidatos PDF');XLSX.utils.book_append_sheet(wb,sheet(assessmentCharges),'Assessment Cargos');XLSX.utils.book_append_sheet(wb,sheet(chargeRecords),'Cargos Agente');XLSX.utils.book_append_sheet(wb,sheet(chargeChecks),'Control de Cargos');XLSX.utils.book_append_sheet(wb,sheet([{total_indicado:$('assessmentTotal').value,suma_confirmados:assessmentCharges.filter(x=>x.incluir).reduce((a,b)=>a+Number(b.monto||0),0)}]),'Assessment Resumen');XLSX.utils.book_append_sheet(wb,sheet(Object.entries(values).map(([campo,valor])=>({campo,valor}))),'Valores');XLSX.utils.book_append_sheet(wb,sheet(controls.map((c,i)=>({control:c,verificado:$('control'+i).checked?'Si':'No'}))),'Checklist');XLSX.writeFile(wb,'Auditoria_Jamaica_'+(norm($('ref').value)||'EXPEDIENTE').replace(/[^A-Z0-9_-]/g,'_')+'.xlsx')}
 function downloadTemplate(){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1,precio_unitario:100,moneda:'USD',origen:'ES',partida:''}]),'Factura');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1,precio_unitario:100,moneda:'USD',origen:'ES',partida:'',valor_declarado:100}]),'Declaracion');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([{referencia:'MAT-001',descripcion:'Articulo ejemplo',cantidad:1}]),'Packing');XLSX.writeFile(wb,'Plantilla_Auditoria_Jamaica.xlsx')}
 </script></body></html>
