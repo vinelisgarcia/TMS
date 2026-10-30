@@ -52,6 +52,141 @@
     return new Date().toISOString();
   }
 
+  let cloudUserId = null;
+  const cloudSync = TMSSync.create(updateCloudSyncStatus);
+  let cloudTabId;
+  try {
+    cloudTabId = sessionStorage.getItem('tms_sync_tab') || crypto.randomUUID();
+    sessionStorage.setItem('tms_sync_tab', cloudTabId);
+  } catch (_) { cloudTabId = String(Date.now()) + '-' + Math.random().toString(36).slice(2); }
+  const cloudTabReady = new Promise(resolve => {
+    const remember = () => { try { sessionStorage.setItem('tms_sync_tab', cloudTabId); } catch (_) {} resolve(); };
+    if (!navigator.locks) {
+      // New browsing contexts can inherit sessionStorage. Only reuse on reload.
+      if (performance.getEntriesByType('navigation')[0]?.type !== 'reload') cloudTabId = crypto.randomUUID();
+      remember(); return;
+    }
+    const claim = () => navigator.locks.request('tms-sync-tab:' + cloudTabId, {ifAvailable:true}, lock => {
+      if (!lock) { cloudTabId = crypto.randomUUID(); claim(); return; }
+      remember();
+      // The browser releases this lifetime lock when this document unloads.
+      return new Promise(() => {});
+    }).catch(() => { cloudTabId = crypto.randomUUID(); remember(); });
+    claim();
+  });
+  let unarchivedLegacySnapshot = null;
+
+  function legacySnapshotRaw() {
+    if (unarchivedLegacySnapshot) return unarchivedLegacySnapshot;
+    try {
+      const key = localStorage.getItem(LOCAL_KEY + ':legacy_latest');
+      return key ? localStorage.getItem(key) : null;
+    } catch (_) { return null; }
+  }
+
+  function archiveLegacySnapshot() {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    const snapshot = raw && JSON.parse(raw);
+    if (!snapshot || snapshot.schemaVersion === 2 || snapshot.userId || !snapshot.app) return;
+    unarchivedLegacySnapshot = raw;
+    const key = LOCAL_KEY + ':legacy:' + (snapshot.savedAt || nowIso());
+    // If storage fails, leave the original key untouched rather than erase it.
+    localStorage.setItem(key, raw);
+    localStorage.setItem(LOCAL_KEY + ':legacy_latest', key);
+    unarchivedLegacySnapshot = null;
+  }
+
+  function localSnapshotRaw() {
+    const own = localStorage.getItem(LOCAL_KEY + ':' + cloudUserId + ':' + cloudTabId);
+    if (own) return own;
+    const raw = localStorage.getItem(LOCAL_KEY);
+    const snapshot = raw && JSON.parse(raw);
+    return snapshot && snapshot.pendingCloud && snapshot.tabId && snapshot.tabId !== cloudTabId ? null : raw;
+  }
+
+  function updateCloudSyncStatus(state) {
+    let panel = document.getElementById('cloudSyncPanel');
+    if (!panel) {
+      panel = document.createElement('div'); panel.id = 'cloudSyncPanel';
+      panel.innerHTML = '<span role="status" aria-live="polite"></span><button type="button" class="btn btn-outline btn-sm" id="cloudRetry">Reintentar guardado</button><button type="button" class="btn btn-outline btn-sm" id="cloudBackup">Descargar respaldo</button><button type="button" class="btn btn-outline btn-sm" id="cloudLegacyBackup">Descargar respaldo anterior</button><button type="button" class="btn btn-outline btn-sm" id="cloudReload">Actualizar desde nube</button>';
+      const layout = document.getElementById('mainLayout');
+      if (!layout) return;
+      layout.parentNode.insertBefore(panel, layout);
+      panel.querySelector('#cloudRetry').onclick = () => window.guardarEnSupabase().catch(() => {});
+      panel.querySelector('#cloudBackup').onclick = () => {
+        const snapshot = saveLocalSnapshot();
+        const blob = new Blob([JSON.stringify(snapshot)], {type:'application/json'});
+        const url = URL.createObjectURL(blob); const a = document.createElement('a');
+        a.href = url; a.download = 'TMS-respaldo-' + nowIso().slice(0,10) + '.json'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      panel.querySelector('#cloudLegacyBackup').onclick = () => {
+        if (!isAdminUser()) return;
+        const raw = legacySnapshotRaw(); if (!raw) return;
+        const url = URL.createObjectURL(new Blob([raw],{type:'application/json'}));
+        const a = document.createElement('a'); a.href = url; a.download = 'TMS-respaldo-anterior.json'; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      panel.querySelector('#cloudReload').onclick = () => {
+        if (cloudSync.state.dirty && !confirm('Hay cambios locales sin guardar. Descarga primero el respaldo. ¿Descartar estos cambios locales y cargar la nube?')) return;
+        cloudSync.loaded(null);
+        // The user explicitly chose to discard the pending local version.
+        saveLocalSnapshot();
+        window.cargarDesdeSupabase();
+      };
+    }
+    panel.hidden = !cloudUserId;
+    const status = state.conflict ? 'conflict' : state.error ? 'error' : state.loading ? 'loading' : state.saving ? 'saving' : state.dirty ? 'pending' : state.revision === null ? 'migration' : 'synced';
+    panel.dataset.state = status;
+    const labels = {
+      conflict:'Otra sesión cambió la nube. Tus cambios siguen locales: descarga el respaldo antes de recargar.',
+      error:'Sin sincronizar: ' + state.error,
+      loading:'Consultando la nube…', saving:'Guardando en la nube…', pending:'Cambios locales pendientes de nube.',
+      migration:'Falta la migración de sincronización 0008. Puedes consultar los datos; el guardado está bloqueado para protegerlos.',
+      synced:'Nube sincronizada · revisión ' + state.revision + (state.checkedAt ? ' · ' + new Date(state.checkedAt).toLocaleTimeString('es-DO') : '')
+    };
+    const legacyAvailable = isAdminUser() && !!legacySnapshotRaw();
+    panel.querySelector('[role="status"]').textContent = labels[status] + (APP.localSnapshotError ? ' El almacenamiento del navegador está lleno o bloqueado; descarga un respaldo de los cambios pendientes.' : '') + (legacyAvailable ? ' Se conservó un respaldo anterior de este navegador; descárgalo para revisar posibles cambios sin sincronizar.' : '');
+    panel.querySelector('#cloudRetry').hidden = !state.dirty || state.conflict;
+    panel.querySelector('#cloudBackup').hidden = !state.dirty;
+    panel.querySelector('#cloudLegacyBackup').hidden = !legacyAvailable;
+    panel.querySelector('#cloudReload').disabled = state.loading || state.saving;
+  }
+
+  async function readAllCloudRows(client, table, order) {
+    const rows = [];
+    for (let offset = 0;; offset += 500) {
+      let query = client.from(table).select('*').order(order || 'id', {ascending:true});
+      if (order && order !== 'id') query = query.order('id', {ascending:true});
+      const page = await runSupabaseQuery(query.range(offset, offset + 499), 'No se pudo cargar ' + table);
+      rows.push(...page);
+      if (page.length < 500) return rows;
+    }
+  }
+
+  async function readCloudSnapshot(client) {
+    const result = await client.rpc('tms_read_snapshot');
+    if (!result.error) return result.data;
+    if (!/PGRST202|Could not find the function|schema cache/i.test(result.error.message + ' ' + result.error.code)) throw new Error(result.error.message);
+    // Read-only compatibility. Never fall back to destructive nontransactional writes.
+    const tables = ['tms_order_lines','tms_client_configs','tms_route_configs','tms_route_cost_history','tms_warehouse_plan','tms_warehouse_control','tms_warehouse_history','tms_user_profiles','tms_settings'];
+    const orders = ['created_at','codigo_cliente','nombre','fecha','fecha','fecha','fecha','created_at','clave'];
+    const rows = await Promise.all(tables.map((table,index) => readAllCloudRows(client,table,orders[index])));
+    return { revision:null, tables:Object.fromEntries(tables.map((table,index) => [table,rows[index]])) };
+  }
+
+  async function refreshCloud() {
+    if (!cloudUserId || cloudSync.state.loading || cloudSync.state.saving || document.hidden) return;
+    try {
+      const result = await getSupabaseClient().from('tms_sync_state').select('revision').eq('id',1).single();
+      if (result.error) throw new Error(result.error.message);
+      if (result.data.revision !== cloudSync.state.revision) {
+        if (cloudSync.state.dirty) { cloudSync.state.conflict = true; cloudSync.emit(); }
+        else if (!document.querySelector('dialog[open],.modal-overlay.show') && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) await window.cargarDesdeSupabase();
+      } else { cloudSync.state.checkedAt = nowIso(); if (!cloudSync.state.dirty) cloudSync.state.error = ''; cloudSync.emit(); }
+    } catch (error) { cloudSync.state.error = error.message; cloudSync.emit(); }
+  }
+
   function stripAccents(value) {
     return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
@@ -81,8 +216,8 @@
     const perms = profile && profile.permisosPorModulo;
     const meta = perms && perms.__account ? perms.__account : {};
     return {
-      passwordChangeRequired: !!(profile && (profile.passwordChangeRequired || meta.passwordChangeRequired)),
-      authNeedsConfirmation: !!(profile && (profile.authNeedsConfirmation || meta.authNeedsConfirmation)),
+      passwordChangeRequired: profile && profile.passwordChangeRequired !== undefined ? !!profile.passwordChangeRequired : !!meta.passwordChangeRequired,
+      authNeedsConfirmation: profile && profile.authNeedsConfirmation !== undefined ? !!profile.authNeedsConfirmation : !!meta.authNeedsConfirmation,
       passwordConfigured: profile && profile.passwordConfigured !== undefined ? !!profile.passwordConfigured : meta.passwordConfigured !== false,
       accountStatus: text((profile && profile.accountStatus) || meta.accountStatus || '')
     };
@@ -777,55 +912,10 @@
       const banner = document.getElementById('sapEstadoBanner');
       if (banner) {
         banner.style.display = 'block';
-        banner.innerHTML = '<strong>Guardado local pendiente de nube.</strong><br>' + detail;
+        banner.innerHTML = '<strong>Guardado local pendiente de nube.</strong><br>' + escapeHtml(detail);
       }
     }
     alert(detail);
-  }
-
-  function isMissingRpcError(error) {
-    const message = text(error && error.message ? error.message : error);
-    return /PGRST202|Could not find the function|schema cache|tms_replace_table/i.test(message);
-  }
-
-  function markCloudMigrationPending() {
-    APP.cloudMigrationPending = true;
-    const banner = document.getElementById('sapEstadoBanner');
-    if (banner) {
-      banner.style.display = 'block';
-      banner.innerHTML = '<strong>Migración de nube pendiente.</strong><br>El sistema guardó en modo compatibilidad. Para guardado transaccional completo falta aplicar las migraciones pendientes de Supabase, especialmente 0004_atomic_replace_and_route_history.sql y 0005_app_state_new_modules_policy.sql.';
-    }
-  }
-
-  async function legacyReplaceSupabaseTable(tableName, rows) {
-    const client = getSupabaseClient();
-    const safeRows = tableName === 'tms_route_cost_history'
-      ? (rows || []).map(row => {
-        const copy = { ...row };
-        delete copy.camion;
-        return copy;
-      })
-      : (rows || []);
-    await runSupabaseQuery(client.from(tableName).delete().not('id', 'is', null), 'No se pudo limpiar ' + tableName);
-    for (const chunk of chunkRows(safeRows, 200)) {
-      await runSupabaseQuery(client.from(tableName).insert(chunk), 'No se pudo guardar ' + tableName);
-    }
-  }
-
-  async function replaceSupabaseTable(tableName, rows) {
-    const client = getSupabaseClient();
-    if (!client || typeof client.rpc !== 'function') throw new Error('No hay cliente Supabase para guardar ' + tableName);
-    try {
-      await runSupabaseQuery(
-        client.rpc('tms_replace_table', { p_table_name: tableName, p_rows: rows || [] }),
-        'No se pudo guardar ' + tableName + ' de forma transaccional'
-      );
-    } catch (error) {
-      if (!isMissingRpcError(error)) throw error;
-      markCloudMigrationPending();
-      console.warn('Migración 0004 pendiente; guardando en modo compatibilidad para', tableName);
-      await legacyReplaceSupabaseTable(tableName, rows || []);
-    }
   }
 
   function mapDbOrderLine(row) {
@@ -1543,7 +1633,12 @@
 
   function saveLocalSnapshot() {
     const payload = {
+      schemaVersion: 2,
       savedAt: nowIso(),
+      userId: cloudUserId,
+      tabId: cloudTabId,
+      cloudRevision: cloudSync.state.revision,
+      pendingCloud: cloudSync.state.dirty,
       app: {
         lineItems: APP.lineItems,
         planLineItems: APP.planLineItems,
@@ -1580,7 +1675,20 @@
         costSettings: APP.costSettings || {}
       }
     };
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(payload));
+    try {
+      archiveLegacySnapshot();
+      const slot = LOCAL_KEY + ':' + cloudUserId + ':' + cloudTabId;
+      const json = JSON.stringify(payload);
+      if (payload.pendingCloud) localStorage.setItem(slot, json);
+      else localStorage.removeItem(slot);
+      localStorage.setItem(LOCAL_KEY, json);
+      APP.localSnapshotError = '';
+    } catch (error) {
+      APP.localSnapshotError = error.message;
+      console.warn('El respaldo local no se pudo escribir; se mantiene el guardado de nube:', error.message);
+    }
+    cloudSync.emit();
+    return payload;
   }
 
   function loadEmbeddedDemoState() {
@@ -1602,11 +1710,12 @@
     return true;
   }
 
-  function loadLocalSnapshot() {
+  function loadLocalSnapshot(userId) {
     try {
-      const raw = localStorage.getItem(LOCAL_KEY);
+      const raw = localSnapshotRaw();
       if (!raw) return false;
       const payload = JSON.parse(raw);
+      if (!userId || payload.userId !== userId) return false;
       Object.assign(APP, payload.app || {});
       APP.visualTheme = normalizeVisualTheme(APP.visualTheme || localStorage.getItem(THEME_KEY));
       applyVisualTheme(APP.visualTheme, true);
@@ -1620,10 +1729,11 @@
   }
 
   window.scheduleAutoSave = function scheduleAutoSaveV2() {
+    cloudSync.changed();
+    saveLocalSnapshot();
     if (window._autoSaveTimer) clearTimeout(window._autoSaveTimer);
     window._autoSaveTimer = setTimeout(() => {
-      saveLocalSnapshot();
-      window.guardarEnSupabase({ silent: true }).catch(e => console.warn('AutoSave error:', e));
+      if (cloudSync.state.dirty) window.guardarEnSupabase({ silent: true, autosave: true }).catch(e => console.warn('AutoSave error:', e));
     }, 1200);
   };
 
@@ -2052,15 +2162,14 @@
             const alertHtml = group.alertas.length
               ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
               : '';
-            const transitRecommendation = transitRecommendationForLines(group.items || []);
-            const transitHtml = transitRecommendation ? `<div class="transit-alert">${escapeHtml(transitRecommendation)}</div>` : '';
+            const transitHtml = window.TMSCalendarDetails ? `<div class="calendar-transit-chips">${TMSCalendarDetails.chips(group)}</div>` : '';
             const evidenceBits = [
               group.precintoDespacho ? 'Precinto: ' + group.precintoDespacho : '',
               group.choferRuta ? 'Chofer/recibido: ' + group.choferRuta : '',
               group.fotoCamion ? 'Foto adjunta' : ''
             ].filter(Boolean);
             const evidenceHtml = evidenceBits.length ? `<div class="route-evidence-line">${evidenceBits.join(' · ')}</div>` : '';
-            html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true"
+            html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true" tabindex="0" role="group" aria-label="Ver detalle de ${escapeHtml(group.nombre)}" data-calendar-group="${escapeHtml(group.id)}"
               ondragstart="onDragStartCal(event,'${fecha}','${camion}',${realIdx})"
               ondragend="this.classList.remove('dragging')"
               style="${group.alertas.length ? 'border:1px solid #ef4444;' : ''}">
@@ -5155,27 +5264,19 @@
   }
 
   window.cargarDesdeSupabase = async function cargarDesdeSupabaseV2() {
+    if (cloudSync.state.loading || cloudSync.state.saving || cloudSync.state.dirty) return;
+    const generation = cloudSync.state.generation;
+    cloudSync.state.loading = true; cloudSync.emit();
+    let user = null;
     try {
+      await cloudTabReady;
       const client = getSupabaseClient();
-      const user = await getAuthenticatedUser();
+      user = await getAuthenticatedUser();
+      cloudUserId = user && user.id;
       ensureAdminProfile();
-      if (!client || !user) {
-        if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
-          setCurrentUserProfileFromAuth(user, 'Sin perfil');
-          updateSolicitudesImportStatus();
-          actualizarEstadoBanner();
-          actualizarDashboard();
-          renderCalendario();
-          renderRutas();
-          renderRouteCatalog();
-          renderComercial();
-          renderConfigClientes();
-          renderSolicitudesAlmacen();
-          renderAlmacen();
-          return;
-        }
-        throw new Error('No hay sesión autenticada para cargar desde Supabase.');
-      }
+      if (!client || !user) throw new Error('No hay sesión autenticada para cargar desde Supabase.');
+      const snapshot = await readCloudSnapshot(client);
+      if (cloudSync.state.generation !== generation) throw new Error('Hay cambios locales pendientes; no se reemplazaron con la nube.');
 
       const [
         lineRows,
@@ -5187,17 +5288,7 @@
         warehouseHistoryRows,
         userProfileRows,
         settingsRows
-      ] = await Promise.all([
-        runSupabaseQuery(client.from('tms_order_lines').select('*').order('created_at', { ascending: true }), 'No se pudieron cargar las líneas'),
-        runSupabaseQuery(client.from('tms_client_configs').select('*').order('codigo_cliente', { ascending: true }), 'No se pudo cargar la configuración de clientes'),
-        runSupabaseQuery(client.from('tms_route_configs').select('*').order('nombre', { ascending: true }), 'No se pudo cargar la configuración de rutas'),
-        runSupabaseQuery(client.from('tms_route_cost_history').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el histórico de rutas'),
-        runSupabaseQuery(client.from('tms_warehouse_plan').select('*').order('fecha', { ascending: true }), 'No se pudo cargar la planificación de solicitudes'),
-        runSupabaseQuery(client.from('tms_warehouse_control').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el control de solicitudes'),
-        runSupabaseQuery(client.from('tms_warehouse_history').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el histórico de solicitudes'),
-        runSupabaseQuery(client.from('tms_user_profiles').select('*').order('created_at', { ascending: true }), 'No se pudieron cargar los usuarios'),
-        runSupabaseQuery(client.from('tms_settings').select('*'), 'No se pudieron cargar los ajustes')
-      ]);
+      ] = ['tms_order_lines','tms_client_configs','tms_route_configs','tms_route_cost_history','tms_warehouse_plan','tms_warehouse_control','tms_warehouse_history','tms_user_profiles','tms_settings'].map(table => snapshot.tables[table] || []);
 
       APP.clienteConfig = {};
       clientConfigRows.forEach(row => {
@@ -5247,27 +5338,28 @@
 
       const settingsMap = Object.fromEntries(settingsRows.map(row => [row.clave, row.valor || {}]));
       APP.warehouseSettings = settingsMap.warehouse || { costoSolicitud: 0 };
-      APP.rolePermissions = settingsMap.role_permissions || APP.rolePermissions || buildDefaultRolePermissions();
+      APP.rolePermissions = settingsMap.role_permissions || buildDefaultRolePermissions();
       ensureRolePermissions();
-      if (settingsMap.app_state) {
-        APP.planLoaded = !!settingsMap.app_state.planLoaded;
-        APP.planFecha = settingsMap.app_state.planFecha || null;
-        APP.controlLoaded = !!settingsMap.app_state.controlLoaded;
-        APP.controlFecha = settingsMap.app_state.controlFecha || null;
-        APP.solicitudesLoaded = !!settingsMap.app_state.solicitudesLoaded;
-        APP.solicitudesFileName = settingsMap.app_state.solicitudesFileName || '';
-        APP.camionExtraEnabled = !!settingsMap.app_state.camionExtraEnabled;
-        APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
-        APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
-        APP.importShipments = Array.isArray(settingsMap.app_state.importShipments) ? settingsMap.app_state.importShipments : (APP.importShipments || []);
-        APP.transitMaterials = Array.isArray(settingsMap.app_state.transitMaterials) ? settingsMap.app_state.transitMaterials : (APP.transitMaterials || []);
-        APP.dailyPriorities = Array.isArray(settingsMap.app_state.dailyPriorities) ? settingsMap.app_state.dailyPriorities : (APP.dailyPriorities || []);
-        APP.prioritySpainTopics = Array.isArray(settingsMap.app_state.prioritySpainTopics) ? settingsMap.app_state.prioritySpainTopics : (APP.prioritySpainTopics || []);
-        APP.calendarNotes = Array.isArray(settingsMap.app_state.calendarNotes) ? settingsMap.app_state.calendarNotes : (APP.calendarNotes || []);
-        APP.dispatchIncidents = Array.isArray(settingsMap.app_state.dispatchIncidents) ? settingsMap.app_state.dispatchIncidents : (APP.dispatchIncidents || []);
-        APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
-        APP.costSettings = settingsMap.app_state.costSettings || APP.costSettings || {};
-        APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
+      const remoteState = settingsMap.app_state || {};
+      {
+        APP.planLoaded = !!remoteState.planLoaded;
+        APP.planFecha = remoteState.planFecha || null;
+        APP.controlLoaded = !!remoteState.controlLoaded;
+        APP.controlFecha = remoteState.controlFecha || null;
+        APP.solicitudesLoaded = !!remoteState.solicitudesLoaded;
+        APP.solicitudesFileName = remoteState.solicitudesFileName || '';
+        APP.camionExtraEnabled = !!remoteState.camionExtraEnabled;
+        APP.feriadosRD = remoteState.feriadosRD || APP.feriadosRD;
+        APP.importFiles = { plan:'', control:'', solicitudesPlan:'', solicitudesControl:'', ...(remoteState.importFiles || {}) };
+        APP.importShipments = Array.isArray(remoteState.importShipments) ? remoteState.importShipments : [];
+        APP.transitMaterials = Array.isArray(remoteState.transitMaterials) ? remoteState.transitMaterials : [];
+        APP.dailyPriorities = Array.isArray(remoteState.dailyPriorities) ? remoteState.dailyPriorities : [];
+        APP.prioritySpainTopics = Array.isArray(remoteState.prioritySpainTopics) ? remoteState.prioritySpainTopics : [];
+        APP.calendarNotes = Array.isArray(remoteState.calendarNotes) ? remoteState.calendarNotes : [];
+        APP.dispatchIncidents = Array.isArray(remoteState.dispatchIncidents) ? remoteState.dispatchIncidents : [];
+        APP.controlHistory = remoteState.controlHistory || [];
+        APP.costSettings = remoteState.costSettings || {};
+        APP.visualTheme = normalizeVisualTheme(remoteState.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
         applyVisualTheme(APP.visualTheme, true);
       }
 
@@ -5329,8 +5421,18 @@
       ensureAdminProfile();
       setCurrentUserProfileFromAuth(user, 'Sin perfil');
 
+      cloudSync.loaded(snapshot.revision);
+      // Recover this account's unsent changes without overwriting another device.
+      try {
+        const pending = JSON.parse(localSnapshotRaw() || 'null');
+        if (pending && pending.userId === user.id && pending.pendingCloud && loadLocalSnapshot(user.id)) {
+          cloudSync.loaded(pending.cloudRevision ?? null);
+          cloudSync.changed();
+          cloudSync.state.conflict = pending.cloudRevision !== snapshot.revision;
+          setCurrentUserProfileFromAuth(user, 'Sin perfil');
+        }
+      } catch (error) { console.warn('No se pudo recuperar el respaldo pendiente:', error); }
       rebuildDerivedState();
-      await enforcePasswordChangeIfNeeded();
       updateSolicitudesImportStatus();
       actualizarEstadoBanner();
       actualizarDashboard();
@@ -5346,10 +5448,14 @@
       renderIncidenciasDespacho();
       applyPermissionUi();
       saveLocalSnapshot();
-      if (isAdminUser()) scheduleAutoSave();
+
     } catch (error) {
-      console.warn('Fallo la carga remota, usando respaldo local si existe:', error);
-      if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
+      cloudSync.state.error = error.message;
+      console.warn('Fallo la carga remota; el respaldo no confirma sincronización:', error);
+      if (user && loadLocalSnapshot(user.id)) {
+        const local = JSON.parse(localSnapshotRaw());
+        cloudSync.state.revision = local.cloudRevision ?? null;
+        cloudSync.state.dirty = !!local.pendingCloud;
         setCurrentUserProfileFromAuth(await getAuthenticatedUser(), 'Sin perfil');
         updateSolicitudesImportStatus();
         actualizarEstadoBanner();
@@ -5366,6 +5472,7 @@
         applyPermissionUi();
         return;
       }
+      if (cloudSync.state.dirty) return;
       APP.lineItems = [];
       APP.planLineItems = [];
       APP.controlLineItems = [];
@@ -5386,22 +5493,25 @@
       renderPrioridades();
       renderMaterialesTransito();
       renderIncidenciasDespacho();
+    } finally {
+      cloudSync.state.loading = false; cloudSync.emit();
     }
+    if (!cloudSync.state.error) await enforcePasswordChangeIfNeeded();
   };
 
-  window.guardarEnSupabase = async function guardarEnSupabaseV2(options) {
+  async function performCloudSave(options, expectedRevision) {
     const silent = !!(options && options.silent);
     saveLocalSnapshot();
     const client = getSupabaseClient();
     const user = await getAuthenticatedUser();
     const btn = document.getElementById('saveStateBtn');
-    const originalText = btn ? btn.textContent : '';
     if (btn) {
       btn.disabled = true;
       btn.textContent = '⏳ Guardando...';
     }
     try {
       if (!client || !user) throw new Error('No hay sesión autenticada para guardar en Supabase.');
+      if (user.id !== cloudUserId) throw new Error('La cuenta autenticada cambió. Conserva tu respaldo y recarga TMS antes de guardar.');
       ensureAdminProfile();
       setCurrentUserProfileFromAuth(user, 'Sin perfil');
 
@@ -5415,7 +5525,8 @@
       const canWriteCalendarNotes = adminCanManageUsers || hasPermission('calendario', 'editar');
       const canWriteDispatchIncidents = adminCanManageUsers && hasPermission('incidenciasDespacho', 'editar');
       const canWriteTransitMaterials = adminCanManageUsers || hasPermission('materialesTransito', 'editar') || hasPermission('materialesTransito', 'importar');
-      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes || canWriteDispatchIncidents || canWriteTransitMaterials;
+      const canWritePriorities = hasPermission('prioridades', 'editar') || hasPermission('prioridades', 'importar');
+      const canWriteAppState = canWritePriorities || adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes || canWriteDispatchIncidents || canWriteTransitMaterials;
       const settingsRows = [
         ...((adminCanManageUsers || canWriteWarehouseHistory) ? [{ clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) }] : []),
         ...(adminCanManageUsers ? [{ clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) }] : []),
@@ -5448,9 +5559,7 @@
         profile,
         text(profile.email).toLowerCase() === text(user.email).toLowerCase() ? user.id : null
       ));
-      const currentUserProfileRow = APP.currentUserProfile && APP.currentUserProfile.email
-        ? userProfileDbPayload(APP.currentUserProfile, user.id)
-        : null;
+
 
       const routeRows = APP.routeConfigs.map(route => {
         const payload = {
@@ -5519,45 +5628,22 @@
         fuente: row.fuente || ''
       })).filter(row => row.fecha && row.cliente_id);
 
-      const nonCriticalSaveErrors = [];
-      if (settingsRows.length) {
-        await runSupabaseQuery(client.from('tms_settings').upsert(settingsRows, { onConflict: 'clave' }), 'No se pudieron guardar los ajustes');
+      const tables = {};
+      if (adminCanManageUsers) tables.tms_user_profiles = userRows;
+      if (adminCanManageUsers || canWriteConfig || canWriteRoutes) {
+        tables.tms_route_configs = routeRows; tables.tms_client_configs = clientRows;
       }
-      if (adminCanManageUsers) {
-        try {
-          await replaceSupabaseTable('tms_user_profiles', userRows);
-        } catch (profileError) {
-          nonCriticalSaveErrors.push(profileError);
-          console.warn('No se pudieron guardar perfiles de usuario; continúo con datos operativos:', profileError);
-        }
-      } else if (currentUserProfileRow) {
-        try {
-          await runSupabaseQuery(client.from('tms_user_profiles').upsert(currentUserProfileRow, { onConflict: 'email' }), 'No se pudo actualizar tu estado de acceso');
-        } catch (profileError) {
-          nonCriticalSaveErrors.push(profileError);
-          console.warn('No se pudo actualizar el estado de acceso; continúo con datos operativos:', profileError);
-        }
-      }
-      if (adminCanManageUsers || canWriteConfig || canWriteRoutes) await replaceSupabaseTable('tms_route_configs', routeRows);
-      if (adminCanManageUsers || canWriteConfig || canWriteRoutes) await replaceSupabaseTable('tms_client_configs', clientRows);
-      if (adminCanManageUsers || canWriteImports || hasPermission('calendario', 'editar') || canWriteRoutes) await replaceSupabaseTable('tms_order_lines', orderRows);
-      if (adminCanManageUsers || canWriteRoutes) await replaceSupabaseTable('tms_route_cost_history', routeHistoryRows);
-      if (canWriteWarehousePlan) await replaceSupabaseTable('tms_warehouse_plan', warehousePlanRows);
-      if (canWriteWarehouseControl) await replaceSupabaseTable('tms_warehouse_control', warehouseControlRows);
-      if (canWriteWarehouseHistory) await replaceSupabaseTable('tms_warehouse_history', warehouseHistoryRows);
-
-      if (btn) {
-        btn.textContent = nonCriticalSaveErrors.length ? 'Nube parcial' : (APP.cloudMigrationPending ? 'Nube modo compat.' : 'Guardado en nube');
-      }
-      if (nonCriticalSaveErrors.length && !silent && !window._tmsProfileSaveNoticeShown) {
-        window._tmsProfileSaveNoticeShown = true;
-        alert('Los cambios operativos se guardaron en la nube, pero no se pudieron actualizar perfiles de usuario. Detalle: ' + nonCriticalSaveErrors.map(err => err.message || err).join(' | '));
-      }
-      if (APP.cloudMigrationPending && !silent && !window._tmsMigrationPendingNoticeShown) {
-        window._tmsMigrationPendingNoticeShown = true;
-        alert('Cambios guardados en la nube en modo compatibilidad. Falta aplicar las migraciones 0004 y 0005 en Supabase para activar guardado transaccional completo.');
-      }
-      return true;
+      if (canWriteImports || hasPermission('calendario', 'editar') || canWriteRoutes) tables.tms_order_lines = orderRows;
+      if (canWriteRoutes) tables.tms_route_cost_history = routeHistoryRows;
+      if (canWriteWarehousePlan) tables.tms_warehouse_plan = warehousePlanRows;
+      if (canWriteWarehouseControl) tables.tms_warehouse_control = warehouseControlRows;
+      if (canWriteWarehouseHistory) tables.tms_warehouse_history = warehouseHistoryRows;
+      const { data, error } = await client.rpc('tms_save_snapshot', {
+        p_expected_revision: expectedRevision, p_tables: tables, p_settings: settingsRows,
+        p_account: adminCanManageUsers ? null : getProfileAccountMeta(APP.currentUserProfile)
+      });
+      if (error) throw new Error(error.code === 'PGRST202' ? 'Aplica la migración 0008 para activar el guardado seguro.' : error.message);
+      return data;
     } catch (error) {
       console.error('Error guardando en Supabase:', error);
       if (btn) btn.textContent = '⚠️ Guardado local';
@@ -5567,11 +5653,26 @@
       if (btn) {
         setTimeout(() => {
           btn.disabled = false;
-          btn.textContent = originalText || 'Guardar cambios';
+          btn.textContent = 'Guardar cambios';
         }, 1400);
       }
     }
   };
+
+  window.guardarEnSupabase = function guardarEnSupabaseV2(options) {
+    if (window._autoSaveTimer) { clearTimeout(window._autoSaveTimer); window._autoSaveTimer = null; }
+    if (options && options.autosave && !cloudSync.state.dirty) return Promise.resolve(true);
+    if (!options || !options.autosave) cloudSync.changed();
+    saveLocalSnapshot();
+    return cloudSync.save(revision => performCloudSave(options, revision)).catch(error => {
+      cloudSync.state.error = error.message; cloudSync.emit();
+      throw error;
+    }).finally(() => {
+      if (!cloudSync.state.dirty && window._autoSaveTimer) { clearTimeout(window._autoSaveTimer); window._autoSaveTimer = null; }
+      saveLocalSnapshot();
+    });
+  };
+
 
   function initImportSolicitudesCard() {
     const importView = document.getElementById('importar');
@@ -8837,6 +8938,15 @@
 
   window.addEventListener('DOMContentLoaded', function () {
     initV2UI();
+    updateCloudSyncStatus(cloudSync.state);
+    setInterval(refreshCloud, 15000);
+    window.addEventListener('focus', refreshCloud);
+    window.addEventListener('online', refreshCloud);
+    window.addEventListener('storage', event => { if (event.key === LOCAL_KEY) refreshCloud(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshCloud(); });
+    window.addEventListener('beforeunload', event => {
+      if (cloudSync.state.dirty || cloudSync.state.saving) { saveLocalSnapshot(); event.preventDefault(); event.returnValue = ''; }
+    });
     if (!APP.lineItems.length && !APP.planLoaded) {
       renderCalendario();
       renderComercial();
@@ -8846,6 +8956,15 @@
       renderRouteCatalog();
     }
   });
+
+  const originalLogout = window.cerrarSesion;
+  window.cerrarSesion = async function () {
+    if (cloudSync.state.dirty) {
+      try { await window.guardarEnSupabase(); }
+      catch (error) { alert('No se cerró la sesión: hay cambios pendientes. Descarga el respaldo y resuelve la sincronización.'); return; }
+    }
+    return originalLogout();
+  };
 
   window.TMSAuditCore = { pushUndoState, hasPermission, isAdminUser, rebuildDerivedState, parseWorkbookRows: rowsFromWorksheet, getClienteConfigV2, ensureRouteConfig, saveLocalSnapshot };
 

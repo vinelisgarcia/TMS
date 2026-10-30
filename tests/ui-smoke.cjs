@@ -7,6 +7,7 @@ const url = process.env.TMS_TEST_URL || 'http://127.0.0.1:8765';
   const browser=await chromium.launch({headless:true,...(process.env.TMS_BROWSER?{executablePath:process.env.TMS_BROWSER}:{})});
   try {
     const page=await browser.newPage({viewport:{width:1440,height:1000}});
+    await require('./browser-fixtures.cjs').install(page);
     const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
     await page.route('**/*.supabase.co/**',route=>route.fulfill({status:503,contentType:'application/json',body:'{"message":"Blocked in local test"}'}));
