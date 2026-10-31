@@ -31,6 +31,10 @@ ct.semanticHash='SYNTHETIC_CT';ad.semanticHash='SYNTHETIC_AD';delete ct.semantic
  try{
   const a=await createPage();assert.equal(await a.locator('.inv-priority-columns section').first().locator('tbody tr').count(),10);assert.equal(await a.locator('.inv-priority-columns section').nth(1).locator('tbody tr').count(),20);
   assert.equal(await a.locator('.inv-priority-columns section').first().locator('tbody tr').first().locator('td').first().innerText(),'P12\nSobrante P12');
+  assert.equal(await a.locator('.inv-top-surplus .inv-priority-bar i').count(),10);assert.equal(await a.locator('.inv-top-shortage .inv-priority-bar i').count(),20);
+  assert.equal(await a.locator('.inv-top-surplus .inv-priority-bar i').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(20, 150, 111)');
+  assert.equal(await a.locator('.inv-top-shortage .inv-priority-bar i').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(217, 72, 72)');
+  await a.screenshot({path:'/tmp/tms-priority-bars.png',fullPage:true});
   await tab(a,'data');
   const workbook=await a.evaluate(()=>{const b=XLSX.utils.book_new();XLSX.utils.book_append_sheet(b,XLSX.utils.aoa_to_sheet([['CODIGO','DESCRIPCION','CODIGO BARRAS','CENTRAL','COSTO PROMEDIO'],['P12','Sobrante P12','750000000012',20,11.2]]),'Articulos');XLSX.utils.book_append_sheet(b,XLSX.utils.aoa_to_sheet([['CODIGO','UBICACION','STOCK UBICACION'],['P12','A01',10],['P12','A02',10]]),'Ubicaciones');return Array.from(new Uint8Array(XLSX.write(b,{type:'array',bookType:'xlsx'})));});
   const file={name:'Maestro_ubicaciones.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(workbook)};

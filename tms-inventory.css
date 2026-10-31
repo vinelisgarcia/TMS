@@ -12,3 +12,5 @@
 .inv-form [hidden],#inventoryMount[hidden],#inventoryCountMount[hidden]{display:none!important}
 #countQuantity{font-size:24px;font-weight:700;min-height:58px}#countScanArticle{min-width:180px;flex:1}
 @media(max-width:950px){.inv-priority-columns,.count-layout{grid-template-columns:1fr}.count-tabs{gap:6px}.count-tabs button{font-size:12px;padding:9px}.count-queue{max-height:380px}}
+
+.inv-top-panel .inv-priority-bar{margin-top:10px;height:10px;min-width:110px;background:#e5e9ef}.inv-top-surplus .inv-priority-bar i{background:#14966f}.inv-top-shortage .inv-priority-bar i{background:#d94848}.inv-top-surplus .inv-top-value{color:#107453}.inv-top-shortage .inv-top-value{color:#bd3030}.inv-top-panel .inv-table td:first-child{min-width:150px}.inv-top-panel .inv-priority-bar i{border-radius:5px}
