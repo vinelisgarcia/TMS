@@ -82,7 +82,8 @@
     quantity:['quantity','stock','existencia','existencias','cantidad','stocktotal','stockactual','cantidadstock','central','stockfisico','unidades'],
     totalValue:['valorcalculado','costototal','valordestock','valordelstock','valortotal','valortotaldop','valortotalstock','valorstock','valorstockdop','valortotalexistencias','importetotal','importe','valoracion','valorinventario','valorinventariodop','valorexistencias','valor'],
     unit:['cantidadunidad','unitofmeasurement','unidad','unidaddemedida','um','uom'],
-    warehouse:['warehouse','almacen','codigoalmacen','ubicacion','centro','deposito'],
+    warehouse:['warehouse','almacen','codigoalmacen','centro','deposito'],
+    location:['ubicacion','location','localizacion','codigoubicacion','bin','stocklocation','ubicaciondelarticulo'],
     batch:['batchnumber','batch','lote','numerolote'],
     stockType:['tipodestock','tipostock','stocktype'],
     currency:['valorcalculadomoneda','moneda','currency'],
@@ -148,7 +149,9 @@
         const unit=normalizeUnit(mapping.unit===undefined?options.unitDefault||'UND':row[mapping.unit]);
         const batch=mapping.batch===undefined?'':text(row[mapping.batch]);
         const description=mapping.description===undefined?'':text(row[mapping.description]);
+        const articleLocation=mapping.location===undefined?'':text(row[mapping.location]);
         const record={code,unit,quantity,totalValue,availability,warehouse,batch};
+        if(articleLocation)record.location=articleLocation;
         if(stockType)record.stockType=stockType;
         if(currency)record.currency=currency;
         const key=JSON.stringify(record);exact.set(key,(exact.get(key)||0)+1);canonical.push(key);
@@ -159,7 +162,7 @@
         if(source==='ad'&&totalValue===null)material.missingValueRows++;
         if(availability!==null){material.availabilitySum=rounded(material.availabilitySum+availability);material.availabilityRows++;}
         material.rowCount++;if(warehouse)material.warehouses.add(warehouse);if(batch)material.batches.add(batch);
-        material.details.push({row:index+1,quantity,totalValueDop:totalValue,unit,warehouse,batch,...(stockType?{stockType}:{}),...(currency?{currency}:{})});
+        material.details.push({row:index+1,quantity,totalValueDop:totalValue,unit,warehouse,batch,...(articleLocation?{location:articleLocation}:{}),...(stockType?{stockType}:{}),...(currency?{currency}:{})});
         acceptedRowCount++;
       } catch(error){invalidRows.push({row:index+1,code,message:error.message});}
     }

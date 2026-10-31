@@ -95,3 +95,48 @@ cruce físico y permite cambiar la selección. `En tránsito` permanece fuera de
 ese alcance propuesto; la pantalla indica cuántas filas se excluyeron. Una
 selección vacía incluye todos los tipos y muestra un aviso. Cuando existe la
 columna de moneda, las filas distintas de DOP bloquean la confirmación.
+
+## Inventory Data y conteos físicos
+
+Los tops son independientes: 10 sobrantes con mayor importe positivo y 20
+faltantes con mayor impacto económico (importe más negativo). Al iniciar un
+ciclo guiado o libre se incorporan como artículos obligatorios. Los sobrantes
+sin costo AD se presentan aparte, sin asignarles valor cero, y pueden añadirse
+manualmente al guiado, incluidos los artículos que existen solo en CT.
+
+Inventory Data integra el maestro y las ubicaciones del modelo independiente:
+plantillas Articulos y Ubicaciones, Excel/CSV, códigos de barras, proveedor y
+subfamilia. Las filas repetidas por artículo/ubicación suman su stock. Las
+ubicaciones importadas sustituyen únicamente las de los artículos incluidos.
+Los reportes originales entregados traen almacén, pero no posición física;
+1015 no se utiliza como pasillo o estante. Puede cargarse una columna Ubicación
+en CT/AD o el maestro de ubicaciones por separado.
+
+En ambos conteos se selecciona el artículo y aparece su ubicación. El operador
+confirma expresamente o escribe la correcta, sin escanear ubicaciones. Si hay
+varias posiciones deben contarse todas, incluso con cero. Las cajas adicionales
+requieren confirmación y se suman. Los errores de cantidad se corrigen o anulan
+con motivo y bitácora; cualquier cambio vuelve a requerir procesamiento.
+
+El ciclo congela sus referencias CT/AD y ubicaciones; nuevas cargas no alteran
+el ciclo anterior. No se permite cerrarlo hasta completar y procesar los
+obligatorios y los artículos iniciados. Crear otro ciclo archiva el anterior
+con sus pendientes visibles, sin declararlos completados.
+
+Los conteos usan la revisión atómica y los permisos del inventario existente,
+sin nuevas tablas ni cambios de roles. Un conflicto conserva el estado local
+y permite respaldarlo antes de cargar la versión compartida. También se
+recupera el formulario de conteo tras recargar la misma sesión.
+
+La exportación incluye Resumen, Detalle, Correcciones, Guiado, Ciclo y Altas AD.
+Esta última contiene existencias positivas, contadas y procesadas de artículos
+sin registro AD. Es una propuesta para registrar en AD: no crea artículos en
+el ERP ni autoriza automáticamente despachos.
+
+Pruebas adicionales:
+
+```sh
+node --test tests/inventory-counts.test.cjs
+node tests/inventory-counts-ui.cjs
+node tests/inventory-db.cjs
+```

@@ -31,6 +31,17 @@ const ADMIN='11111111-1111-4111-8111-111111111111',READER='22222222-2222-4222-82
     await db.exec('reset role');assert.equal(await q('select revision as result from public.tms_sync_state'),42);check('inventory saves do not change the main TMS revision');
     await auth(READER);assert.equal((await snapshot()).revision,1);await assert.rejects(()=>save(1,payload),error=>error.code==='42501');check('explicit inventory reader may view but cannot save');
     await auth(EDITOR);value.cases.A={status:'en_revision'};assert.equal((await save(1,{tms_inventory_state:[{id:true,payload:value}]})).revision,2);check('only an explicitly permitted role may edit inventory');
+    const C=require('../inventory-counts-domain.js');
+    C.importMaster(value,[['CODIGO','UBICACION'],['TEST','A01']],{code:0,location:1},'positions');
+    C.createCycle(value,{ready:false},{id:'shared-cycle'});C.addItem(value,'TEST');
+    C.recordCount(value,{code:'TEST',expectedLocation:'A01',actualLocation:'A02',quantity:2,confirmed:true},{id:'shared-record',user:'editor@example.invalid'});
+    C.processItem(value,'TEST');
+    assert.equal((await save(2,{tms_inventory_state:[{id:true,payload:value}]})).revision,3);
+    const persisted=(await snapshot()).tables.tms_inventory_state[0].payload;
+    assert.deepEqual(persisted.counting,value.counting);
+    await assert.rejects(()=>save(2,payload),error=>error.code==='40001');
+    assert.equal(C.itemReport(C.active((await snapshot()).tables.tms_inventory_state[0].payload),'TEST').quantity,2);
+    check('count cycles, corrected locations, records and processing survive RPC roundtrip; stale session cannot erase them');
     await db.exec('reset role');await db.exec(`update public.tms_user_profiles set activo=false where auth_user_id='${EDITOR}'`);await auth(EDITOR);await assert.rejects(snapshot,error=>error.code==='42501');check('inactive accounts cannot read inventory');
     await auth(ADMIN);await assert.rejects(()=>db.exec("update public.tms_inventory_state set payload='{}'"),error=>error.code==='42501');check('direct unversioned authenticated writes are denied');
     await auth(null,'anon');await assert.rejects(snapshot,error=>error.code==='42501');check('anonymous callers cannot read private quantities or DOP valuation');
