@@ -155,3 +155,21 @@ test('local CT alternate exports, when present, yield one identical consolidated
  const result=D.compare(physical([C('A',2),C('B',2),C('C',2)]),accounting([A('A',3,1),A('B',3,1),A('C',3,1)]));
  assert.equal(result.rows[0].unitCostDop,1/3);assert.equal(result.summary.grossImpactDop,0.99);assert.equal(result.summary.netImpactDop,-0.99);
  });
+
+const sapStock=[
+ [null,'Resumen de stock valorado'],[],[null,'Última actualización:',46326.47296296296,'Huso horario:','UTC-4'],[],
+ [null,'Tipo de stock','ID de producto','Cantidad','Cantidad (Unidad)','Descripción de producto','Valor calculado','Valor calculado (Moneda)'],
+ [null,'En tránsito','A',2,'UN','Artículo A',20,'DOP'],
+ [null,'Almacén externo','A',3,'UN','Artículo A',60,'DOP'],
+ [null,'Almacén externo','B',1,'UN','Artículo B',100,'DOP']
+];
+test('actual SAP AD headings and Excel last-update serial are detected without manual mapping',()=>{
+ const layout=D.detectLayout(sapStock,'ad');assert.equal(layout.headerRow,4);assert.equal(layout.columns.code,2);assert.equal(layout.columns.quantity,3);assert.equal(layout.columns.totalValue,6);assert.equal(layout.columns.unit,4);assert.equal(layout.columns.stockType,1);assert.equal(layout.columns.currency,7);assert.equal(layout.asOf,'2026-10-31');assert.deepEqual(layout.suggestedStockTypes,['Almacén externo']);
+});
+test('AD stock-type filter keeps in-transit stock separate from external physical inventory',()=>{
+ const source=D.consolidate(sapStock,{source:'ad',stockTypes:['Almacén externo']});assert.equal(source.acceptedRowCount,2);assert.equal(source.filteredRows,1);assert.equal(source.rawRowCount,3);assert.equal(source.totals.quantity,4);assert.equal(source.totals.totalValueDop,160);assert.equal(source.materials[0].quantity,3);assert.equal(source.materials[0].details[0].stockType,'Almacén externo');assert.equal(source.materials[0].unit,'UND');
+ const all=D.consolidate(sapStock,{source:'ad'});assert.equal(all.totals.quantity,6);assert.equal(all.materials[0].quantity,5);assert.ok(all.warnings.some(message=>message.includes('En tránsito')));
+});
+test('foreign or missing currency cannot be quietly treated as DOP when currency column exists',()=>{
+ const matrix=structuredClone(sapStock);matrix[6][7]='USD';const result=D.consolidate(matrix,{source:'ad',stockTypes:['Almacén externo']});assert.equal(result.valid,false);assert.match(result.invalidRows[0].message,/DOP/);assert.equal(D.compare(physical([C('A',4)]),result).ready,false);
+});

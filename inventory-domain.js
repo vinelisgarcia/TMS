@@ -77,13 +77,15 @@
     return rows;
   }
   const aliases = {
-    code:['material','codigo','codigomaterial','codigodelarticulo','numerodearticulo','codigodearticulo','codarticulo','articulo','referencia','itemcode','sku','item'],
-    description:['description','descripcion','descripcionarticulo','nombrematerial','nombre','itemdescription'],
+    code:['iddeproducto','idproducto','material','codigo','codigomaterial','codigodelarticulo','numerodearticulo','codigodearticulo','codarticulo','articulo','referencia','itemcode','sku','item'],
+    description:['descripciondeproducto','descripcionproducto','description','descripcion','descripcionarticulo','nombrematerial','nombre','itemdescription'],
     quantity:['quantity','stock','existencia','existencias','cantidad','stocktotal','stockactual','cantidadstock','central','stockfisico','unidades'],
-    totalValue:['costototal','valordestock','valordelstock','valortotal','valortotaldop','valortotalstock','valorstock','valorstockdop','valortotalexistencias','importetotal','importe','valoracion','valorinventario','valorinventariodop','valorexistencias','valor'],
-    unit:['unitofmeasurement','unidad','unidaddemedida','um','uom'],
+    totalValue:['valorcalculado','costototal','valordestock','valordelstock','valortotal','valortotaldop','valortotalstock','valorstock','valorstockdop','valortotalexistencias','importetotal','importe','valoracion','valorinventario','valorinventariodop','valorexistencias','valor'],
+    unit:['cantidadunidad','unitofmeasurement','unidad','unidaddemedida','um','uom'],
     warehouse:['warehouse','almacen','codigoalmacen','ubicacion','centro','deposito'],
     batch:['batchnumber','batch','lote','numerolote'],
+    stockType:['tipodestock','tipostock','stocktype'],
+    currency:['valorcalculadomoneda','moneda','currency'],
     availability:['availability','disponible','disponibilidad','stockdisponible']
   };
   function detectLayout(matrix,source) {
@@ -100,6 +102,18 @@
     const preamble=matrix.slice(0,best.headerRow).flat().map(text).join(' ');
     const date=preamble.match(/(?:date|fecha)[^\d]*(\d{2})[./-](\d{2})[./-](\d{4})/i);
     if(date)best.asOf=`${date[3]}-${date[2]}-${date[1]}`;
+    if(!best.asOf) {
+      for(const row of matrix.slice(0,best.headerRow)) {
+        const label=row.findIndex(value=>['ultimaactualizacion','fechadecorte','fecha','date','lastupdate'].includes(norm(value)));
+        if(label>=0&&typeof row[label+1]==='number'&&row[label+1]>20000&&row[label+1]<100000) {
+          best.asOf=new Date(Date.UTC(1899,11,30)+Math.floor(row[label+1])*86400000).toISOString().slice(0,10);break;
+        }
+      }
+    }
+    if(best.columns.stockType!==undefined) {
+      best.stockTypes=[...new Set(matrix.slice(best.headerRow+1).map(row=>text(row[best.columns.stockType])).filter(Boolean))];
+      best.suggestedStockTypes=source==='ad'?best.stockTypes.filter(value=>norm(value)==='almacenexterno'):[];
+    }
     return best;
   }
   const rounded=value=>Number(value.toFixed(10));
@@ -122,7 +136,11 @@
       }
       const warehouse=mapping.warehouse===undefined?'':text(row[mapping.warehouse]);
       if(options.warehouses&&options.warehouses.length&&!options.warehouses.includes(warehouse)){filteredRows++;continue;}
+      const stockType=mapping.stockType===undefined?'':text(row[mapping.stockType]);
+      if(options.stockTypes&&options.stockTypes.length&&!options.stockTypes.includes(stockType)){filteredRows++;continue;}
       try {
+        const currency=source==='ad'&&mapping.currency!==undefined?text(row[mapping.currency]).toUpperCase():'';
+        if(source==='ad'&&mapping.currency!==undefined&&currency!=='DOP')throw new Error('La valoración debe estar en DOP. Moneda de esta fila: '+(currency||'vacía'));
         const quantity=parseNumber(row[quantityColumn],options.decimal||'auto');
         if(quantity===null)throw new Error('Cantidad vacía.');
         const totalValue=source==='ad'?parseNumber(row[mapping.totalValue],options.decimal||'auto'):null;
@@ -131,6 +149,8 @@
         const batch=mapping.batch===undefined?'':text(row[mapping.batch]);
         const description=mapping.description===undefined?'':text(row[mapping.description]);
         const record={code,unit,quantity,totalValue,availability,warehouse,batch};
+        if(stockType)record.stockType=stockType;
+        if(currency)record.currency=currency;
         const key=JSON.stringify(record);exact.set(key,(exact.get(key)||0)+1);canonical.push(key);
         if(!map.has(code))map.set(code,{code,description,quantitiesByUnit:{},valueSum:0,missingValueRows:0,availabilitySum:0,availabilityRows:0,rowCount:0,warehouses:new Set(),batches:new Set(),details:[]});
         const material=map.get(code);
@@ -139,7 +159,7 @@
         if(source==='ad'&&totalValue===null)material.missingValueRows++;
         if(availability!==null){material.availabilitySum=rounded(material.availabilitySum+availability);material.availabilityRows++;}
         material.rowCount++;if(warehouse)material.warehouses.add(warehouse);if(batch)material.batches.add(batch);
-        material.details.push({row:index+1,quantity,totalValueDop:totalValue,unit,warehouse,batch});
+        material.details.push({row:index+1,quantity,totalValueDop:totalValue,unit,warehouse,batch,...(stockType?{stockType}:{}),...(currency?{currency}:{})});
         acceptedRowCount++;
       } catch(error){invalidRows.push({row:index+1,code,message:error.message});}
     }
@@ -152,12 +172,13 @@
     if(duplicateExtraRows)warnings.push(`${duplicateExtraRows} filas idénticas se sumaron. Revisa si son stock real dividido o una repetición del reporte.`);
     if(materials.some(row=>row.unitConflict))warnings.push('Hay materiales con unidades incompatibles. No se suman como si fueran equivalentes.');
     if(source==='ad'&&materials.some(row=>row.missingValueRows))warnings.push('Hay materiales sin valor AD completo. Su diferencia económica quedará sin valorar.');
+    if(source==='ad'&&mapping.stockType!==undefined&&(!options.stockTypes||!options.stockTypes.length))warnings.push('Se incluyen todos los tipos de stock del reporte. Revisa que En tránsito no se mezcle con el stock físico en almacén.');
     if(mapping.unit===undefined)warnings.push('El archivo no indica unidad: se usa UND. Confirma que las cantidades son unidades equivalentes.');
     const byUnit={};materials.forEach(row=>Object.entries(row.quantitiesByUnit).forEach(([unit,qty])=>byUnit[unit]=rounded((byUnit[unit]||0)+qty)));
     const knownValueDop=source==='ad'?rounded(materials.reduce((sum,row)=>sum+row.knownValueDop,0)):null;
     canonical.sort();
     const semanticKey=JSON.stringify({source,asOf:options.asOf||'',quantityBasis:options.quantityBasis||'quantity',rows:canonical});
-    return {source,fileName:options.fileName||'',fileHash:options.fileHash||'',asOf:options.asOf||'',importedAt:new Date().toISOString(),rawRowCount:acceptedRowCount+invalidRows.length,acceptedRowCount,blankRowCount,filteredRows,repeatedMaterials:materials.filter(row=>row.rowCount>1).length,duplicateExtraRows,materials,totals:{materials:materials.length,quantity:Object.keys(byUnit).length===1?Object.values(byUnit)[0]:null,byUnit,availability:materials.every(row=>row.availability!==null)?rounded(materials.reduce((sum,row)=>sum+row.availability,0)):null,totalValueDop:source==='ad'&&materials.every(row=>row.totalValueDop!==null)?knownValueDop:null,knownValueDop,missingValueMaterials:source==='ad'?materials.filter(row=>row.totalValueDop===null).length:0},quantityBasis:options.quantityBasis||'quantity',unitDefault:options.unitDefault||'UND',mapping:{...mapping},headerRow,decimal:options.decimal||'auto',warnings,invalidRows,valid:invalidRows.length===0,semanticKey};
+    return {source,fileName:options.fileName||'',fileHash:options.fileHash||'',asOf:options.asOf||'',importedAt:new Date().toISOString(),rawRowCount:acceptedRowCount+invalidRows.length+filteredRows,acceptedRowCount,blankRowCount,filteredRows,repeatedMaterials:materials.filter(row=>row.rowCount>1).length,duplicateExtraRows,materials,totals:{materials:materials.length,quantity:Object.keys(byUnit).length===1?Object.values(byUnit)[0]:null,byUnit,availability:materials.every(row=>row.availability!==null)?rounded(materials.reduce((sum,row)=>sum+row.availability,0)):null,totalValueDop:source==='ad'&&materials.every(row=>row.totalValueDop!==null)?knownValueDop:null,knownValueDop,missingValueMaterials:source==='ad'?materials.filter(row=>row.totalValueDop===null).length:0},stockTypes:options.stockTypes||[],quantityBasis:options.quantityBasis||'quantity',unitDefault:options.unitDefault||'UND',mapping:{...mapping},headerRow,decimal:options.decimal||'auto',warnings,invalidRows,valid:invalidRows.length===0,semanticKey};
   }
   function compare(ct,ad) {
     if(ct?.valid===false||ad?.valid===false)return {ready:false,rows:[],summary:{},issues:['Hay filas no válidas en los reportes. Corrige la carga antes de comparar.']};

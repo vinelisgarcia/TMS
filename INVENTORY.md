@@ -82,3 +82,16 @@ Los tests de base usan PGlite instalado fuera del repositorio como se documenta
 en `DEPLOYMENT.md`. La prueba de interfaz usa RPC y usuarios ficticios y bloquea
 las llamadas reales a Supabase. Los CSV privados pueden validarse con las
 variables `TMS_CT_CSV` y `TMS_CT_CSV_ALT`, sin copiarlos al repositorio.
+
+## Formato AD SAP confirmado
+
+El reporte «Resumen de stock valorado» reconoce `ID de producto`, `Cantidad`,
+`Cantidad (Unidad)`, `Descripción de producto`, `Valor calculado` y
+`Valor calculado (Moneda)`. La fecha se toma de la celda numérica de Excel junto a
+«Última actualización». `UN` se normaliza a `UND`.
+
+Si existe `Tipo de stock`, la vista previa propone `Almacén externo` para el
+cruce físico y permite cambiar la selección. `En tránsito` permanece fuera de
+ese alcance propuesto; la pantalla indica cuántas filas se excluyeron. Una
+selección vacía incluye todos los tipos y muestra un aviso. Cuando existe la
+columna de moneda, las filas distintas de DOP bloquean la confirmación.
