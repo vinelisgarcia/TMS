@@ -8,7 +8,7 @@ const record=(data,code,bin,quantity,extra={})=>C.recordCount(data,{code,expecte
 
 test('top positive 10 and negative 20 select signed financial impact, never absolute cross-sign rank',()=>{
   const rows=[];for(let i=1;i<=40;i++){rows.push({code:'P'+i,difference:i,signedImpactDop:i*10,impactDop:i*10});rows.push({code:'N'+i,difference:-i,signedImpactDop:-i*10,impactDop:i*10});}
-  rows.push({code:'CT_ONLY',difference:9999,signedImpactDop:null,impactDop:null});
+  rows.push({code:'CT_ONLY',status:'only_ct',difference:-9999,signedImpactDop:null,impactDop:null});
   const ranks=C.priorities({ready:true,rows});assert.equal(ranks.positive.length,10);assert.equal(ranks.negative.length,20);assert.equal(ranks.positive[0].code,'P40');assert.equal(ranks.positive.at(-1).code,'P31');assert.equal(ranks.negative[0].code,'N40');assert.equal(ranks.negative.at(-1).code,'N21');assert.equal(ranks.mandatory.length,30);assert.equal(ranks.unvalued[0].code,'CT_ONLY');
 });
 test('source location is recognized separately from the warehouse and does not multiply stock',()=>{
@@ -73,4 +73,11 @@ test('decimal boxes sum accurately and repeated location corrections replace the
 test('ambiguous barcodes and incompatible units cannot silently select a material',()=>{
   const data=fixture();C.importMaster(data,[['CODIGO','BARRAS'],['A','SAME'],['B','SAME']],{code:0,barcode:1},'articles');assert.throws(()=>C.resolve(data,'SAME'),/varios artículos/);
   data.sources.ct.materials.find(row=>row.code==='C').unitConflict=true;C.createCycle(data,report(data));assert.throws(()=>C.addItem(data,'C'),/incompatibles/);
+});
+
+test('AD minus CT reverses ranked membership and old convention cycles remain archived with records',()=>{
+ const data=fixture(),r=report(data),ranks=C.priorities(r);
+ assert.equal(ranks.positive[0].code,'B');assert.equal(ranks.negative[0].code,'A');assert.equal(ranks.unvalued[0].code,'C');
+ const old=C.createCycle(data,r,{id:'old'});record(data,'B','B01',2);delete old.differenceConvention;
+ const fresh=C.createCycle(data,r,{id:'new'});assert.equal(old.status,'archived');assert.equal(old.records.length,1);assert.equal(fresh.differenceConvention,'ad_ct');
 });

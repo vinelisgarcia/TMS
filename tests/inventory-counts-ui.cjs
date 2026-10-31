@@ -3,8 +3,8 @@ const {chromium}=require(process.env.TMS_PLAYWRIGHT||'/Users/vinelis/.npm/_npx/e
 const assert=require('node:assert/strict'),fs=require('node:fs'),D=require('../inventory-domain.js');
 const base=process.env.TMS_TEST_URL||'http://127.0.0.1:8766';
 const ctRows=[],adRows=[];
-for(let i=1;i<=12;i++){const code='P'+String(i).padStart(2,'0');ctRows.push([code,'Sobrante '+code,20,'Piece','1015']);adRows.push([code,'Sobrante '+code,10,100+i,'UND']);}
-for(let i=1;i<=22;i++){const code='N'+String(i).padStart(2,'0');ctRows.push([code,'Faltante '+code,1,'Piece','1015']);adRows.push([code,'Faltante '+code,10,100+i,'UND']);}
+for(let i=1;i<=12;i++){const code='P'+String(i).padStart(2,'0');ctRows.push([code,'Sobrante '+code,10,'Piece','1015']);adRows.push([code,'Sobrante '+code,20,200+i*2,'UND']);}
+for(let i=1;i<=22;i++){const code='N'+String(i).padStart(2,'0');ctRows.push([code,'Faltante '+code,20,'Piece','1015']);adRows.push([code,'Faltante '+code,10,100+i,'UND']);}
 ctRows.push(['CT_ONLY','Solo CT',7,'Piece','1015']);
 const ct=D.consolidate([['Material','Description','Quantity','Unit of measurement','Warehouse'],...ctRows],{source:'ct',asOf:'2026-10-31'}),ad=D.consolidate([['Código','Descripción','Stock','Valor total DOP','Unidad'],...adRows],{source:'ad',asOf:'2026-10-31'});
 ct.semanticHash='SYNTHETIC_CT';ad.semanticHash='SYNTHETIC_AD';delete ct.semanticKey;delete ad.semanticKey;

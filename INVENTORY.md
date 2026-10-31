@@ -33,7 +33,7 @@ Después de consolidar AD:
 
 ```text
 Costo ponderado AD = SUM(valor total DOP) / SUM(cantidad AD)
-Diferencia = cantidad CT − cantidad AD
+Diferencia = cantidad AD − cantidad CT
 Impacto absoluto = ABS(diferencia) × costo ponderado AD
 ```
 
@@ -140,3 +140,9 @@ node --test tests/inventory-counts.test.cjs
 node tests/inventory-counts-ui.cjs
 node tests/inventory-db.cjs
 ```
+
+La convención confirmada es AD − CT: positivo (verde) cuando AD tiene más,
+negativo (rojo) cuando CT tiene más. El top 10 usa positivos y el top 20 los
+negativos más extremos. Los artículos solo CT siguen visibles sin valoración.
+Los ciclos anteriores conservan referencias; iniciar un nuevo ciclo aplica
+los tops de esta convención sin eliminar conteos anteriores.

@@ -44,8 +44,8 @@ test('DOP accounting negatives support currency symbols inside parentheses',()=>
 test('AD unit valuation is derived from summed total DOP divided by summed AD quantity',()=>{
   const ad=accounting([A('A',10,100),A('A',20,400)]),ct=physical([C('A',20)]);
   assert.equal(ad.materials.length,1);assert.equal(ad.materials[0].quantity,30);assert.equal(ad.materials[0].totalValueDop,500);assert.equal(ad.materials[0].rowCount,2);
-  const row=D.compare(ct,ad).rows[0];assert.equal(row.unitCostDop,500/30);assert.equal(row.difference,-10);
-  assert.equal(row.impactDop,166.67);assert.equal(row.signedImpactDop,-166.67);
+  const row=D.compare(ct,ad).rows[0];assert.equal(row.unitCostDop,500/30);assert.equal(row.difference,10);
+  assert.equal(row.impactDop,166.67);assert.equal(row.signedImpactDop,166.67);
 });
 
 test('batch/material repeats consolidate, including exact repeated rows which are flagged',()=>{
@@ -77,8 +77,8 @@ test('partial AD value remains unknown while known source value is retained for 
 test('CT-only items lack a valuation; AD-only items use the full missing stock value',()=>{
   const result=D.compare(physical([C('ONLY-CT',5)]),accounting([A('ONLY-AD',3,300)]));
   const ct=result.rows.find(row=>row.code==='ONLY-CT'),ad=result.rows.find(row=>row.code==='ONLY-AD');
-  assert.equal(ct.status,'only_ct');assert.equal(ct.difference,5);assert.equal(ct.unitCostDop,null);assert.equal(ct.impactDop,null);
-  assert.equal(ad.status,'only_ad');assert.equal(ad.difference,-3);assert.equal(ad.impactDop,300);
+  assert.equal(ct.status,'only_ct');assert.equal(ct.difference,-5);assert.equal(ct.unitCostDop,null);assert.equal(ct.impactDop,null);
+  assert.equal(ad.status,'only_ad');assert.equal(ad.difference,3);assert.equal(ad.impactDop,300);
 });
 
 test('missing entire source never presents absent data as zero stock',()=>{
@@ -133,7 +133,7 @@ test('semantic identity ignores filename/row order but retains duplicate multipl
 
 test('priority ranks financial exposure and gross impact does not net deficits against surpluses',()=>{
   const result=D.compare(physical([C('A',101),C('B',8),C('C',1000)]),accounting([A('A',100,100),A('B',10,10000),A('C',100,100)]));
-  assert.equal(result.rows[0].code,'B');assert.equal(result.rows[0].impactDop,2000);assert.equal(result.summary.grossImpactDop,2901);assert.equal(result.summary.netImpactDop,-1099);
+  assert.equal(result.rows[0].code,'B');assert.equal(result.rows[0].impactDop,2000);assert.equal(result.summary.grossImpactDop,2901);assert.equal(result.summary.netImpactDop,1099);
 });
 
 test('different cutoff dates remain visible as a comparison issue',()=>{
@@ -153,7 +153,7 @@ test('local CT alternate exports, when present, yield one identical consolidated
 
  test('monetary summaries reconcile to the per-material cent amounts without rounding unit costs',()=>{
  const result=D.compare(physical([C('A',2),C('B',2),C('C',2)]),accounting([A('A',3,1),A('B',3,1),A('C',3,1)]));
- assert.equal(result.rows[0].unitCostDop,1/3);assert.equal(result.summary.grossImpactDop,0.99);assert.equal(result.summary.netImpactDop,-0.99);
+ assert.equal(result.rows[0].unitCostDop,1/3);assert.equal(result.summary.grossImpactDop,0.99);assert.equal(result.summary.netImpactDop,0.99);
  });
 
 const sapStock=[

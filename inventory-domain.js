@@ -191,7 +191,7 @@
       const c=left.get(code),a=right.get(code),issues=[];
       const unitConflict=!!(c?.unitConflict||a?.unitConflict||(c&&a&&c.unit!==a.unit));
       const ctQty=c?c.quantity:0,adQty=a?a.quantity:0;
-      const difference=unitConflict?null:rounded(ctQty-adQty);
+      const difference=unitConflict?null:rounded(adQty-ctQty);
       const unitCostDop=a&&!unitConflict&&adQty>0&&a.totalValueDop!==null&&a.totalValueDop>=0?a.totalValueDop/adQty:null;
       if(unitConflict)issues.push('Unidades incompatibles: requiere equivalencia antes de comparar.');
       if(!a)issues.push('No registrado en AD; no hay valoración disponible.');
