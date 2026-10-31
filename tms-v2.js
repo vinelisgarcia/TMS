@@ -1102,6 +1102,7 @@
       if (mobileOption) mobileOption.hidden = !allowed;
     });
     syncMobileModuleSelect();
+    updateImportExcelTableStatus();
     const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
     document.body.classList.toggle('role-readonly', !hasPermission(activeModule, 'editar'));
     const undoBtn = document.getElementById('undoStateBtn');
@@ -3029,10 +3030,9 @@
   };
 
   function summarizeImport(mode, items, fileName, fecha) {
-    const label = mode === 'plan' ? 'Planificación' : 'Control';
-    const uniqueClients = new Set(items.map(item => item.clienteId)).size;
+    const label = mode === 'plan' ? 'Programación cargada' : 'Control cargado';
     const uniqueOrders = new Set(items.map(item => [item.clienteId, item.pedidoCliente].join('|'))).size;
-    return `${label} cargada: ${fileName} · ${uniqueClients} clientes · ${uniqueOrders} pedidos · ${fecha}`;
+    return `${label} · ${uniqueOrders} pedido${uniqueOrders===1?'':'s'} · ${fecha}`;
   }
 
   function registerRouteCostSnapshot(controlDate) {
@@ -5694,56 +5694,33 @@
     const title = importView.querySelector('.view-title');
     const tableCard = document.createElement('div');
     tableCard.id = 'importExcelTableCard';
-    tableCard.className = 'card import-excel-card';
+    tableCard.className = 'sap-import-workspace';
     tableCard.innerHTML = `
-      <div class="import-excel-header">
-        <div>
-          <div class="card-title">Carga de archivos SAP</div>
-          <div class="import-excel-subtitle">Sube o reemplaza los archivos base del TMS desde una tabla sencilla.</div>
-        </div>
-        <div class="import-excel-meta">XLSX / XML</div>
+      <p class="sap-import-intro">Elige el documento que vas a cargar. <span>Excel / XML</span></p>
+      <div class="sap-import-grid">
+        <section class="sap-import-tile" data-sap-kind="plan">
+          <header><span class="sap-tile-icon" aria-hidden="true">01</span><div><h2>Programación</h2><p>Pedidos y calendario</p></div></header>
+          <div id="importTablePlanStatus" class="sap-file-status" role="status">Sin archivo</div>
+          <button id="sapPlanUpload" type="button" class="btn btn-primary" data-sap-upload="plan" onclick="document.getElementById('sapFile').click()">Cargar programación</button>
+          <div class="sap-import-feedback" id="sapPlanFeedback"></div>
+        </section>
+        <section class="sap-import-tile" data-sap-kind="control">
+          <header><span class="sap-tile-icon" aria-hidden="true">02</span><div><h2>Control diario</h2><p>Facturado y pendiente del día</p></div></header>
+          <div id="importTableCtrlStatus" class="sap-file-status" role="status">Sin archivo</div>
+          <button id="sapControlUpload" type="button" class="btn btn-success" data-sap-upload="control" onclick="abrirControlDiario()">Cargar control diario</button>
+          <div class="sap-import-feedback" id="sapControlFeedback"></div>
+        </section>
+        <section class="sap-import-tile" data-sap-kind="warehouse">
+          <header><span class="sap-tile-icon" aria-hidden="true">03</span><div><h2>Solicitudes a almacén</h2><p>Solicitado y preparado</p></div></header>
+          <div id="importTableSolStatus" class="sap-file-status" role="status">Sin archivo</div>
+          <div class="sap-warehouse-actions"><button type="button" class="btn btn-primary" data-sap-upload="warehouse-plan" onclick="document.getElementById('solicitudesPlanFileImport').click()">Cargar solicitudes</button><button type="button" class="btn btn-outline" data-sap-upload="warehouse-control" onclick="document.getElementById('solicitudesControlFileImport').click()">Cargar control</button></div>
+          <small id="importTableNewCount" class="sap-import-count"></small>
+        </section>
       </div>
-      <div class="import-excel-wrap">
-        <table class="import-excel-table">
-          <thead>
-            <tr>
-              <th>Archivo requerido</th>
-              <th>Uso en el TMS</th>
-              <th>Estado actual</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>Programación mensual</strong><span>Pedidos de cliente / planificación comercial</span></td>
-              <td>Define calendario, rutas iniciales y montos pedidos.</td>
-              <td id="importTablePlanStatus">No cargada</td>
-              <td><button class="btn btn-primary btn-sm" onclick="document.getElementById('sapFile').click()">Subir</button></td>
-            </tr>
-            <tr>
-              <td><strong>Control diario</strong><span>Cierre del día</span></td>
-              <td>Actualiza cantidades facturadas, pendientes y avance real.</td>
-              <td id="importTableCtrlStatus">No cargado</td>
-              <td><button class="btn btn-success btn-sm" onclick="abrirControlDiario()">Subir</button></td>
-            </tr>
-            <tr>
-              <td><strong>Solicitudes a almacén</strong><span>Pendientes de preparación / control almacén</span></td>
-              <td>Concilia pedidos cliente contra solicitudes realizadas al almacén.</td>
-              <td id="importTableSolStatus">Sin archivo</td>
-              <td>
-                <div class="import-table-actions">
-                  <button class="btn btn-warning btn-sm" onclick="document.getElementById('solicitudesPlanFileImport').click()">Plan</button>
-                  <button class="btn btn-outline btn-sm" onclick="document.getElementById('solicitudesControlFileImport').click()">Control</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="import-excel-foot">
-        <span id="importTableNewCount">0 nuevas solicitudes</span>
-        <span id="importTableLastFile">Esperando archivos de carga</span>
-      </div>`;
+      <details class="sap-import-help"><summary>Ayuda de importación</summary><p>Programación: archivo SAP de pedidos de cliente. Control diario: cierre SAP; requiere una programación cargada. Almacén: solicitudes y su control de preparación.</p><p>Cada carga actualiza su documento. Revisa el archivo antes de reemplazarlo.</p></details>`;
+    for (const [target, ids] of Object.entries({sapPlanFeedback:['sapLoading','sapSuccessBanner'],sapControlFeedback:['ctrlSinPlan','ctrlLoading','ctrlSuccessBanner']})) {
+      ids.forEach(id => { const node = document.getElementById(id); if (node) tableCard.querySelector('#'+target).appendChild(node); });
+    }
     if (title && title.nextSibling) importView.insertBefore(tableCard, title.nextSibling);
     else importView.prepend(tableCard);
     updateImportExcelTableStatus();
@@ -5754,26 +5731,33 @@
     const ctrlStatus = document.getElementById('importTableCtrlStatus');
     const solStatus = document.getElementById('importTableSolStatus');
     const newCount = document.getElementById('importTableNewCount');
-    const lastFile = document.getElementById('importTableLastFile');
     if (!planStatus || !ctrlStatus || !solStatus) return;
 
+    const fileMeta = (file, date, detail) => `<span class="sap-file-name" title="${escapeHtml(file || '')}">${escapeHtml(file || 'Archivo cargado')}</span><small>${escapeHtml([date,detail].filter(Boolean).join(' · '))}</small>`;
     planStatus.innerHTML = APP.planLoaded
-      ? `${statusBadgeHtml('Cargada', 'ok')}<span>${new Set(APP.planLineItems.map(item => item.clienteId)).size} clientes · ${APP.planLineItems.length} líneas · ${APP.importFiles.plan || APP.planFecha}</span>`
-      : `${statusBadgeHtml('Pendiente', 'wait')}<span>No cargada</span>`;
+      ? `${statusBadgeHtml('Cargada', 'ok')}${fileMeta(APP.importFiles.plan, APP.planFecha, APP.planLineItems.length+' línea'+(APP.planLineItems.length===1?'':'s'))}`
+      : '<span>Sin programación</span>';
     ctrlStatus.innerHTML = APP.controlLoaded
-      ? `${statusBadgeHtml('Cargado', 'ok')}<span>${new Set(APP.controlLineItems.map(item => item.clienteId)).size} clientes · ${APP.controlLineItems.length} líneas · ${APP.importFiles.control || APP.controlFecha}</span>`
-      : `${statusBadgeHtml('Opcional', 'info')}<span>Sin control diario</span>`;
-    solStatus.innerHTML = APP.solicitudesLoaded
-      ? `${statusBadgeHtml('Cargadas', 'ok')}<span>${APP.solicitudesAlmacen.length} solicitudes · ${APP.solicitudesFileName || 'archivo actual'}</span>`
-      : `${statusBadgeHtml('Pendiente', 'wait')}<span>Sin archivo</span>`;
-
+      ? `${statusBadgeHtml('Cargado', 'ok')}${fileMeta(APP.importFiles.control, APP.controlFecha, APP.controlLineItems.length+' línea'+(APP.controlLineItems.length===1?'':'s'))}`
+      : `<span>${APP.planLoaded ? 'Sin control diario' : 'Carga primero la programación'}</span>`;
+    const warehouseFiles = [APP.importFiles.solicitudesPlan,APP.importFiles.solicitudesControl].filter(Boolean);
+    solStatus.innerHTML = warehouseFiles.length || APP.solicitudesLoaded
+      ? `${statusBadgeHtml('Cargadas', 'ok')}<span class="sap-file-name" title="${escapeHtml(warehouseFiles.join(' · '))}">${escapeHtml(warehouseFiles.join(' · ') || APP.solicitudesFileName || 'Archivo cargado')}</span><small>${APP.solicitudesAlmacen.length} línea${APP.solicitudesAlmacen.length===1?'':'s'}</small>`
+      : '<span>Sin solicitudes</span>';
     const count = getSolicitudesNewCount();
-    if (newCount) newCount.textContent = `${count} nuevas solicitudes detectadas`;
-    if (lastFile) {
-      const file = APP.importFiles.solicitudesControl || APP.importFiles.solicitudesPlan || APP.importFiles.control || APP.importFiles.plan || '';
-      lastFile.textContent = file ? `Último archivo: ${file}` : 'Esperando archivos de carga';
-    }
+    if (newCount) newCount.textContent = count ? `${count} nuevas líneas de solicitud` : '';
+    const canImport = isAdminUser() || hasPermission('importar','editar') || hasPermission('importar','importar');
+    document.querySelectorAll('[data-sap-upload]').forEach(button => {
+      const kind = button.dataset.sapUpload;
+      const allowed = canImport || (kind==='warehouse-plan' && hasPermission('solicitudesAlmacen','editar')) || (kind==='warehouse-control' && hasPermission('almacen','editar'));
+      button.disabled = !allowed || (kind==='control' && !APP.planLoaded);
+      button.title = !allowed ? 'Tu rol no permite esta carga' : kind==='control' && !APP.planLoaded ? 'Carga primero la programación' : '';
+    });
+    const planButton = document.getElementById('sapPlanUpload'), controlButton = document.getElementById('sapControlUpload');
+    if (planButton) planButton.textContent = APP.planLoaded ? 'Reemplazar programación' : 'Cargar programación';
+    if (controlButton) controlButton.textContent = APP.controlLoaded ? 'Reemplazar control diario' : 'Cargar control diario';
   }
+
 
   function initCalendarActions() {
     const toolbar = document.querySelector('#calendario .view-toolbar');
@@ -5912,7 +5896,7 @@
     const titleConfig = document.querySelector('#configClientes .view-title');
     if (titleConfig) titleConfig.textContent = 'Configuración';
     const titleImport = document.querySelector('#importar .view-title');
-    if (titleImport) titleImport.textContent = 'Importar Datos';
+    if (titleImport) titleImport.textContent = 'Importar SAP';
     const planTitle = document.querySelector('#uploadZone')?.closest('.card')?.querySelector('.card-title');
     if (planTitle) planTitle.textContent = 'Programación mensual / pedidos de cliente';
     const planSub = document.querySelector('#uploadZone .upload-sub');

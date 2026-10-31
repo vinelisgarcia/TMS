@@ -73,3 +73,27 @@ Validar con `node --test tests/calendar-dispatch.test.cjs` y
 con las RPC reales del cliente contra un servidor simulado; bloquea Supabase y
 no modifica producción. También ejecutar `tests/ui-smoke.cjs` para verificar
 movimientos de rutas, exportaciones y módulos existentes.
+
+## Uso desde teléfono y tablet
+
+`tms-responsive.css` y `tms-responsive.js` completan el frontend común: encabezado
+compacto, accesos rápidos y selector de módulos mediante diálogo. Las opciones
+se derivan de los módulos autorizados existentes; no amplían permisos. En móvil
+el calendario ocupa una columna y muestra inicialmente los días con entregas o
+notas; «Todos los días» permite ver y programar el resto. Los detalles de despacho
+se presentan por campos en lugar de una tabla ancha. El escritorio conserva su
+barra lateral y calendario semanal.
+
+Importar SAP utiliza tres fichas de documento con los mismos inputs y parsers:
+programación, control diario y solicitudes/control de almacén. El progreso y la
+confirmación se muestran dentro de cada ficha; el control diario requiere una
+programación. Se conservan las validaciones, los datos y la sincronización.
+
+Publicar `index.html`, `tms-v2.js` y ambos archivos responsive juntos. Recargar las
+sesiones abiertas para obtener el nuevo frontend. Validación adicional:
+`node tests/mobile-workspace-ui.cjs` usa archivos ficticios, bloquea Supabase y
+prueba cargas correctas/incorrectas, permisos, navegación y controles visibles
+en 10 módulos a 320/390/430/768/1024/1440 píxeles, además de móvil en horizontal.
+
+La misma prueba se ejecutó también con WebKit mediante
+`TMS_TEST_ENGINE=webkit node tests/mobile-workspace-ui.cjs`.
