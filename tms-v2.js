@@ -2076,7 +2076,7 @@
                 <span>${getTruckLabel(camion)} ${groups.length ? '(' + groups.length + ')' : ''}${load.rutas.length ? ` · ${load.rutas.join(', ')}` : ''}</span>
                 ${laneSelection.total ? `<button class="calendar-lane-select" onclick="toggleSeleccionCarrilCalendario('${jsString(fecha)}','${jsString(camion)}', event)">${laneSelection.allSelected ? 'Quitar todo' : 'Seleccionar todo'}</button>` : ''}
               </span>
-              <small>${loadText}</small>
+              <small class="calendar-load-full">${loadText}</small><small class="calendar-load-compact">${formatLoadQty(load.total)} uds · ${formatMonto(load.valorTransportado)}</small>
             </span>`);
 
           groups.forEach(group => {
@@ -2092,7 +2092,7 @@
               style="${group.alertas.length ? 'border:1px solid #ef4444;' : ''}">
               <div class="cal-card-topline">
                 <label class="cal-card-check">
-                  <input type="checkbox" ${selected ? 'checked' : ''} onclick="toggleSeleccionCalendario('${fecha}','${camion}',${realIdx}, event)">
+                  <input type="checkbox" aria-label="Seleccionar ${escapeHtml(group.nombre)}" ${selected ? 'checked' : ''} onclick="toggleSeleccionCalendario('${fecha}','${camion}',${realIdx}, event)">
                   <span>Selec.</span>
                 </label>
                 <span class="badge ${selected ? 'badge-primary' : 'badge-outline'}">${selected ? 'Lote' : 'Individual'}</span>

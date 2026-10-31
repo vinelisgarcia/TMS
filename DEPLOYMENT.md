@@ -97,3 +97,8 @@ en 10 módulos a 320/390/430/768/1024/1440 píxeles, además de móvil en horizo
 
 La misma prueba se ejecutó también con WebKit mediante
 `TMS_TEST_ENGINE=webkit node tests/mobile-workspace-ui.cjs`.
+
+El calendario móvil utiliza fichas por día y tarjetas compactas de cliente. El
+menú de tres puntos conserva Mover, Completar y Nota; en escritorio las acciones
+siguen visibles. Los controles de lote aparecen al seleccionar despachos y se
+omite la cola vacía en móvil. En tablet se distribuyen los días en dos columnas.

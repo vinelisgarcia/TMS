@@ -78,6 +78,8 @@
     let controls=document.getElementById('mobileCalendarFocus');
     if(!controls){controls=document.createElement('div');controls.id='mobileCalendarFocus';controls.innerHTML='<span>Mostrar</span><button type="button" data-calendar-focus="deliveries">Con entregas</button><button type="button" data-calendar-focus="all">Todos los días</button>';container.before(controls);controls.addEventListener('click',event=>{const button=event.target.closest('[data-calendar-focus]');if(button){onlyDeliveries=button.dataset.calendarFocus==='deliveries';updateCalendar();}});}
     container.classList.toggle('mobile-deliveries-only',onlyDeliveries);
+    container.classList.toggle('calendar-no-selection',!!document.getElementById('moveSelectedBtn')?.disabled);
+    const queue=document.getElementById('queueSemanaSection');if(queue)queue.classList.toggle('calendar-queue-empty',!queue.querySelector('.queue-card'));
     controls.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String((button.dataset.calendarFocus==='deliveries')===onlyDeliveries)));
     let total=0;
     container.querySelectorAll('.cal-month-section').forEach(week=>{
@@ -95,6 +97,18 @@
     }
     const tools=document.getElementById('mobileCalendarTools'), mobile=window.matchMedia('(max-width:900px)').matches;
     if(tools&&calendarToolsMobile!==mobile){tools.open=!mobile;calendarToolsMobile=mobile;}
+    container.querySelectorAll('.cal-card').forEach(card=>{
+      const actions=card.querySelector('.cal-card-actions');if(!actions)return;
+      let menu=card.querySelector('.calendar-card-tools');
+      if(!menu){
+        menu=document.createElement('details');menu.className='calendar-card-tools';
+        const summary=document.createElement('summary');summary.setAttribute('aria-label','Opciones de '+(card.querySelector('.calendar-dispatch-name')?.textContent||'despacho'));summary.title='Mover, completar o añadir nota';summary.innerHTML='<span aria-hidden="true">•••</span>';
+        menu.appendChild(summary);actions.before(menu);menu.appendChild(actions);
+        menu.addEventListener('click',event=>{event.stopPropagation();if(event.target.closest('button'))menu.open=false;});
+        menu.addEventListener('toggle',()=>{if(menu.open&&window.matchMedia('(max-width:900px)').matches)container.querySelectorAll('.calendar-card-tools[open]').forEach(other=>{if(other!==menu)other.open=false;});});
+      }
+      if(menu.dataset.mobile!==String(mobile)){menu.open=!mobile;menu.dataset.mobile=String(mobile);}
+    });
   }
   function labelDialogTables() {
     document.querySelectorAll('.calendar-dispatch-dialog table').forEach(table=>{
@@ -112,6 +126,8 @@
     const container=document.getElementById('calContainer');if(container)new MutationObserver(()=>{updateCalendar();}).observe(container,{childList:true});
     // Add mobile labels to newly opened/refreshed dispatch tables, without touching their data.
     new MutationObserver(records=>{if(records.some(record=>record.target.parentElement?.closest('#tmsSyncBadge')||record.target.id==='tmsSyncBadge'))updateSyncIndicator();if(records.some(record=>[...record.addedNodes].some(node=>node.nodeType===1&&(node.id==='calendarDispatchDialog'||node.closest?.('#calendarDispatchDialog')))))labelDialogTables();}).observe(document.body,{childList:true,subtree:true});
+    document.addEventListener('click',event=>{if(!event.target.closest('.calendar-card-tools'))document.querySelectorAll('.calendar-card-tools[data-mobile="true"][open]').forEach(menu=>menu.open=false);});
+    window.addEventListener('keydown',event=>{if(event.key==='Escape')document.querySelectorAll('.calendar-card-tools[data-mobile="true"][open]').forEach(menu=>menu.open=false);});
     window.addEventListener('tms-permissions-changed',schedule);window.addEventListener('resize',schedule);
     const oldView=window.cambiarVista;window.cambiarVista=function(...args){const result=oldView.apply(this,args);schedule();return result;};
     const oldLogout=window.cerrarSesion;window.cerrarSesion=function(...args){document.getElementById('mobileModulesDialog')?.close();return oldLogout.apply(this,args);};
