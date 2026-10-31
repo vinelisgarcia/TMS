@@ -4,6 +4,10 @@
   if (typeof APP === 'undefined') return;
 
   const LOCAL_KEY = 'tms_alvarez_v2_state';
+  let cloudUser = null;
+  let cloudSync = null;
+  const unsubmittedDrafts = new Set();
+  const localSnapshotKey = () => cloudUser ? LOCAL_KEY + ':' + cloudUser.id : null;
   const THEME_KEY = 'tms_alvarez_visual_theme';
   const DEFAULT_ADMIN_EMAIL = 'vinelis.garcia@hbyalvarez.com';
   const CURRENT_YEAR = new Date().getFullYear();
@@ -81,8 +85,8 @@
     const perms = profile && profile.permisosPorModulo;
     const meta = perms && perms.__account ? perms.__account : {};
     return {
-      passwordChangeRequired: !!(profile && (profile.passwordChangeRequired || meta.passwordChangeRequired)),
-      authNeedsConfirmation: !!(profile && (profile.authNeedsConfirmation || meta.authNeedsConfirmation)),
+      passwordChangeRequired: profile && profile.passwordChangeRequired !== undefined ? !!profile.passwordChangeRequired : !!meta.passwordChangeRequired,
+      authNeedsConfirmation: profile && profile.authNeedsConfirmation !== undefined ? !!profile.authNeedsConfirmation : !!meta.authNeedsConfirmation,
       passwordConfigured: profile && profile.passwordConfigured !== undefined ? !!profile.passwordConfigured : meta.passwordConfigured !== false,
       accountStatus: text((profile && profile.accountStatus) || meta.accountStatus || '')
     };
@@ -172,7 +176,9 @@
   function applyVisualTheme(theme, persist) {
     const nextTheme = normalizeVisualTheme(theme);
     APP.visualTheme = nextTheme;
-    if (persist) localStorage.setItem(THEME_KEY, nextTheme);
+    if (persist) {
+      try { localStorage.setItem(THEME_KEY, nextTheme); } catch (error) { console.warn('No se pudo guardar el tema local:',error); }
+    }
     if (!document.body) return;
     document.body.classList.remove('theme-light', 'theme-dark', 'theme-brand');
     document.body.classList.add('theme-' + nextTheme);
@@ -781,51 +787,6 @@
       }
     }
     alert(detail);
-  }
-
-  function isMissingRpcError(error) {
-    const message = text(error && error.message ? error.message : error);
-    return /PGRST202|Could not find the function|schema cache|tms_replace_table/i.test(message);
-  }
-
-  function markCloudMigrationPending() {
-    APP.cloudMigrationPending = true;
-    const banner = document.getElementById('sapEstadoBanner');
-    if (banner) {
-      banner.style.display = 'block';
-      banner.innerHTML = '<strong>Migración de nube pendiente.</strong><br>El sistema guardó en modo compatibilidad. Para guardado transaccional completo falta aplicar las migraciones pendientes de Supabase, especialmente 0004_atomic_replace_and_route_history.sql y 0005_app_state_new_modules_policy.sql.';
-    }
-  }
-
-  async function legacyReplaceSupabaseTable(tableName, rows) {
-    const client = getSupabaseClient();
-    const safeRows = tableName === 'tms_route_cost_history'
-      ? (rows || []).map(row => {
-        const copy = { ...row };
-        delete copy.camion;
-        return copy;
-      })
-      : (rows || []);
-    await runSupabaseQuery(client.from(tableName).delete().not('id', 'is', null), 'No se pudo limpiar ' + tableName);
-    for (const chunk of chunkRows(safeRows, 200)) {
-      await runSupabaseQuery(client.from(tableName).insert(chunk), 'No se pudo guardar ' + tableName);
-    }
-  }
-
-  async function replaceSupabaseTable(tableName, rows) {
-    const client = getSupabaseClient();
-    if (!client || typeof client.rpc !== 'function') throw new Error('No hay cliente Supabase para guardar ' + tableName);
-    try {
-      await runSupabaseQuery(
-        client.rpc('tms_replace_table', { p_table_name: tableName, p_rows: rows || [] }),
-        'No se pudo guardar ' + tableName + ' de forma transaccional'
-      );
-    } catch (error) {
-      if (!isMissingRpcError(error)) throw error;
-      markCloudMigrationPending();
-      console.warn('Migración 0004 pendiente; guardando en modo compatibilidad para', tableName);
-      await legacyReplaceSupabaseTable(tableName, rows || []);
-    }
   }
 
   function mapDbOrderLine(row) {
@@ -1580,7 +1541,11 @@
         costSettings: APP.costSettings || {}
       }
     };
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(payload));
+    const storageKey = localSnapshotKey();
+    if (storageKey) {
+      try { localStorage.setItem(storageKey, JSON.stringify(payload)); }
+      catch (error) { console.warn('No se pudo guardar el respaldo local; el guardado en nube sigue disponible:',error); }
+    }
   }
 
   function loadEmbeddedDemoState() {
@@ -1604,7 +1569,8 @@
 
   function loadLocalSnapshot() {
     try {
-      const raw = localStorage.getItem(LOCAL_KEY);
+      const storageKey = localSnapshotKey();
+      const raw = storageKey && localStorage.getItem(storageKey);
       if (!raw) return false;
       const payload = JSON.parse(raw);
       Object.assign(APP, payload.app || {});
@@ -1620,6 +1586,7 @@
   }
 
   window.scheduleAutoSave = function scheduleAutoSaveV2() {
+    if (cloudSync) cloudSync.markDirty();
     if (window._autoSaveTimer) clearTimeout(window._autoSaveTimer);
     window._autoSaveTimer = setTimeout(() => {
       saveLocalSnapshot();
@@ -5154,424 +5121,454 @@
     await window.guardarEnSupabase();
   }
 
+  function buildCloudPayload() {
+    const user = cloudUser;
+    if (!user) return {};
+    const adminCanManageUsers = isAdminUser();
+    const canWriteImports = adminCanManageUsers || hasPermission('importar', 'editar') || hasPermission('importar', 'importar');
+    const canWriteRoutes = adminCanManageUsers || hasPermission('rutas', 'editar');
+    const canWriteConfig = adminCanManageUsers || hasPermission('configuracion', 'editar') || hasPermission('configuracion', 'importar');
+    const canWriteWarehousePlan = adminCanManageUsers || canWriteImports || hasPermission('solicitudesAlmacen', 'editar');
+    const canWriteWarehouseControl = adminCanManageUsers || canWriteImports || hasPermission('almacen', 'editar');
+    const canWriteWarehouseHistory = adminCanManageUsers || hasPermission('solicitudesAlmacen', 'editar') || hasPermission('almacen', 'editar');
+    const canWriteCalendarNotes = adminCanManageUsers || hasPermission('calendario', 'editar');
+    const canWriteDispatchIncidents = adminCanManageUsers && hasPermission('incidenciasDespacho', 'editar');
+    const canWriteTransitMaterials = adminCanManageUsers || hasPermission('materialesTransito', 'editar') || hasPermission('materialesTransito', 'importar');
+    const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes || canWriteDispatchIncidents || canWriteTransitMaterials;
+    const settingsRows = [
+      ...((adminCanManageUsers || canWriteWarehouseHistory) ? [{ clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) }] : []),
+      ...(adminCanManageUsers ? [{ clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) }] : []),
+      ...(canWriteAppState ? [{
+        clave: 'app_state',
+        valor: safeClone({
+          planLoaded: !!APP.planLoaded,
+          planFecha: APP.planFecha || null,
+          controlLoaded: !!APP.controlLoaded,
+          controlFecha: APP.controlFecha || null,
+          solicitudesLoaded: !!APP.solicitudesLoaded,
+          solicitudesFileName: APP.solicitudesFileName || '',
+          camionExtraEnabled: !!APP.camionExtraEnabled,
+          feriadosRD: APP.feriadosRD || [],
+          importFiles: APP.importFiles || {},
+          importShipments: APP.importShipments || [],
+          transitMaterials: APP.transitMaterials || [],
+          dailyPriorities: APP.dailyPriorities || [],
+          prioritySpainTopics: APP.prioritySpainTopics || [],
+          calendarNotes: APP.calendarNotes || [],
+          dispatchIncidents: APP.dispatchIncidents || [],
+          controlHistory: APP.controlHistory || [],
+          costSettings: APP.costSettings || {},
+          visualTheme: APP.visualTheme || 'light'
+        })
+      }] : [])
+    ];
+
+    const userRows = APP.userProfiles.map(profile => userProfileDbPayload(
+      profile,
+      text(profile.email).toLowerCase() === text(user.email).toLowerCase() ? user.id : null
+    ));
+    const currentUserProfileRow = APP.currentUserProfile && APP.currentUserProfile.email
+      ? userProfileDbPayload(APP.currentUserProfile, user.id)
+      : null;
+    if (currentUserProfileRow && !adminCanManageUsers) {
+      // Account-status updates must preserve server-owned identity and module
+      // permissions, even when the global role template has since changed.
+      currentUserProfileRow.permisos_por_modulo = {
+        ...safeClone(APP.currentUserProfile.permisosPorModulo || {}),
+        __account: currentUserProfileRow.permisos_por_modulo.__account
+      };
+    }
+
+    const routeRows = APP.routeConfigs.map(route => {
+      const payload = {
+        nombre: route.nombre || route.zona || '',
+        zona: route.zona || route.nombre || '',
+        dias_operacion: route.diasOperacion || [],
+        coste_ruta: num(route.costeRuta),
+        activa: route.activa !== false,
+        observaciones: route.observaciones || ''
+      };
+      if (isUuid(route.id)) payload.id = route.id;
+      return payload;
+    }).filter(route => route.nombre);
+
+    const clientRows = Object.values(APP.clienteConfig || {}).map(cfg => ({
+      codigo_cliente: cfg.codigoCliente || cfg.codigo || '',
+      nombre_cliente: cfg.nombreCliente || '',
+      ruta_asignada: cfg.rutaAsignada || '',
+      dias_recepcion: cfg.diasRecepcion || [],
+      horario_almacen: cfg.horarioAlmacen || '',
+      contacto: cfg.contacto || '',
+      observaciones: cfg.observaciones || '',
+      condiciones_especiales: cfg.condicionesEspeciales || '',
+      camion_permitido: cfg.camionPermitido || 'CUALQUIERA',
+      configuracion_completa: !!cfg.configuracionCompleta,
+      no_miercoles: !!cfg.noMiercoles,
+      no_ultima_semana: !!cfg.noUltimaSemana
+    })).filter(cfg => cfg.codigo_cliente);
+
+    const orderRows = [
+      ...buildOrderLineDbRows(APP.lineItems, 'current'),
+      ...buildOrderLineDbRows(APP.planLineItems, 'plan'),
+      ...buildOrderLineDbRows(APP.controlLineItems, 'control')
+    ];
+
+    const routeHistoryRows = APP.routeCostHistory.map(row => ({
+      fecha: fechaStrToISO(row.fecha),
+      ruta_id: isUuid(row.rutaId) ? row.rutaId : null,
+      ruta_nombre: row.rutaNombre || '',
+      camion: row.camion || '',
+      coste: num(row.coste),
+      fuente_control_diario: row.fuenteControlDiario || '',
+      pedidos_asociados: safeClone(row.pedidosAsociados || []),
+      cumplimiento: num(row.cumplimiento),
+      importe_planificado: num(row.importePlanificado),
+      importe_real: num(row.importeReal),
+      diferencia: num(row.diferencia)
+    })).filter(row => row.fecha && row.ruta_nombre);
+
+    const warehousePlanRows = buildWarehousePlanDbRows(APP.solicitudesPlanAlmacen);
+    const warehouseControlRows = buildWarehouseControlDbRows(APP.solicitudesControlAlmacen);
+    const warehouseHistoryRows = APP.solicitudesHistory.map(row => ({
+      fecha: fechaStrToISO(row.fecha),
+      cliente_id: row.clienteId || '',
+      cliente_nombre: row.clienteNombre || '',
+      pedido_cliente: row.pedidoCliente || '',
+      solicitud_id: row.solicitud || '',
+      articulo: row.articulo || '',
+      descripcion_articulo: row.descripcionArticulo || '',
+      cantidad_solicitada: num(row.cantidadSolicitada),
+      cantidad_completada: num(row.cantidadCompletada),
+      cantidad_pendiente: num(row.cantidadPendiente),
+      estado: row.estado || '',
+      coste_solicitud: num(row.costeSolicitud),
+      observaciones: row.observaciones || '',
+      fuente: row.fuente || ''
+    })).filter(row => row.fecha && row.cliente_id);
+
+
+    return {
+      ...(settingsRows.length ? {tms_settings:settingsRows} : {}),
+      ...(adminCanManageUsers ? {tms_user_profiles:userRows} : (currentUserProfileRow ? {tms_user_profiles:[currentUserProfileRow]} : {})),
+      ...((adminCanManageUsers || canWriteConfig || canWriteRoutes) ? {tms_route_configs:routeRows,tms_client_configs:clientRows} : {}),
+      ...((adminCanManageUsers || canWriteImports || hasPermission('calendario','editar') || canWriteRoutes) ? {tms_order_lines:orderRows} : {}),
+      ...((adminCanManageUsers || canWriteRoutes) ? {tms_route_cost_history:routeHistoryRows} : {}),
+      ...(canWriteWarehousePlan ? {tms_warehouse_plan:warehousePlanRows} : {}),
+      ...(canWriteWarehouseControl ? {tms_warehouse_control:warehouseControlRows} : {}),
+      ...(canWriteWarehouseHistory ? {tms_warehouse_history:warehouseHistoryRows} : {})
+    };
+  }
+
+  async function applyCloudSnapshot(snapshot) {
+    const user = cloudUser;
+    const tables = snapshot.tables;
+    if (!tables) throw new Error('No se recibió una versión compartida completa.');
+    const lineRows = tables.tms_order_lines || [];
+    const clientConfigRows = tables.tms_client_configs || [];
+    const routeConfigRows = tables.tms_route_configs || [];
+    const routeCostRows = tables.tms_route_cost_history || [];
+    const warehousePlanRows = tables.tms_warehouse_plan || [];
+    const warehouseControlRows = tables.tms_warehouse_control || [];
+    const warehouseHistoryRows = tables.tms_warehouse_history || [];
+    const userProfileRows = tables.tms_user_profiles || [];
+    const settingsRows = tables.tms_settings || [];
+    APP.clienteConfig = {};
+    clientConfigRows.forEach(row => {
+      APP.clienteConfig[row.codigo_cliente] = {
+        ...buildClientConfigDefault(row.codigo_cliente, row.nombre_cliente || ''),
+        codigoCliente: row.codigo_cliente,
+        nombreCliente: row.nombre_cliente || '',
+        rutaAsignada: row.ruta_asignada || '',
+        diasRecepcion: row.dias_recepcion || [],
+        horarioAlmacen: row.horario_almacen || '',
+        contacto: row.contacto || '',
+        observaciones: row.observaciones || '',
+        condicionesEspeciales: row.condiciones_especiales || '',
+        camionPermitido: row.camion_permitido || 'CUALQUIERA',
+        noMiercoles: !!row.no_miercoles,
+        noUltimaSemana: !!row.no_ultima_semana,
+        configuracionCompleta: !!row.configuracion_completa
+      };
+    });
+
+    APP.routeConfigs = routeConfigRows.map(row => ({
+      id: row.id,
+      nombre: row.nombre,
+      zona: row.zona || '',
+      diasOperacion: row.dias_operacion || [],
+      costeRuta: num(row.coste_ruta),
+      activa: row.activa !== false,
+      observaciones: row.observaciones || ''
+    }));
+
+    APP.userProfiles = userProfileRows.map(row => {
+      const account = row.permisos_por_modulo && row.permisos_por_modulo.__account ? row.permisos_por_modulo.__account : {};
+      return {
+        userId: row.id,
+        authUserId: row.auth_user_id || '',
+        nombre: row.nombre,
+        email: row.email,
+        rol: row.rol,
+        permisosPorModulo: row.permisos_por_modulo || buildPermissions('read_only', row.rol),
+        activo: row.activo !== false,
+        passwordChangeRequired: !!account.passwordChangeRequired,
+        authNeedsConfirmation: !!account.authNeedsConfirmation,
+        passwordConfigured: account.passwordConfigured !== false,
+        accountStatus: account.accountStatus || ''
+      };
+    });
+
+    APP.importShipments = []; APP.transitMaterials = []; APP.dailyPriorities = [];
+    APP.prioritySpainTopics = []; APP.calendarNotes = []; APP.dispatchIncidents = [];
+    APP.controlHistory = []; APP.costSettings = {};
+    const settingsMap = Object.fromEntries(settingsRows.map(row => [row.clave, row.valor || {}]));
+    APP.warehouseSettings = settingsMap.warehouse || { costoSolicitud: 0 };
+    APP.rolePermissions = settingsMap.role_permissions || APP.rolePermissions || buildDefaultRolePermissions();
+    ensureRolePermissions();
+    if (settingsMap.app_state) {
+      APP.planLoaded = !!settingsMap.app_state.planLoaded;
+      APP.planFecha = settingsMap.app_state.planFecha || null;
+      APP.controlLoaded = !!settingsMap.app_state.controlLoaded;
+      APP.controlFecha = settingsMap.app_state.controlFecha || null;
+      APP.solicitudesLoaded = !!settingsMap.app_state.solicitudesLoaded;
+      APP.solicitudesFileName = settingsMap.app_state.solicitudesFileName || '';
+      APP.camionExtraEnabled = !!settingsMap.app_state.camionExtraEnabled;
+      APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
+      APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
+      APP.importShipments = Array.isArray(settingsMap.app_state.importShipments) ? settingsMap.app_state.importShipments : (APP.importShipments || []);
+      APP.transitMaterials = Array.isArray(settingsMap.app_state.transitMaterials) ? settingsMap.app_state.transitMaterials : (APP.transitMaterials || []);
+      APP.dailyPriorities = Array.isArray(settingsMap.app_state.dailyPriorities) ? settingsMap.app_state.dailyPriorities : (APP.dailyPriorities || []);
+      APP.prioritySpainTopics = Array.isArray(settingsMap.app_state.prioritySpainTopics) ? settingsMap.app_state.prioritySpainTopics : (APP.prioritySpainTopics || []);
+      APP.calendarNotes = Array.isArray(settingsMap.app_state.calendarNotes) ? settingsMap.app_state.calendarNotes : (APP.calendarNotes || []);
+      APP.dispatchIncidents = Array.isArray(settingsMap.app_state.dispatchIncidents) ? settingsMap.app_state.dispatchIncidents : (APP.dispatchIncidents || []);
+      APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
+      APP.costSettings = settingsMap.app_state.costSettings || APP.costSettings || {};
+      APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
+      applyVisualTheme(APP.visualTheme, true);
+    }
+
+    const currentItems = [];
+    const planItems = [];
+    const controlItems = [];
+    lineRows.forEach(row => {
+      const item = mapDbOrderLine(row);
+      const dataset = text((row.metadata || {}).dataset) || (row.fecha_control ? 'control' : 'current');
+      if (dataset === 'plan') planItems.push(item);
+      else if (dataset === 'control') controlItems.push(item);
+      else currentItems.push(item);
+    });
+
+    APP.planLineItems = planItems;
+    APP.controlLineItems = controlItems;
+    APP.lineItems = currentItems.length ? currentItems : (planItems.length ? planItems.map(item => ({ ...item })) : []);
+    APP.planLoaded = APP.planLoaded || APP.planLineItems.length > 0;
+    APP.controlLoaded = APP.controlLoaded || APP.controlLineItems.length > 0;
+    APP.planFecha = APP.planFecha || (APP.planLineItems[0] && APP.planLineItems[0].fechaPlanificada) || null;
+    APP.controlFecha = APP.controlFecha || (APP.controlLineItems[0] && APP.controlLineItems[0].fechaControl) || null;
+
+    APP.routeCostHistory = routeCostRows.map(row => ({
+      fecha: isoToFechaStr(row.fecha),
+      rutaId: row.ruta_id || '',
+      rutaNombre: row.ruta_nombre || '',
+      camion: row.camion || '',
+      coste: num(row.coste),
+      fuenteControlDiario: row.fuente_control_diario || '',
+      pedidosAsociados: row.pedidos_asociados || [],
+      cumplimiento: num(row.cumplimiento),
+      importePlanificado: num(row.importe_planificado),
+      importeReal: num(row.importe_real),
+      diferencia: num(row.diferencia)
+    }));
+
+    APP.solicitudesPlanAlmacen = warehousePlanRows.map(mapDbWarehousePlan);
+    APP.solicitudesControlAlmacen = warehouseControlRows.map(mapDbWarehouseControl);
+    APP.solicitudesAlmacen = APP.solicitudesControlAlmacen.length ? APP.solicitudesControlAlmacen : APP.solicitudesPlanAlmacen;
+    APP.solicitudesHistory = warehouseHistoryRows.map(row => ({
+      fecha: isoToFechaStr(row.fecha),
+      clienteId: row.cliente_id,
+      clienteNombre: row.cliente_nombre || '',
+      pedidoCliente: row.pedido_cliente || '',
+      solicitud: row.solicitud_id || '',
+      articulo: row.articulo || '',
+      descripcionArticulo: row.descripcion_articulo || '',
+      cantidadSolicitada: num(row.cantidad_solicitada),
+      cantidadCompletada: num(row.cantidad_completada),
+      cantidadPendiente: num(row.cantidad_pendiente),
+      estado: row.estado || '',
+      costeSolicitud: num(row.coste_solicitud),
+      observaciones: row.observaciones || '',
+      fuente: row.fuente || ''
+    }));
+    APP.solicitudesCompare = buildSolicitudesComparison();
+    APP.solicitudesLoaded = APP.solicitudesLoaded || !!(APP.solicitudesPlanAlmacen.length || APP.solicitudesControlAlmacen.length);
+
+    ensureAdminProfile();
+    setCurrentUserProfileFromAuth(user, 'Sin perfil');
+
+    rebuildDerivedState();
+    updateSolicitudesImportStatus();
+    actualizarEstadoBanner();
+    actualizarDashboard();
+    renderCalendario();
+    renderRutas();
+    renderRouteCatalog();
+    renderComercial();
+    renderConfigClientes();
+    renderSolicitudesAlmacen();
+    renderAlmacen();
+    renderPrioridades();
+    renderMaterialesTransito();
+    renderIncidenciasDespacho();
+    applyPermissionUi();
+    saveLocalSnapshot();
+  }
+
+  function hasUnsubmittedDraft() {
+    for (const control of unsubmittedDrafts) if (!control.isConnected) unsubmittedDrafts.delete(control);
+    return unsubmittedDrafts.size > 0;
+  }
+
+  function trackUnsubmittedDraft(event) {
+    const control = event.target;
+    if (!control || !control.matches || !control.matches('input,textarea,select')) return;
+    if (!control.closest('#mainLayout')) return;
+    if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
+    // Default to preserving editable controls, including id-less checkboxes,
+    // file inputs and new forms added by other modules.
+    unsubmittedDrafts.add(control);
+    if (cloudSync) cloudSync.markDirty();
+  }
+
+  document.addEventListener('input',trackUnsubmittedDraft,true);
+  document.addEventListener('change',trackUnsubmittedDraft,true);
+
+  function captureFormDrafts() {
+    return [...unsubmittedDrafts].filter(control => control.isConnected && control.type !== 'password').map(control => ({
+      field:control.id,label:control.name || control.className || control.type,
+      value:control.type === 'file' ? [...control.files].map(file=>file.name) : control.value,
+      checked:control.type === 'checkbox' || control.type === 'radio' ? control.checked : undefined
+    }));
+  }
+
+  function restoreFormDrafts(drafts) {
+    (drafts || []).forEach(draft => {
+      const control = draft.field && document.getElementById(draft.field);
+      if (!control || control.type === 'file' || control.type === 'password') return;
+      control.value = draft.value;
+      if (draft.checked !== undefined) control.checked = draft.checked;
+      unsubmittedDrafts.add(control);
+    });
+  }
+
+  function downloadPendingChanges() {
+    if (!cloudSync) return;
+    const pending = cloudSync.exportPending();
+    const blob = new Blob([JSON.stringify(pending,null,2)],{type:'application/json'});
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.href = url; link.download = 'TMS-cambios-pendientes-' + new Date().toISOString().slice(0,10) + '.json';
+    link.click(); setTimeout(() => URL.revokeObjectURL(url),1000);
+  }
+
+  function showSyncStatus(state) {
+    const labels = {loading:'Cargando datos compartidos…',saving:'Guardando…',synced:'Sincronizado',pending:'Cambios pendientes',offline:'Sin conexión · cambios conservados',conflict:'Cambios de otra sesión'};
+    let badge = document.getElementById('tmsSyncBadge');
+    if (!badge) {
+      badge = document.createElement('span'); badge.id = 'tmsSyncBadge'; badge.setAttribute('role','status');
+      badge.style.cssText = 'font-size:11px;padding:4px 8px;border-radius:6px;background:#1e293b;color:#fff;';
+      const header = document.getElementById('appHeader'); if (header) header.appendChild(badge);
+    }
+    badge.textContent = labels[state.phase] || 'Sincronización pendiente';
+    badge.title = state.revision === null ? '' : 'Versión compartida ' + state.revision;
+    const btn = document.getElementById('saveStateBtn');
+    if (btn) { btn.disabled = state.phase === 'loading' || state.saving; btn.textContent = state.phase === 'saving' ? 'Guardando…' : 'Guardar cambios'; }
+    let panel = document.getElementById('tmsSyncPanel');
+    if (!panel) {
+      panel = document.createElement('div'); panel.id = 'tmsSyncPanel'; panel.setAttribute('role','alert');
+      panel.style.cssText = 'padding:12px 18px;background:#fff4d6;border-bottom:1px solid #e0ba61;color:#493300;font-size:13px;';
+      const layout = document.getElementById('mainLayout'); if (layout) layout.before(panel);
+    }
+    panel.hidden = !['conflict','offline'].includes(state.phase) && !state.error;
+    if (!panel.hidden) {
+      panel.replaceChildren();
+      const textNode = document.createElement('span');
+      textNode.textContent = state.draft
+        ? 'Hay una actualización compartida pendiente. Termina o cancela el formulario para conservar lo que estás escribiendo antes de actualizar.'
+        : state.conflict
+        ? 'Otra sesión guardó cambios. Tus cambios locales siguen conservados. Descárgalos para revisarlos antes de cargar la versión compartida.'
+        : 'No se pudo completar la sincronización. ' + (state.error || 'Se reintentará al recuperar la conexión.');
+      panel.appendChild(textNode);
+      if (state.dirty || state.draft) {
+        const backup = document.createElement('button'); backup.className='btn btn-outline btn-sm'; backup.textContent='Descargar mis cambios'; backup.addEventListener('click',downloadPendingChanges); panel.appendChild(backup);
+      }
+      const retry = document.createElement('button'); retry.className='btn btn-outline btn-sm';
+      retry.textContent = state.conflict ? 'Cargar versión compartida' : 'Reintentar';
+      retry.addEventListener('click',async () => {
+        try {
+          if (state.conflict) {
+            if (!window.confirm('¿Cargar la versión compartida? Se conservará además un respaldo de tus cambios locales en este dispositivo.')) return;
+            await cloudSync.discardAndReload();
+            unsubmittedDrafts.clear();
+          } else if (cloudSync.getState().revision === null) await cloudSync.start(cloudUser);
+          else if (cloudSync.getState().dirty) await cloudSync.save();
+          else await cloudSync.refresh();
+        } catch (error) { console.warn('Sincronización pendiente:',error); }
+      });
+      panel.appendChild(retry);
+    }
+  }
+
+  function getCloudSync() {
+    if (!cloudSync) {
+      if (!window.TMSSessionSync) throw new Error('No se cargó el componente de sincronización. Recarga la página.');
+      cloudSync = window.TMSSessionSync.create({getClient:getSupabaseClient,capture:buildCloudPayload,applySnapshot:applyCloudSnapshot,onStatus:showSyncStatus,hasDraft:hasUnsubmittedDraft,captureDrafts:captureFormDrafts,restoreDrafts:restoreFormDrafts});
+    }
+    return cloudSync;
+  }
+
   window.cargarDesdeSupabase = async function cargarDesdeSupabaseV2() {
     try {
-      const client = getSupabaseClient();
       const user = await getAuthenticatedUser();
-      ensureAdminProfile();
-      if (!client || !user) {
-        if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
-          setCurrentUserProfileFromAuth(user, 'Sin perfil');
-          updateSolicitudesImportStatus();
-          actualizarEstadoBanner();
-          actualizarDashboard();
-          renderCalendario();
-          renderRutas();
-          renderRouteCatalog();
-          renderComercial();
-          renderConfigClientes();
-          renderSolicitudesAlmacen();
-          renderAlmacen();
-          return;
-        }
-        throw new Error('No hay sesión autenticada para cargar desde Supabase.');
-      }
-
-      const [
-        lineRows,
-        clientConfigRows,
-        routeConfigRows,
-        routeCostRows,
-        warehousePlanRows,
-        warehouseControlRows,
-        warehouseHistoryRows,
-        userProfileRows,
-        settingsRows
-      ] = await Promise.all([
-        runSupabaseQuery(client.from('tms_order_lines').select('*').order('created_at', { ascending: true }), 'No se pudieron cargar las líneas'),
-        runSupabaseQuery(client.from('tms_client_configs').select('*').order('codigo_cliente', { ascending: true }), 'No se pudo cargar la configuración de clientes'),
-        runSupabaseQuery(client.from('tms_route_configs').select('*').order('nombre', { ascending: true }), 'No se pudo cargar la configuración de rutas'),
-        runSupabaseQuery(client.from('tms_route_cost_history').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el histórico de rutas'),
-        runSupabaseQuery(client.from('tms_warehouse_plan').select('*').order('fecha', { ascending: true }), 'No se pudo cargar la planificación de solicitudes'),
-        runSupabaseQuery(client.from('tms_warehouse_control').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el control de solicitudes'),
-        runSupabaseQuery(client.from('tms_warehouse_history').select('*').order('fecha', { ascending: true }), 'No se pudo cargar el histórico de solicitudes'),
-        runSupabaseQuery(client.from('tms_user_profiles').select('*').order('created_at', { ascending: true }), 'No se pudieron cargar los usuarios'),
-        runSupabaseQuery(client.from('tms_settings').select('*'), 'No se pudieron cargar los ajustes')
-      ]);
-
-      APP.clienteConfig = {};
-      clientConfigRows.forEach(row => {
-        APP.clienteConfig[row.codigo_cliente] = {
-          ...buildClientConfigDefault(row.codigo_cliente, row.nombre_cliente || ''),
-          codigoCliente: row.codigo_cliente,
-          nombreCliente: row.nombre_cliente || '',
-          rutaAsignada: row.ruta_asignada || '',
-          diasRecepcion: row.dias_recepcion || [],
-          horarioAlmacen: row.horario_almacen || '',
-          contacto: row.contacto || '',
-          observaciones: row.observaciones || '',
-          condicionesEspeciales: row.condiciones_especiales || '',
-          camionPermitido: row.camion_permitido || 'CUALQUIERA',
-          noMiercoles: !!row.no_miercoles,
-          noUltimaSemana: !!row.no_ultima_semana,
-          configuracionCompleta: !!row.configuracion_completa
-        };
-      });
-
-      APP.routeConfigs = routeConfigRows.map(row => ({
-        id: row.id,
-        nombre: row.nombre,
-        zona: row.zona || '',
-        diasOperacion: row.dias_operacion || [],
-        costeRuta: num(row.coste_ruta),
-        activa: row.activa !== false,
-        observaciones: row.observaciones || ''
-      }));
-
-      APP.userProfiles = userProfileRows.map(row => {
-        const account = row.permisos_por_modulo && row.permisos_por_modulo.__account ? row.permisos_por_modulo.__account : {};
-        return {
-          userId: row.id,
-          authUserId: row.auth_user_id || '',
-          nombre: row.nombre,
-          email: row.email,
-          rol: row.rol,
-          permisosPorModulo: row.permisos_por_modulo || buildPermissions('read_only', row.rol),
-          activo: row.activo !== false,
-          passwordChangeRequired: !!account.passwordChangeRequired,
-          authNeedsConfirmation: !!account.authNeedsConfirmation,
-          passwordConfigured: account.passwordConfigured !== false,
-          accountStatus: account.accountStatus || ''
-        };
-      });
-
-      const settingsMap = Object.fromEntries(settingsRows.map(row => [row.clave, row.valor || {}]));
-      APP.warehouseSettings = settingsMap.warehouse || { costoSolicitud: 0 };
-      APP.rolePermissions = settingsMap.role_permissions || APP.rolePermissions || buildDefaultRolePermissions();
-      ensureRolePermissions();
-      if (settingsMap.app_state) {
-        APP.planLoaded = !!settingsMap.app_state.planLoaded;
-        APP.planFecha = settingsMap.app_state.planFecha || null;
-        APP.controlLoaded = !!settingsMap.app_state.controlLoaded;
-        APP.controlFecha = settingsMap.app_state.controlFecha || null;
-        APP.solicitudesLoaded = !!settingsMap.app_state.solicitudesLoaded;
-        APP.solicitudesFileName = settingsMap.app_state.solicitudesFileName || '';
-        APP.camionExtraEnabled = !!settingsMap.app_state.camionExtraEnabled;
-        APP.feriadosRD = settingsMap.app_state.feriadosRD || APP.feriadosRD;
-        APP.importFiles = { ...APP.importFiles, ...(settingsMap.app_state.importFiles || {}) };
-        APP.importShipments = Array.isArray(settingsMap.app_state.importShipments) ? settingsMap.app_state.importShipments : (APP.importShipments || []);
-        APP.transitMaterials = Array.isArray(settingsMap.app_state.transitMaterials) ? settingsMap.app_state.transitMaterials : (APP.transitMaterials || []);
-        APP.dailyPriorities = Array.isArray(settingsMap.app_state.dailyPriorities) ? settingsMap.app_state.dailyPriorities : (APP.dailyPriorities || []);
-        APP.prioritySpainTopics = Array.isArray(settingsMap.app_state.prioritySpainTopics) ? settingsMap.app_state.prioritySpainTopics : (APP.prioritySpainTopics || []);
-        APP.calendarNotes = Array.isArray(settingsMap.app_state.calendarNotes) ? settingsMap.app_state.calendarNotes : (APP.calendarNotes || []);
-        APP.dispatchIncidents = Array.isArray(settingsMap.app_state.dispatchIncidents) ? settingsMap.app_state.dispatchIncidents : (APP.dispatchIncidents || []);
-        APP.controlHistory = settingsMap.app_state.controlHistory || APP.controlHistory || [];
-        APP.costSettings = settingsMap.app_state.costSettings || APP.costSettings || {};
-        APP.visualTheme = normalizeVisualTheme(settingsMap.app_state.visualTheme || APP.visualTheme || localStorage.getItem(THEME_KEY));
-        applyVisualTheme(APP.visualTheme, true);
-      }
-
-      const currentItems = [];
-      const planItems = [];
-      const controlItems = [];
-      lineRows.forEach(row => {
-        const item = mapDbOrderLine(row);
-        const dataset = text((row.metadata || {}).dataset) || (row.fecha_control ? 'control' : 'current');
-        if (dataset === 'plan') planItems.push(item);
-        else if (dataset === 'control') controlItems.push(item);
-        else currentItems.push(item);
-      });
-
-      APP.planLineItems = planItems;
-      APP.controlLineItems = controlItems;
-      APP.lineItems = currentItems.length ? currentItems : (planItems.length ? planItems.map(item => ({ ...item })) : []);
-      APP.planLoaded = APP.planLoaded || APP.planLineItems.length > 0;
-      APP.controlLoaded = APP.controlLoaded || APP.controlLineItems.length > 0;
-      APP.planFecha = APP.planFecha || (APP.planLineItems[0] && APP.planLineItems[0].fechaPlanificada) || null;
-      APP.controlFecha = APP.controlFecha || (APP.controlLineItems[0] && APP.controlLineItems[0].fechaControl) || null;
-
-      APP.routeCostHistory = routeCostRows.map(row => ({
-        fecha: isoToFechaStr(row.fecha),
-        rutaId: row.ruta_id || '',
-        rutaNombre: row.ruta_nombre || '',
-        camion: row.camion || '',
-        coste: num(row.coste),
-        fuenteControlDiario: row.fuente_control_diario || '',
-        pedidosAsociados: row.pedidos_asociados || [],
-        cumplimiento: num(row.cumplimiento),
-        importePlanificado: num(row.importe_planificado),
-        importeReal: num(row.importe_real),
-        diferencia: num(row.diferencia)
-      }));
-
-      APP.solicitudesPlanAlmacen = warehousePlanRows.map(mapDbWarehousePlan);
-      APP.solicitudesControlAlmacen = warehouseControlRows.map(mapDbWarehouseControl);
-      APP.solicitudesAlmacen = APP.solicitudesControlAlmacen.length ? APP.solicitudesControlAlmacen : APP.solicitudesPlanAlmacen;
-      APP.solicitudesHistory = warehouseHistoryRows.map(row => ({
-        fecha: isoToFechaStr(row.fecha),
-        clienteId: row.cliente_id,
-        clienteNombre: row.cliente_nombre || '',
-        pedidoCliente: row.pedido_cliente || '',
-        solicitud: row.solicitud_id || '',
-        articulo: row.articulo || '',
-        descripcionArticulo: row.descripcion_articulo || '',
-        cantidadSolicitada: num(row.cantidad_solicitada),
-        cantidadCompletada: num(row.cantidad_completada),
-        cantidadPendiente: num(row.cantidad_pendiente),
-        estado: row.estado || '',
-        costeSolicitud: num(row.coste_solicitud),
-        observaciones: row.observaciones || '',
-        fuente: row.fuente || ''
-      }));
-      APP.solicitudesCompare = buildSolicitudesComparison();
-      APP.solicitudesLoaded = APP.solicitudesLoaded || !!(APP.solicitudesPlanAlmacen.length || APP.solicitudesControlAlmacen.length);
-
-      ensureAdminProfile();
-      setCurrentUserProfileFromAuth(user, 'Sin perfil');
-
-      rebuildDerivedState();
+      if (!user) throw new Error('Inicia sesión para cargar los datos compartidos.');
+      cloudUser = user;
+      await getCloudSync().start(user);
       await enforcePasswordChangeIfNeeded();
-      updateSolicitudesImportStatus();
-      actualizarEstadoBanner();
-      actualizarDashboard();
-      renderCalendario();
-      renderRutas();
-      renderRouteCatalog();
-      renderComercial();
-      renderConfigClientes();
-      renderSolicitudesAlmacen();
-      renderAlmacen();
-      renderPrioridades();
-      renderMaterialesTransito();
-      renderIncidenciasDespacho();
-      applyPermissionUi();
-      saveLocalSnapshot();
-      if (isAdminUser()) scheduleAutoSave();
+      const state = cloudSync.getState();
+      if (state.dirty && !state.conflict) window.scheduleAutoSave();
     } catch (error) {
-      console.warn('Fallo la carga remota, usando respaldo local si existe:', error);
-      if (loadLocalSnapshot() || loadEmbeddedDemoState()) {
-        setCurrentUserProfileFromAuth(await getAuthenticatedUser(), 'Sin perfil');
-        updateSolicitudesImportStatus();
-        actualizarEstadoBanner();
-        actualizarDashboard();
-        renderCalendario();
-        renderRutas();
-        renderRouteCatalog();
-        renderComercial();
-        renderConfigClientes();
-        renderSolicitudesAlmacen();
-        renderAlmacen();
-        renderPrioridades();
-        renderIncidenciasDespacho();
-        applyPermissionUi();
-        return;
-      }
-      APP.lineItems = [];
-      APP.planLineItems = [];
-      APP.controlLineItems = [];
-      APP.planLoaded = false;
-      APP.controlLoaded = false;
-      APP.solicitudesLoaded = false;
-      rebuildDerivedState();
-      updateSolicitudesImportStatus();
-      actualizarEstadoBanner();
-      actualizarDashboard();
-      renderCalendario();
-      renderRutas();
-      renderRouteCatalog();
-      renderComercial();
-      renderConfigClientes();
-      renderSolicitudesAlmacen();
-      renderAlmacen();
-      renderPrioridades();
-      renderMaterialesTransito();
-      renderIncidenciasDespacho();
+      console.warn('No se pudo cargar la versión compartida:',error);
+      showSyncStatus({phase:'offline',revision:null,dirty:false,error:error.message});
     }
   };
 
-  window.guardarEnSupabase = async function guardarEnSupabaseV2(options) {
-    const silent = !!(options && options.silent);
+  window.guardarEnSupabase = async function guardarEnSupabaseV2() {
     saveLocalSnapshot();
-    const client = getSupabaseClient();
-    const user = await getAuthenticatedUser();
-    const btn = document.getElementById('saveStateBtn');
-    const originalText = btn ? btn.textContent : '';
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = '⏳ Guardando...';
-    }
-    try {
-      if (!client || !user) throw new Error('No hay sesión autenticada para guardar en Supabase.');
-      ensureAdminProfile();
-      setCurrentUserProfileFromAuth(user, 'Sin perfil');
-
-      const adminCanManageUsers = isAdminUser();
-      const canWriteImports = adminCanManageUsers || hasPermission('importar', 'editar') || hasPermission('importar', 'importar');
-      const canWriteRoutes = adminCanManageUsers || hasPermission('rutas', 'editar');
-      const canWriteConfig = adminCanManageUsers || hasPermission('configuracion', 'editar') || hasPermission('configuracion', 'importar');
-      const canWriteWarehousePlan = adminCanManageUsers || canWriteImports || hasPermission('solicitudesAlmacen', 'editar');
-      const canWriteWarehouseControl = adminCanManageUsers || canWriteImports || hasPermission('almacen', 'editar');
-      const canWriteWarehouseHistory = adminCanManageUsers || hasPermission('solicitudesAlmacen', 'editar') || hasPermission('almacen', 'editar');
-      const canWriteCalendarNotes = adminCanManageUsers || hasPermission('calendario', 'editar');
-      const canWriteDispatchIncidents = adminCanManageUsers && hasPermission('incidenciasDespacho', 'editar');
-      const canWriteTransitMaterials = adminCanManageUsers || hasPermission('materialesTransito', 'editar') || hasPermission('materialesTransito', 'importar');
-      const canWriteAppState = adminCanManageUsers || canWriteImports || canWriteWarehousePlan || canWriteWarehouseControl || canWriteConfig || canWriteRoutes || canWriteCalendarNotes || canWriteDispatchIncidents || canWriteTransitMaterials;
-      const settingsRows = [
-        ...((adminCanManageUsers || canWriteWarehouseHistory) ? [{ clave: 'warehouse', valor: safeClone(APP.warehouseSettings || { costoSolicitud: 0 }) }] : []),
-        ...(adminCanManageUsers ? [{ clave: 'role_permissions', valor: safeClone(APP.rolePermissions || buildDefaultRolePermissions()) }] : []),
-        ...(canWriteAppState ? [{
-          clave: 'app_state',
-          valor: safeClone({
-            planLoaded: !!APP.planLoaded,
-            planFecha: APP.planFecha || null,
-            controlLoaded: !!APP.controlLoaded,
-            controlFecha: APP.controlFecha || null,
-            solicitudesLoaded: !!APP.solicitudesLoaded,
-            solicitudesFileName: APP.solicitudesFileName || '',
-            camionExtraEnabled: !!APP.camionExtraEnabled,
-            feriadosRD: APP.feriadosRD || [],
-            importFiles: APP.importFiles || {},
-            importShipments: APP.importShipments || [],
-            transitMaterials: APP.transitMaterials || [],
-            dailyPriorities: APP.dailyPriorities || [],
-            prioritySpainTopics: APP.prioritySpainTopics || [],
-            calendarNotes: APP.calendarNotes || [],
-            dispatchIncidents: APP.dispatchIncidents || [],
-            controlHistory: APP.controlHistory || [],
-            costSettings: APP.costSettings || {},
-            visualTheme: APP.visualTheme || 'light'
-          })
-        }] : [])
-      ];
-
-      const userRows = APP.userProfiles.map(profile => userProfileDbPayload(
-        profile,
-        text(profile.email).toLowerCase() === text(user.email).toLowerCase() ? user.id : null
-      ));
-      const currentUserProfileRow = APP.currentUserProfile && APP.currentUserProfile.email
-        ? userProfileDbPayload(APP.currentUserProfile, user.id)
-        : null;
-
-      const routeRows = APP.routeConfigs.map(route => {
-        const payload = {
-          nombre: route.nombre || route.zona || '',
-          zona: route.zona || route.nombre || '',
-          dias_operacion: route.diasOperacion || [],
-          coste_ruta: num(route.costeRuta),
-          activa: route.activa !== false,
-          observaciones: route.observaciones || ''
-        };
-        if (isUuid(route.id)) payload.id = route.id;
-        return payload;
-      }).filter(route => route.nombre);
-
-      const clientRows = Object.values(APP.clienteConfig || {}).map(cfg => ({
-        codigo_cliente: cfg.codigoCliente || cfg.codigo || '',
-        nombre_cliente: cfg.nombreCliente || '',
-        ruta_asignada: cfg.rutaAsignada || '',
-        dias_recepcion: cfg.diasRecepcion || [],
-        horario_almacen: cfg.horarioAlmacen || '',
-        contacto: cfg.contacto || '',
-        observaciones: cfg.observaciones || '',
-        condiciones_especiales: cfg.condicionesEspeciales || '',
-        camion_permitido: cfg.camionPermitido || 'CUALQUIERA',
-        configuracion_completa: !!cfg.configuracionCompleta,
-        no_miercoles: !!cfg.noMiercoles,
-        no_ultima_semana: !!cfg.noUltimaSemana
-      })).filter(cfg => cfg.codigo_cliente);
-
-      const orderRows = [
-        ...buildOrderLineDbRows(APP.lineItems, 'current'),
-        ...buildOrderLineDbRows(APP.planLineItems, 'plan'),
-        ...buildOrderLineDbRows(APP.controlLineItems, 'control')
-      ];
-
-      const routeHistoryRows = APP.routeCostHistory.map(row => ({
-        fecha: fechaStrToISO(row.fecha),
-        ruta_id: isUuid(row.rutaId) ? row.rutaId : null,
-        ruta_nombre: row.rutaNombre || '',
-        camion: row.camion || '',
-        coste: num(row.coste),
-        fuente_control_diario: row.fuenteControlDiario || '',
-        pedidos_asociados: safeClone(row.pedidosAsociados || []),
-        cumplimiento: num(row.cumplimiento),
-        importe_planificado: num(row.importePlanificado),
-        importe_real: num(row.importeReal),
-        diferencia: num(row.diferencia)
-      })).filter(row => row.fecha && row.ruta_nombre);
-
-      const warehousePlanRows = buildWarehousePlanDbRows(APP.solicitudesPlanAlmacen);
-      const warehouseControlRows = buildWarehouseControlDbRows(APP.solicitudesControlAlmacen);
-      const warehouseHistoryRows = APP.solicitudesHistory.map(row => ({
-        fecha: fechaStrToISO(row.fecha),
-        cliente_id: row.clienteId || '',
-        cliente_nombre: row.clienteNombre || '',
-        pedido_cliente: row.pedidoCliente || '',
-        solicitud_id: row.solicitud || '',
-        articulo: row.articulo || '',
-        descripcion_articulo: row.descripcionArticulo || '',
-        cantidad_solicitada: num(row.cantidadSolicitada),
-        cantidad_completada: num(row.cantidadCompletada),
-        cantidad_pendiente: num(row.cantidadPendiente),
-        estado: row.estado || '',
-        coste_solicitud: num(row.costeSolicitud),
-        observaciones: row.observaciones || '',
-        fuente: row.fuente || ''
-      })).filter(row => row.fecha && row.cliente_id);
-
-      const nonCriticalSaveErrors = [];
-      if (settingsRows.length) {
-        await runSupabaseQuery(client.from('tms_settings').upsert(settingsRows, { onConflict: 'clave' }), 'No se pudieron guardar los ajustes');
-      }
-      if (adminCanManageUsers) {
-        try {
-          await replaceSupabaseTable('tms_user_profiles', userRows);
-        } catch (profileError) {
-          nonCriticalSaveErrors.push(profileError);
-          console.warn('No se pudieron guardar perfiles de usuario; continúo con datos operativos:', profileError);
-        }
-      } else if (currentUserProfileRow) {
-        try {
-          await runSupabaseQuery(client.from('tms_user_profiles').upsert(currentUserProfileRow, { onConflict: 'email' }), 'No se pudo actualizar tu estado de acceso');
-        } catch (profileError) {
-          nonCriticalSaveErrors.push(profileError);
-          console.warn('No se pudo actualizar el estado de acceso; continúo con datos operativos:', profileError);
-        }
-      }
-      if (adminCanManageUsers || canWriteConfig || canWriteRoutes) await replaceSupabaseTable('tms_route_configs', routeRows);
-      if (adminCanManageUsers || canWriteConfig || canWriteRoutes) await replaceSupabaseTable('tms_client_configs', clientRows);
-      if (adminCanManageUsers || canWriteImports || hasPermission('calendario', 'editar') || canWriteRoutes) await replaceSupabaseTable('tms_order_lines', orderRows);
-      if (adminCanManageUsers || canWriteRoutes) await replaceSupabaseTable('tms_route_cost_history', routeHistoryRows);
-      if (canWriteWarehousePlan) await replaceSupabaseTable('tms_warehouse_plan', warehousePlanRows);
-      if (canWriteWarehouseControl) await replaceSupabaseTable('tms_warehouse_control', warehouseControlRows);
-      if (canWriteWarehouseHistory) await replaceSupabaseTable('tms_warehouse_history', warehouseHistoryRows);
-
-      if (btn) {
-        btn.textContent = nonCriticalSaveErrors.length ? 'Nube parcial' : (APP.cloudMigrationPending ? 'Nube modo compat.' : 'Guardado en nube');
-      }
-      if (nonCriticalSaveErrors.length && !silent && !window._tmsProfileSaveNoticeShown) {
-        window._tmsProfileSaveNoticeShown = true;
-        alert('Los cambios operativos se guardaron en la nube, pero no se pudieron actualizar perfiles de usuario. Detalle: ' + nonCriticalSaveErrors.map(err => err.message || err).join(' | '));
-      }
-      if (APP.cloudMigrationPending && !silent && !window._tmsMigrationPendingNoticeShown) {
-        window._tmsMigrationPendingNoticeShown = true;
-        alert('Cambios guardados en la nube en modo compatibilidad. Falta aplicar las migraciones 0004 y 0005 en Supabase para activar guardado transaccional completo.');
-      }
-      return true;
-    } catch (error) {
-      console.error('Error guardando en Supabase:', error);
-      if (btn) btn.textContent = '⚠️ Guardado local';
-      if (!silent) notifyCloudSaveError(error);
-      throw error;
-    } finally {
-      if (btn) {
-        setTimeout(() => {
-          btn.disabled = false;
-          btn.textContent = originalText || 'Guardar cambios';
-        }, 1400);
-      }
-    }
+    return getCloudSync().save();
   };
+
+  // Closing or changing accounts must not let an old async request publish into
+  // another account's interface or reuse another user's cached data.
+  const originalCerrarSesion = window.cerrarSesion;
+  window.cerrarSesion = async function cerrarSesionSincronizada() {
+    if (window._autoSaveTimer) clearTimeout(window._autoSaveTimer);
+    if (cloudSync) cloudSync.stop();
+    cloudUser = null;
+    return originalCerrarSesion();
+  };
+  window.addEventListener('beforeunload',function (event) {
+    if (cloudSync && (cloudSync.getState().dirty || hasUnsubmittedDraft())) { event.preventDefault(); event.returnValue=''; }
+  });
+  const authClient = getSupabaseClient();
+  if (authClient && authClient.auth && authClient.auth.onAuthStateChange) {
+    authClient.auth.onAuthStateChange(function (event,session) {
+      if (!cloudSync || !cloudUser) return;
+      if (event === 'SIGNED_OUT' || (session && session.user && session.user.id !== cloudUser.id)) {
+        cloudSync.stop(); cloudUser = null;
+        if (window._autoSaveTimer) clearTimeout(window._autoSaveTimer);
+        location.reload();
+      }
+    });
+  }
 
   function initImportSolicitudesCard() {
     const importView = document.getElementById('importar');

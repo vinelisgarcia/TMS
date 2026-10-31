@@ -13,8 +13,21 @@ const url = process.env.TMS_TEST_URL || 'http://127.0.0.1:8765';
     await page.goto(url,{waitUntil:'networkidle'});
     await page.waitForFunction(()=>typeof TMSDomain!=='undefined' && !!window.TMSAuditCore && typeof Chart!=='undefined' && typeof XLSX!=='undefined');
     await page.screenshot({path:'/tmp/tms-audit-login.png'});
-    await page.evaluate(()=>{
+    await page.evaluate(async()=>{
       Chart.defaults.animation=false;
+      // Establish a synthetic account through the real sync entry point so
+      // local snapshots exercise the new authenticated account namespace.
+      const identity={id:'11111111-1111-4111-8111-111111111111',email:'test@example.invalid'};
+      window.__tmsSyntheticSyncRevision=1;
+      SB.auth.getUser=async()=>({data:{user:identity},error:null});
+      SB.rpc=async(name,args)=>{
+        if(name!=='tms_get_snapshot')throw new Error('Unexpected cloud write in UI fixture: '+name);
+        if(args&&args.p_known_revision===window.__tmsSyntheticSyncRevision)return {data:{revision:window.__tmsSyntheticSyncRevision,unchanged:true},error:null};
+        return {data:{revision:window.__tmsSyntheticSyncRevision,tables:{tms_order_lines:[],tms_client_configs:[],tms_route_configs:[],tms_route_cost_history:[],tms_warehouse_plan:[],tms_warehouse_control:[],tms_warehouse_history:[],tms_settings:[],tms_user_profiles:[{id:'test-admin',auth_user_id:identity.id,nombre:'Usuario de prueba',email:identity.email,rol:'Admin',activo:true,permisos_por_modulo:{}}]}},error:null};
+      };
+      SB.channel=()=>({on(type,filter,callback){window.__tmsSyntheticRemoteChange=callback;return this;},subscribe(){return this;}});
+      SB.removeChannel=async()=> 'ok';
+      await cargarDesdeSupabase();
       window.guardarEnSupabase=async()=>true;
       window.scheduleAutoSave=()=>TMSAuditCore.saveLocalSnapshot();
       const profile={userId:'test-admin',nombre:'Usuario de prueba',email:'test@example.invalid',rol:'Admin',activo:true};
@@ -148,9 +161,21 @@ const url = process.env.TMS_TEST_URL || 'http://127.0.0.1:8765';
     const imported=await page.evaluate(()=>({queue:APP.queueSemana.map(row=>row.pedidoCliente),dates:APP.lineItems.filter(row=>row.rutaNombre==='PUERTO PLATA').map(row=>row.fechaPlanificada)}));
     assert.ok(imported.queue.includes('PLAN-4'));assert.equal(new Set(imported.dates).size,1);
     // Persistence round-trip of receipt and cost settings using the actual local snapshot.
-    const persisted=await page.evaluate(()=>JSON.parse(localStorage.getItem('tms_alvarez_v2_state')).app);
+    const persisted=await page.evaluate(()=>JSON.parse(localStorage.getItem('tms_alvarez_v2_state:11111111-1111-4111-8111-111111111111')).app);
     assert.equal(persisted.transitMaterials.filter(row=>row.receivedAt).length,2);
     assert.equal(persisted.costSettings.vehicles['CAMION 1'],'large');
+    // A remote notification must not replace input that has not been submitted
+    // to APP yet. This exercises the actual document input tracker and UI mount.
+    await page.locator('#nav-configClientes').click();
+    await page.locator('#auditClientName').fill('Unsubmitted client draft survives remote refresh');
+    const rowsBeforeDraftRefresh=await page.evaluate(()=>APP.lineItems.length);
+    await page.evaluate(()=>{
+      window.__tmsSyntheticSyncRevision=2;
+      window.__tmsSyntheticRemoteChange({new:{id:true,revision:2}});
+    });
+    await page.waitForFunction(()=>document.getElementById('tmsSyncPanel')?.textContent.includes('Termina o cancela el formulario'));
+    assert.equal(await page.locator('#auditClientName').inputValue(),'Unsubmitted client draft survives remote refresh');
+    assert.equal(await page.evaluate(()=>APP.lineItems.length),rowsBeforeDraftRefresh);
     const denied=await page.evaluate(()=>{
       APP.currentUserProfile={email:'commercial@example.invalid',rol:'Comercial'};
       renderMaterialesTransito();return document.querySelectorAll('[data-audit="receive-invoice"]').length;
