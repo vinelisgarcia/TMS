@@ -46,6 +46,33 @@
     if (rows.length) result.note = `${pending} uds sin confirmar · ${result.covered} uds con coincidencia en tránsito · Factura ${result.invoices.join(', ') || 'sin identificar'} · ETA ${result.eta || 'por confirmar'} · Posible cobertura ${result.covered >= pending ? 'completa' : 'parcial'}, sin reserva confirmada`;
     return result;
   }
+  function calendarDispatchSummary(lines, materials) {
+    const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+    const orders = new Set(), invoices = new Map();
+    let confirmed = 0, pendingBilling = 0, unidentifiedOrders = 0;
+    (lines || []).forEach(line => {
+      const order = String(line.pedidoCliente || '').trim();
+      if (order && order !== 'Sin pedido') orders.add(order);
+      else unidentifiedOrders++;
+      confirmed += number(line.montoPlanificado);
+      pendingBilling += number(line.montoEntregadoNoFacturado || line.importeEntregadoNoFacturado || line.montoPendienteFacturar || 0);
+      const transit = transitForLine(line, materials);
+      const matches = new Map();
+      transit.rows.forEach(row => {
+        const invoice = invoiceKey(row);
+        if (!invoices.has(invoice)) invoices.set(invoice, { key: invoice, invoice: String(row.factura || '').trim(), dates: new Set(), affected: [] });
+        const entry = invoices.get(invoice);
+        if (row.eta) entry.dates.add(row.eta);
+        matches.set(invoice, (matches.get(invoice) || 0) + number(row.cantidad));
+      });
+      matches.forEach((quantity, invoice) => invoices.get(invoice).affected.push({ line, pending: transit.pending, transitQuantity: quantity }));
+    });
+    return {
+      orders: orders.size, unidentifiedOrders, confirmed, pendingBilling, total: confirmed + pendingBilling,
+      invoices: [...invoices.values()].map(entry => ({ ...entry, dates: [...entry.dates].sort() }))
+        .sort((a, b) => (a.dates[0] || '9999').localeCompare(b.dates[0] || '9999') || a.key.localeCompare(b.key))
+    };
+  }
   function receiveInvoice(materials, invoice, received, actor, timestamp) {
     const id = invoiceKey({ factura: invoice });
     if (!id) throw new Error('La factura debe estar identificada.');
@@ -158,5 +185,5 @@
       { id: 'audit-20261023-facturado', titulo: 'Adjuntar reporte SAP de lo realmente facturado', notas: 'Cargar importes efectivos por cliente, pedido, referencia y fecha para comparar facturación con costo de transporte.' }
     ].map(row => ({ ...row, fecha: '2026-10-23', estado: 'pendiente', createdAt: '2026-10-22T12:00:00Z', updatedAt: '2026-10-22T12:00:00Z' }));
   }
-  return { key, rates, extras, isoDate, invoiceKey, activeTransit, transitForLine, receiveInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
+  return { key, rates, extras, isoDate, invoiceKey, activeTransit, transitForLine, calendarDispatchSummary, receiveInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
 });

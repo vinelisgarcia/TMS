@@ -54,3 +54,22 @@ TMS_PGLITE_RUNTIME=/tmp/tms-sync-validation node tests/session-sync-db.cjs
 Incluye revisiones obsoletas, rollback de fallos parciales, permisos de lectura,
 sesiones de la misma cuenta, reconexiones, ediciones durante un guardado,
 recuperación local separada por usuario y más de mil filas.
+
+## Fichas del calendario
+
+Formato compartido del frontend: pedidos distintos, confirmado no entregado,
+entregado pendiente de facturar y valor del cliente en esa ruta (suma de ambos
+importes). Las líneas se limitan al grupo cliente/fecha/camión/ruta. Los avisos
+agrupan facturas en tránsito con sus ETA; el detalle de una factura contiene
+únicamente las líneas afectadas del despacho. Las facturas recibidas se excluyen.
+El detalle abierto se recalcula al recibir una nueva versión compartida.
+
+No añade datos ni cambia el esquema. Publicar juntos `tms-domain.js`, `tms-v2.js`
+e `index.html`, que versiona ambos scripts. Las sesiones que ya estaban abiertas
+antes de publicar deben recargar para obtener el nuevo frontend.
+
+Validar con `node --test tests/calendar-dispatch.test.cjs` y
+`node tests/calendar-dispatch-ui.cjs`. La prueba de navegador usa dos sesiones
+con las RPC reales del cliente contra un servidor simulado; bloquea Supabase y
+no modifica producción. También ejecutar `tests/ui-smoke.cjs` para verificar
+movimientos de rutas, exportaciones y módulos existentes.

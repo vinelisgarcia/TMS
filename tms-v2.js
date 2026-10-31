@@ -1948,6 +1948,61 @@
     scheduleAutoSave();
   };
 
+  let calendarDispatchDetail = null;
+
+  function calendarDispatchMetricsHtml(summary) {
+    return `<dl class="calendar-dispatch-metrics"><div><dt>Pedidos</dt><dd>${summary.orders}${summary.unidentifiedOrders ? ' + sin identificar' : ''}</dd></div><div><dt>Confirmado</dt><dd>${formatMonto(summary.confirmed)}</dd></div><div><dt>Pend. facturar</dt><dd>${formatMonto(summary.pendingBilling)}</dd></div><div><dt>Valor en ruta</dt><dd>${formatMonto(summary.total)}</dd></div></dl>`;
+  }
+
+  function calendarTransitButtonsHtml(summary, fecha, camion, index) {
+    return summary.invoices.map((invoice, invoiceIndex) => `<button type="button" class="calendar-transit-chip" onclick="event.stopPropagation();abrirDespachoCalendario('${escapeHtml(jsString(fecha))}','${escapeHtml(jsString(camion))}',${index},${invoiceIndex})">Factura en tránsito: <strong>${escapeHtml(invoice.invoice || 'sin identificar')}</strong> · ETA: ${escapeHtml(invoice.dates.join(' / ') || 'por confirmar')}</button>`).join('');
+  }
+
+  function renderCalendarDispatchDetail() {
+    const modal = document.getElementById('calendarDispatchDialog');
+    if (!modal || !calendarDispatchDetail) return;
+    const detail = calendarDispatchDetail;
+    const groups = (APP.rutas[detail.fecha] || {})[detail.camion] || [];
+    const group = groups.find(row => row.id === detail.groupId);
+    if (!group || !hasPermission('calendario', 'ver')) {
+      modal.innerHTML = `<header><h2 id="calendarDispatchTitle">Despacho actualizado</h2><button type="button" data-calendar-detail-close class="btn btn-outline">Cerrar</button></header><p>Este despacho cambió de ubicación o ya no está disponible. Cierra esta ventana y consulta el calendario actualizado.</p>`;
+      return;
+    }
+    const summary = TMSDomain.calendarDispatchSummary(group.items || [], APP.transitMaterials);
+    const selectedInvoice = detail.transitOnly ? summary.invoices.find(invoice => invoice.key === detail.invoiceKey) : null;
+    const transitInvoices = detail.transitOnly ? (selectedInvoice ? [selectedInvoice] : []) : summary.invoices;
+    const transitTable = invoice => `<section class="calendar-detail-transit"><h3>Factura en tránsito: ${escapeHtml(invoice.invoice || 'sin identificar')}</h3><p>ETA: ${escapeHtml(invoice.dates.join(' / ') || 'por confirmar')}</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido / línea</th><th>Material afectado</th><th>Sin confirmar</th><th>En esta factura</th></tr></thead><tbody>${invoice.affected.map(row => `<tr><td>${escapeHtml(row.line.pedidoCliente || 'Sin pedido')}<small>${escapeHtml(row.line.lineaPedidoCliente || '')}</small></td><td><strong>${escapeHtml(row.line.articulo)}</strong><small>${escapeHtml(row.line.descripcionArticulo || '')}</small></td><td>${formatLoadQty(row.pending)}</td><td>${formatLoadQty(row.transitQuantity)}</td></tr>`).join('')}</tbody></table></div></section>`;
+    modal.innerHTML = `<header><div><p class="calendar-detail-eyebrow">${detail.transitOnly ? 'Materiales afectados por tránsito' : 'Despacho del cliente'}</p><h2 id="calendarDispatchTitle">${escapeHtml(group.nombre)}</h2><p>${escapeHtml(group.codigo)} · ${escapeHtml(group.fecha)} · ${escapeHtml(getTruckLabel(group.camion))} · ${escapeHtml(group.rutaNombre || group.zona || 'Sin ruta')}</p></div><button type="button" data-calendar-detail-close class="btn btn-outline">Cerrar</button></header>
+      ${detail.transitOnly ? '' : `${calendarDispatchMetricsHtml(summary)}<p class="calendar-detail-explanation">Confirmado no entregado + entregado pendiente de facturar = valor de este cliente en la ruta.</p><section><h3>Pedidos de este despacho</h3><div class="table-wrap"><table class="data-table calendar-dispatch-orders"><thead><tr><th>Pedido / línea</th><th>Material</th><th>Cant. pendiente</th><th>Confirmado</th><th>Pend. facturar</th><th>Valor en ruta</th></tr></thead><tbody>${(group.items || []).map(line => `<tr><td>${escapeHtml(line.pedidoCliente || 'Sin pedido')}<small>${escapeHtml(line.lineaPedidoCliente || '')}</small></td><td><strong>${escapeHtml(line.articulo || 'Sin referencia')}</strong><small>${escapeHtml(line.descripcionArticulo || '')}</small></td><td>${formatLoadQty(line.cantidadPendiente)}</td><td>${formatMonto(getConfirmedUndeliveredAmount(line))}</td><td>${formatMonto(getDeliveredNotInvoicedAmount(line))}</td><td>${formatMonto(getOperationalAmount(line))}</td></tr>`).join('')}</tbody></table></div></section>`}
+      ${transitInvoices.map(transitTable).join('') || (detail.transitOnly ? '<p>Esta factura ya no afecta a los pedidos de este despacho o fue recibida.</p>' : '')}
+      ${transitInvoices.length ? '<p class="calendar-detail-explanation">Las cantidades en tránsito son coincidencias de material; no representan una reserva confirmada para el cliente.</p>' : ''}
+      ${detail.transitOnly ? '' : `<section class="calendar-dispatch-extra">${(group.alertas || []).length ? `<p>${escapeHtml(group.alertas.join(' · '))}</p>` : ''}${group.nota ? `<p><strong>Nota:</strong> ${escapeHtml(group.nota)}</p>` : ''}${group.precintoDespacho ? `<p><strong>Precinto:</strong> ${escapeHtml(group.precintoDespacho)}</p>` : ''}${group.choferRuta ? `<p><strong>Chofer / recibido:</strong> ${escapeHtml(group.choferRuta)}</p>` : ''}${group.fotoCamion ? '<p>Foto de evidencia adjunta al despacho.</p>' : ''}${group.cantidadSolicitudes ? `<p>${group.cantidadSolicitudes} solicitudes · Liberado a almacén: ${formatMonto(group.montoSolicitudes)}</p>` : ''}</section>`}`;
+  }
+
+  window.abrirDespachoCalendario = function abrirDespachoCalendario(fecha, camion, index, invoiceIndex) {
+    if (!hasPermission('calendario', 'ver')) return;
+    const group = ((APP.rutas[fecha] || {})[camion] || [])[index];
+    if (!group) return;
+    const summary = TMSDomain.calendarDispatchSummary(group.items || [], APP.transitMaterials);
+    const invoice = invoiceIndex === undefined ? null : summary.invoices[invoiceIndex];
+    if (invoiceIndex !== undefined && !invoice) return;
+    calendarDispatchDetail = { fecha, camion, groupId: group.id, transitOnly: invoiceIndex !== undefined, invoiceKey: invoice && invoice.key };
+    let modal = document.getElementById('calendarDispatchDialog');
+    if (!modal) {
+      modal = document.createElement('dialog'); modal.id = 'calendarDispatchDialog'; modal.className = 'calendar-dispatch-dialog';
+      modal.setAttribute('aria-labelledby', 'calendarDispatchTitle');
+      modal.addEventListener('click', event => {
+        const bounds = modal.getBoundingClientRect();
+        const outside = event.target === modal && (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom);
+        if (outside || event.target.closest('[data-calendar-detail-close]')) modal.close();
+      });
+      modal.addEventListener('close', () => { calendarDispatchDetail = null; });
+      document.body.appendChild(modal);
+    }
+    renderCalendarDispatchDetail();
+    if (!modal.open) modal.showModal();
+  };
+
   window.renderCalendario = function renderCalendarioV2() {
     const calContainer = document.getElementById('calContainer');
     const calMesNav = document.getElementById('calMesNav');
@@ -1956,6 +2011,7 @@
 
     if (!APP.calMeses || !APP.calMeses.length) APP.calMeses = buildCalendarMonths(APP.calSemanas || []);
     if (!APP.calSemanas || !APP.calSemanas.length || !APP.calMeses.length) {
+      document.getElementById('calendarDispatchDialog')?.close();
       calContainer.innerHTML = '<div class="empty-state"><div class="empty-icon">📅</div><p>Importa una planificación para comenzar.</p></div>';
       calMesNav.innerHTML = '';
       calMesLabel.textContent = '—';
@@ -2025,18 +2081,11 @@
           groups.forEach(group => {
             const realIdx = (dayRoutes[camion] || []).indexOf(group);
             const selected = isGroupSelected(group);
-            const alertHtml = group.alertas.length
-              ? `<div style="font-size:10px;color:var(--danger);margin-top:4px;">${group.alertas.join(' · ')}</div>`
-              : '';
-            const transitRecommendation = transitRecommendationForLines(group.items || []);
-            const transitHtml = transitRecommendation ? `<div class="transit-alert">${escapeHtml(transitRecommendation)}</div>` : '';
-            const evidenceBits = [
-              group.precintoDespacho ? 'Precinto: ' + group.precintoDespacho : '',
-              group.choferRuta ? 'Chofer/recibido: ' + group.choferRuta : '',
-              group.fotoCamion ? 'Foto adjunta' : ''
-            ].filter(Boolean);
-            const evidenceHtml = evidenceBits.length ? `<div class="route-evidence-line">${evidenceBits.join(' · ')}</div>` : '';
-            html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true"
+            const dispatchSummary = TMSDomain.calendarDispatchSummary(group.items || [], APP.transitMaterials);
+            const openDispatch = `abrirDespachoCalendario('${escapeHtml(jsString(fecha))}','${escapeHtml(jsString(camion))}',${realIdx})`;
+            html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true" tabindex="0" role="group" aria-label="Despacho de ${escapeHtml(group.nombre)}"
+              onclick="if(!event.target.closest('button,input,label,select,a,textarea')){${openDispatch}}"
+              onkeydown="if(event.target===this &amp;&amp; (event.key==='Enter'||event.key===' ')){event.preventDefault();${openDispatch}}"
               ondragstart="onDragStartCal(event,'${fecha}','${camion}',${realIdx})"
               ondragend="this.classList.remove('dragging')"
               style="${group.alertas.length ? 'border:1px solid #ef4444;' : ''}">
@@ -2047,13 +2096,10 @@
                 </label>
                 <span class="badge ${selected ? 'badge-primary' : 'badge-outline'}">${selected ? 'Lote' : 'Individual'}</span>
               </div>
-              <div class="cal-card-name">${group.nombre}</div>
-              <div class="queue-card-meta">${group.codigo} · ${group.cantidadPedidos || 1} pedidos: ${group.pedidoCliente}</div>
-              <div class="cal-card-monto">${group.items.length} líneas · ${group.cantidadSolicitudes || 0} solicitudes · Carga ${formatLoadQty(group.cargaTotal)} uds · Valor ${formatMonto(group.totalPendiente)}</div>
-              ${group.cantidadSolicitudes ? `<div style="color:#b91c1c;font-size:11px;font-weight:700">Liberado a almacén: ${formatMonto(group.montoSolicitudes)}</div>` : ''}
-              ${evidenceHtml}
-              ${alertHtml}
-              ${transitHtml}
+              <button type="button" class="calendar-dispatch-name" onclick="event.stopPropagation();${openDispatch}">${escapeHtml(group.nombre)}</button>
+              <div class="calendar-dispatch-code">${escapeHtml(group.codigo)}</div>
+              ${calendarDispatchMetricsHtml(dispatchSummary)}
+              ${calendarTransitButtonsHtml(dispatchSummary, fecha, camion, realIdx)}
               <div class="cal-card-actions">
                 <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="abrirMoveModal('${fecha}','${camion}',${realIdx})">Mover</button>
                 <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:10px;" onclick="toggleCumplida('${fecha}','${camion}',${realIdx})">${group.cumplida ? 'Reabrir' : 'Completar'}</button>
@@ -2071,6 +2117,7 @@
     });
 
     calContainer.innerHTML = html.join('');
+    renderCalendarDispatchDetail();
     syncCalendarToolbarState();
     window.renderQueueSemana();
   };
@@ -5560,6 +5607,7 @@
   // another account's interface or reuse another user's cached data.
   const originalCerrarSesion = window.cerrarSesion;
   window.cerrarSesion = async function cerrarSesionSincronizada() {
+    document.getElementById('calendarDispatchDialog')?.close();
     if (window._autoSaveTimer) clearTimeout(window._autoSaveTimer);
     if (cloudSync) cloudSync.stop();
     cloudUser = null;
@@ -6262,6 +6310,30 @@
         font-weight:800;
         cursor:pointer;
       }
+      .calendar-dispatch-name { border:0; background:transparent; color:var(--text); font:inherit; font-size:12px; font-weight:800; text-align:left; padding:0; cursor:pointer; width:100%; overflow-wrap:anywhere; }
+      .calendar-dispatch-code { color:var(--muted); font-size:10px; margin:3px 0 7px; }
+      .calendar-dispatch-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px 5px; margin:8px 0; }
+      .calendar-dispatch-metrics div { min-width:0; }
+      .calendar-dispatch-metrics dt { color:var(--muted); font-size:9px; line-height:1.3; }
+      .calendar-dispatch-metrics dd { margin:2px 0 0; font-size:11px; font-weight:800; color:var(--text); overflow-wrap:anywhere; }
+      .calendar-transit-chip { display:block; width:100%; border:1px solid color-mix(in srgb,var(--warning) 50%,var(--border)); border-radius:6px; background:color-mix(in srgb,var(--warning) 12%,var(--surface)); color:var(--text); padding:6px 7px; text-align:left; font:inherit; font-size:10px; line-height:1.5; margin:6px 0; cursor:pointer; overflow-wrap:anywhere; }
+      .calendar-transit-chip:hover { border-color:var(--warning); }
+      .cal-card:focus-visible,.calendar-dispatch-name:focus-visible,.calendar-transit-chip:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+      .calendar-dispatch-dialog { margin:auto; width:min(940px,calc(100% - 28px)); max-width:calc(100% - 28px); max-height:88vh; overflow:auto; border:1px solid var(--border); border-radius:14px; padding:22px; background:var(--glass-solid,var(--surface)); color:var(--text); box-shadow:0 22px 65px #0004; }
+      .calendar-dispatch-dialog::backdrop { background:rgba(15,23,42,.5); }
+      .calendar-dispatch-dialog header { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; margin-bottom:16px; }
+      .calendar-dispatch-dialog h2 { margin:3px 0 7px; font-size:21px; overflow-wrap:anywhere; }
+      .calendar-dispatch-dialog h3 { font-size:14px; margin:18px 0 8px; }
+      .calendar-dispatch-dialog p { font-size:12px; color:var(--muted); line-height:1.6; }
+      .calendar-dispatch-dialog .calendar-detail-eyebrow { text-transform:uppercase; font-size:10px; font-weight:800; color:var(--secondary); letter-spacing:.8px; margin:0; }
+      .calendar-dispatch-dialog .calendar-dispatch-metrics { grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; padding:14px; border:1px solid var(--border); border-radius:8px; }
+      .calendar-dispatch-dialog .calendar-dispatch-metrics dt { font-size:11px; }
+      .calendar-dispatch-dialog .calendar-dispatch-metrics dd { font-size:15px; }
+      .calendar-dispatch-dialog .table-wrap { overflow-x:auto; max-width:100%; }
+      .calendar-dispatch-dialog table { width:100%; }
+      .calendar-dispatch-dialog td small { display:block; color:var(--muted); margin-top:4px; }
+      .calendar-dispatch-extra { border-top:1px solid var(--border); margin-top:16px; }
+      @media(max-width:600px) { .calendar-dispatch-dialog { padding:14px; } .calendar-dispatch-dialog .calendar-dispatch-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
       .calendar-note-list {
         display:grid;
         gap:5px;
