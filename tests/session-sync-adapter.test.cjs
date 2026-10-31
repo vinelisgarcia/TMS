@@ -203,7 +203,7 @@ test('the real draft tracker protects unsubmitted operational and account forms'
   for (const id of ['auditClientName', 'cfgContacto', 'routeName_0', 'newRouteNameInput', 'newRouteCostInput',
     'newRoleNameInput', 'userNameInput', 'userEmailInput', 'userPasswordInput', 'userRoleInput', 'warehouseCostInput']) {
     app.context.unsubmittedDrafts.clear();
-    app.context.trackUnsubmittedDraft({ target: { id, isConnected: true, matches: () => true, closest: () => ({}), classList: { contains: () => false } } });
+    app.context.trackUnsubmittedDraft({ target: { id, isConnected: true, matches: () => true, closest: selector => selector === '#mainLayout' ? {} : null, classList: { contains: () => false } } });
     assert.equal(app.context.hasUnsubmittedDraft(), true, `Unsubmitted ${id} must defer automatic re-render`);
   }
 });

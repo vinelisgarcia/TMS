@@ -994,6 +994,7 @@ html { -webkit-text-size-adjust: 100%; }
 #logoutBtn:hover { background: rgba(255,255,255,0.28); }
 </style>
 <link rel="stylesheet" href="./tms-glass.css?v=20261022-audit">
+<link rel="stylesheet" href="./tms-inventory.css?v=20261031-inventory">
 </head>
 <body>
 
@@ -1022,7 +1023,7 @@ html { -webkit-text-size-adjust: 100%; }
 <!-- HEADER -->
 <div id="appHeader" style="display:none;">
   <span class="logo"><img src="./assets/hospitality-by-alvarez.svg" alt="Hospitality by Alvarez"></span>
-  <button id="saveStateBtn" onclick="guardarEnSupabase()">Guardar cambios</button>
+  <button id="saveStateBtn" onclick="guardarCambiosVistaActual()">Guardar cambios</button>
   <button id="undoStateBtn" onclick="revertirUltimoCambio()" disabled>Revertir último cambio</button>
   <span id="sapHeaderInfo" style="display:none;"></span>
   <div id="userBadge">
@@ -1041,6 +1042,7 @@ html { -webkit-text-size-adjust: 100%; }
         <option value="dashboard">Dashboard</option>
         <option value="calendario">Calendario</option>
         <option value="comercial">Vista Comercial</option>
+        <option value="inventario">Inventario CT / AD</option>
         <option value="rutas">Rutas</option>
         <option value="importaciones">Importaciones</option>
         <option value="auditoriaJamaica">Auditoría Jamaica</option>
@@ -1068,6 +1070,7 @@ html { -webkit-text-size-adjust: 100%; }
     <button class="nav-btn" id="nav-comercial" onclick="cambiarVista('comercial',this)">
       <span class="nav-icon">👔</span><span class="nav-label">Vista Comercial</span>
     </button>
+    <button class="nav-btn" id="nav-inventario" onclick="cambiarVista('inventario',this)" style="display:none"><span class="nav-icon">▦</span><span class="nav-label">Inventario CT / AD</span></button>
     <button class="nav-btn" id="nav-rutas" onclick="cambiarVista('rutas',this)">
       <span class="nav-icon">🧭</span><span class="nav-label">Rutas</span>
     </button>
@@ -1097,6 +1100,7 @@ html { -webkit-text-size-adjust: 100%; }
 
   <!-- CONTENT -->
   <div id="content">
+    <div id="inventario" class="view"><div id="inventoryMount"></div></div>
 
     <!-- ========== VISTA 1: IMPORTAR SAP ========== -->
     <div id="importar" class="view active">
@@ -4610,8 +4614,10 @@ window.addEventListener('DOMContentLoaded', async () => {
 </script>
 <script src="./DATA.js"></script>
 <script src="./tms-domain.js?v=20261022-audit"></script>
-<script src="./tms-sync.js?v=20261031-session-sync"></script>
-<script src="./tms-v2.js?v=20261031-session-sync"></script>
+<script src="./tms-sync.js?v=20261031-inventory"></script>
+<script src="./tms-v2.js?v=20261031-inventory"></script>
 <script src="./tms-audit-ui.js?v=20261022-routes"></script>
+<script src="./inventory-domain.js?v=20261031-inventory"></script>
+<script src="./tms-inventory.js?v=20261031-inventory"></script>
 </body>
 </html>

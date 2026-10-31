@@ -136,7 +136,8 @@
     incidenciasDespacho: 'Incidencias despacho',
     configuracion: 'Configuración',
     solicitudesAlmacen: 'Solicitudes almacén',
-    almacen: 'Almacén'
+    almacen: 'Almacén',
+    inventario: 'Inventario CT / AD'
   };
 
   function syncThemeButtons() {
@@ -499,7 +500,8 @@
       incidenciasDespacho: { ver: true, editar: true, importar: false },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
-      almacen: { ver: true, editar: true }
+      almacen: { ver: true, editar: true },
+      inventario: { ver: true, editar: true, importar: true }
     };
   }
 
@@ -1019,6 +1021,7 @@
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen',
+      inventario: 'inventario',
       reportes: 'reportes'
     }[viewId] || viewId;
   }
@@ -1053,7 +1056,7 @@
   }
 
   function getFirstAllowedView() {
-    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'configClientes'];
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'inventario', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || '';
   }
 
@@ -1088,7 +1091,8 @@
       incidenciasDespacho: 'incidenciasDespacho',
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
-      almacen: 'almacen'
+      almacen: 'almacen',
+      inventario: 'inventario'
     };
     Object.entries(navMap).forEach(([viewId, moduleName]) => {
       const allowed = hasPermission(moduleName, 'ver');
@@ -1100,6 +1104,9 @@
     syncMobileModuleSelect();
     const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
     document.body.classList.toggle('role-readonly', !hasPermission(activeModule, 'editar'));
+    const undoBtn = document.getElementById('undoStateBtn');
+    if (activeModule === 'inventario') { if (undoBtn) undoBtn.disabled = true; }
+    else updateUndoButton();
     const saveBtn = document.getElementById('saveStateBtn');
     if (saveBtn) saveBtn.title = isAdminUser() ? 'Guardar cambios globales' : 'Guardar cambios operativos; usuarios y roles solo Admin';
     const badge = document.getElementById('userEmail');
@@ -1108,6 +1115,7 @@
       badge.textContent = `${email} · ${APP.currentUserProfile.rol}`;
     }
     enforceCurrentViewPermission();
+    window.dispatchEvent(new Event('tms-permissions-changed'));
   }
 
   function syncMobileModuleSelect() {
@@ -1128,6 +1136,7 @@
       }
       originalCambiarVista(id, btn);
       syncMobileModuleSelect();
+      if (id === 'inventario' && window.TMSInventory) window.TMSInventory.open();
       if (id === 'rutas') renderRouteCatalog();
       if (id === 'importaciones') renderImportaciones();
       if (id === 'materialesTransito') renderMaterialesTransito();
@@ -4481,7 +4490,8 @@
       incidenciasDespacho: { ver: role === 'Admin' || scope === 'full', editar: role === 'Admin' || scope === 'full', importar: false },
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
-      almacen: { ver: true, editar: true }
+      almacen: { ver: true, editar: true },
+      inventario: { ver: true, editar: true, importar: true }
     };
     if (role === 'Admin' || scope === 'full') return all;
     if (scope === 'read_only') {
@@ -5431,7 +5441,7 @@
   function trackUnsubmittedDraft(event) {
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
-    if (!control.closest('#mainLayout')) return;
+    if (!control.closest('#mainLayout') || control.closest('#inventario')) return;
     if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.

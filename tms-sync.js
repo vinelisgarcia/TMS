@@ -28,14 +28,18 @@
     const events = options.eventTarget || (typeof window !== 'undefined' ? window : null);
     const storage = options.storage || (typeof localStorage !== 'undefined' ? localStorage : null);
     const tabStorage = options.sessionStorage || (typeof sessionStorage !== 'undefined' ? sessionStorage : null);
+    const namespace = options.namespace || '';
+    const getSnapshotRpc = options.getSnapshotRpc || 'tms_get_snapshot';
+    const saveSnapshotRpc = options.saveSnapshotRpc || 'tms_save_snapshot';
+    const realtimeTable = options.realtimeTable || 'tms_sync_state';
     const instanceId = options.sessionId || Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
     let previousInstance = null;
     let user = null, base = null, revision = null, remoteRevision = null;
     let dirty = false, conflict = false, saving = null, refreshing = null;
     let channel = null, timer = null, generation = 0, lifecycle = 0, stopped = true;
     let phase = 'disconnected', lastError = null, storageError = null, refreshRequested = false;
-    const key = (instance) => 'tms_alvarez_sync_pending:' + (user ? user.id : '') + ':' + (instance || instanceId);
-    const pointerKey = () => 'tms_sync_instance:' + (user ? user.id : '');
+    const key = (instance) => (namespace ? namespace + '_pending:' : 'tms_alvarez_sync_pending:') + (user ? user.id : '') + ':' + (instance || instanceId);
+    const pointerKey = () => (namespace ? namespace + '_instance:' : 'tms_sync_instance:') + (user ? user.id : '');
     const hasDraft = () => !!(options.hasDraft && options.hasDraft());
     function getState() { return {userId:user && user.id, revision, remoteRevision, dirty, draft:hasDraft(), conflict, saving:!!saving || phase === 'saving', phase, error:lastError || storageError}; }
     function status(next, error) {
@@ -95,7 +99,7 @@
       const before = base && stable(options.capture());
       refreshing = (async () => {
         try {
-          const snapshot = await rpc('tms_get_snapshot', {p_known_revision:settings && settings.force ? null : revision});
+          const snapshot = await rpc(getSnapshotRpc, {p_known_revision:settings && settings.force ? null : revision});
           if (token !== lifecycle || stopped) return;
           remoteRevision = Math.max(remoteRevision || 0, Number(snapshot.revision));
           if (Number(snapshot.revision) < remoteRevision) {
@@ -176,7 +180,7 @@
       }
       status('loading');
       try {
-        const snapshot = await rpc('tms_get_snapshot', {p_known_revision:null});
+        const snapshot = await rpc(getSnapshotRpc, {p_known_revision:null});
         if (token !== lifecycle || stopped) return;
         await apply(snapshot, token,!!pending);
         if (pending && pending.userId === user.id && pending.base && pending.payload) {
@@ -198,8 +202,8 @@
         }
         const client = options.getClient();
         if (client && typeof client.channel === 'function') {
-          channel = client.channel('tms-sync-' + user.id + '-' + Math.random().toString(36).slice(2))
-            .on('postgres_changes', {event:'UPDATE',schema:'public',table:'tms_sync_state'}, remoteChange)
+          channel = client.channel((namespace || 'tms-sync') + '-' + user.id + '-' + Math.random().toString(36).slice(2))
+            .on('postgres_changes', {event:'UPDATE',schema:'public',table:realtimeTable}, remoteChange)
             .subscribe(state => {
               if (token !== lifecycle || stopped) return;
               if (state === 'SUBSCRIBED') backgroundRefresh();
@@ -237,7 +241,7 @@
           if (!Object.keys(payload).length) { dirty=false; break; }
           status('saving');
           try {
-            const result = await rpc('tms_save_snapshot',{p_expected_revision:revision,p_payload:payload});
+            const result = await rpc(saveSnapshotRpc,{p_expected_revision:revision,p_payload:payload});
             if (token !== lifecycle || stopped) return;
             revision = Number(result.revision); remoteRevision = Math.max(remoteRevision || 0,revision);
             base = captured;
@@ -271,7 +275,7 @@
       if ((dirty || hasDraft()) && storage) {
         try { storage.setItem(key()+':recovery',JSON.stringify(exportPending())); } catch (_) {}
       }
-      const snapshot = await rpc('tms_get_snapshot',{p_known_revision:null});
+      const snapshot = await rpc(getSnapshotRpc,{p_known_revision:null});
       await apply(snapshot,lifecycle);
       return getState();
     }
