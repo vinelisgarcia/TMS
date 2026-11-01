@@ -26,28 +26,28 @@
     const query = String(APP.auditTransitSearch || '').toLowerCase();
     const received = APP.auditTransitTab === 'received';
     const all = APP.transitMaterials || [];
-    const filtered = all.filter(row => D.activeTransit(row) !== received && (!query || [row.factura, row.codigoMaterial, row.descripcion, row.cliente].some(value => String(value || '').toLowerCase().includes(query))));
+    const filtered = all.filter(row => D.activeTransit(row) !== received && (!query || [row.factura, row.packingList, row.referenciaProveedor, row.referenciaEmbarque, row.codigoMaterial, row.descripcion, row.cliente].some(value => String(value || '').toLowerCase().includes(query))));
     const invoices = new Map();
     filtered.forEach(row => {
       const id = row.factura ? D.invoiceKey(row) : `unidentified-${row.id}`;
       if (!invoices.has(id)) invoices.set(id, { invoice: row.factura || '', rows: [] });
       invoices.get(id).rows.push(row);
     });
-    mount.innerHTML = `<div class="audit-module-head"><div><p class="audit-eyebrow">Disponibilidad futura</p><h2>Materiales en tránsito</h2><p>Facturas, referencias y llegada estimada en un solo lugar.</p></div><button class="btn btn-outline" onclick="exportarMaterialesTransitoExcel()">Exportar Excel</button></div>
-      ${can('materialesTransito') || can('materialesTransito','importar') ? `<section class="card"><div class="card-title">Cargar materiales de una factura</div><div class="audit-form-grid">
-      <label>Factura<input id="transitFactura" placeholder="Número de factura" class="form-control"></label>
+    mount.innerHTML = `<div class="audit-module-head"><div><p class="audit-eyebrow">Disponibilidad futura</p><h2>Materiales en tránsito</h2><p>Facturas o packing lists, materiales y llegada estimada en un solo lugar.</p></div><button class="btn btn-outline" onclick="exportarMaterialesTransitoExcel()">Exportar Excel</button></div>
+      ${can('materialesTransito') || can('materialesTransito','importar') ? `<section class="card"><div class="card-title">Cargar factura o packing list</div><div class="audit-form-grid">
+      <label>Factura o packing list<input id="transitFactura" placeholder="Número, si no está en el archivo" class="form-control"></label>
       <label>Llegada estimada<input id="transitEta" type="date" class="form-control"></label>
       <label>Cliente asignado, si aplica<input id="transitCliente" placeholder="Código o nombre exacto" class="form-control"></label>
       <label>Archivo<input id="transitFile" type="file" accept=".xlsx,.xls,.xml,.csv,.txt,.pdf" class="form-control"></label></div>
-      <div class="audit-actions"><button class="btn btn-primary" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" role="status"></span></div></section>` : ''}
-      <div class="audit-stat-grid"><article><span>Facturas activas</span><strong>${new Set(all.filter(D.activeTransit).map(D.invoiceKey).filter(Boolean)).size}</strong></article><article><span>Referencias en tránsito</span><strong>${new Set(all.filter(D.activeTransit).map(row=>D.key(row.codigoMaterial))).size}</strong></article><article><span>Facturas recibidas</span><strong>${new Set(all.filter(row=>!D.activeTransit(row)).map(D.invoiceKey).filter(Boolean)).size}</strong></article></div>
-      <div class="audit-toolbar"><div class="audit-tabs"><button data-audit="transit-tab" data-value="active" aria-pressed="${!received}">En tránsito</button><button data-audit="transit-tab" data-value="received" aria-pressed="${received}">Recibidas</button></div><label class="audit-search">Buscar<input id="auditTransitSearch" type="search" value="${escape(query)}" placeholder="Factura, referencia o cliente"></label></div>
+      <p class="audit-caption">Excel/CSV: se detecta la fila de encabezados aunque tenga títulos arriba. Acepta Código cliente del producto o Referencia, Cantidad solicitada o Cantidad, Factura No. y Packslip. Sin factura se usa el Packslip. Referencia proveedor se conserva por separado. Revisa la cantidad y confirma antes de cargar.</p><div class="audit-actions"><button class="btn btn-primary" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" role="status"></span></div></section>` : ''}
+      <div class="audit-stat-grid"><article><span>Documentos activos</span><strong>${new Set(all.filter(D.activeTransit).map(D.invoiceKey).filter(Boolean)).size}</strong></article><article><span>Referencias en tránsito</span><strong>${new Set(all.filter(D.activeTransit).map(row=>D.key(row.codigoMaterial))).size}</strong></article><article><span>Documentos recibidos</span><strong>${new Set(all.filter(row=>!D.activeTransit(row)).map(D.invoiceKey).filter(Boolean)).size}</strong></article></div>
+      <div class="audit-toolbar"><div class="audit-tabs"><button data-audit="transit-tab" data-value="active" aria-pressed="${!received}">En tránsito</button><button data-audit="transit-tab" data-value="received" aria-pressed="${received}">Recibidas</button></div><label class="audit-search">Buscar<input id="auditTransitSearch" type="search" value="${escape(query)}" placeholder="Factura, packing list, referencia o cliente"></label></div>
       <div class="audit-invoices">${[...invoices.entries()].map(([id, group]) => {
         const dates = [...new Set(group.rows.map(row=>row.eta).filter(Boolean))].sort();
         const receipt = group.rows.find(row=>row.receivedAt);
-        return `<article class="card audit-invoice"><header><div><span class="audit-eyebrow">${received ? 'Historial' : 'Factura de importación'}</span><h3>${escape(group.invoice || 'Factura sin identificar')}</h3><p>${group.rows.length} líneas · ${received ? `Recibida ${escape((receipt && receipt.receivedAt || '').slice(0,10))}` : `ETA ${escape(dates.join(' / ') || 'por confirmar')}`}</p></div>${can('materialesTransito') && group.invoice ? `<button class="btn ${received ? 'btn-outline' : 'btn-primary'}" data-audit="receive-invoice" data-invoice="${escape(group.invoice)}" data-value="${received ? 'reopen' : 'receive'}">${received ? 'Volver a tránsito' : 'Marcar factura recibida'}</button>` : ''}</header>
-          <details><summary>Ver materiales</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Cliente</th><th>ETA</th></tr></thead><tbody>${group.rows.map(row=>`<tr><td>${escape(row.codigoMaterial)}</td><td>${escape(row.descripcion)}</td><td>${Number(row.cantidad).toLocaleString('es-DO')}</td><td>${escape(row.cliente || 'Sin asignación exclusiva')}</td><td>${escape(row.eta || 'Pendiente')}</td></tr>`).join('')}</tbody></table></div></details>${received && receipt ? `<small>Confirmada por ${escape(receipt.receivedBy || 'usuario autorizado')}. La recepción no confirma una reserva de SAP.</small>` : ''}</article>`;
-      }).join('') || `<div class="audit-empty">${received ? 'Todavía no hay facturas recibidas.' : 'No hay facturas activas para esta búsqueda.'}</div>`}</div>`;
+        return `<article class="card audit-invoice"><header><div><span class="audit-eyebrow">${received ? 'Historial' : (group.rows.every(row => row.tipoDocumento === 'packing_list') ? 'Packing list' : 'Factura de importación')}</span><h3>${escape(group.invoice || 'Documento sin identificar')}</h3><p>${group.rows.length} líneas · ${received ? `Recibida ${escape((receipt && receipt.receivedAt || '').slice(0,10))}` : `ETA ${escape(dates.join(' / ') || 'por confirmar')}`}</p></div>${can('materialesTransito') && group.invoice ? `<button class="btn ${received ? 'btn-outline' : 'btn-primary'}" data-audit="receive-invoice" data-invoice="${escape(group.invoice)}" data-value="${received ? 'reopen' : 'receive'}">${received ? 'Volver a tránsito' : 'Marcar documento recibido'}</button>` : ''}</header>
+          <details><summary>Ver materiales</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>Referencia</th><th>Descripción / documento de origen</th><th>Cantidad</th><th>Cliente</th><th>ETA</th></tr></thead><tbody>${group.rows.map(row=>`<tr><td>${escape(row.codigoMaterial)}</td><td>${escape(row.descripcion)}<small>${escape([row.packingList && `Packslip: ${row.packingList}`, row.referenciaProveedor && `Ref. proveedor: ${row.referenciaProveedor}`, row.referenciaEmbarque && `Embarque: ${row.referenciaEmbarque}`].filter(Boolean).join(' · '))}</small></td><td>${Number(row.cantidad).toLocaleString('es-DO')}</td><td>${escape(row.cliente || 'Sin asignación exclusiva')}</td><td>${escape(row.eta || 'Pendiente')}</td></tr>`).join('')}</tbody></table></div></details>${received && receipt ? `<small>Confirmada por ${escape(receipt.receivedBy || 'usuario autorizado')}. La recepción no confirma una reserva de SAP.</small>` : ''}</article>`;
+      }).join('') || `<div class="audit-empty">${received ? 'Todavía no hay documentos recibidos.' : 'No hay documentos activos para esta búsqueda.'}</div>`}</div>`;
   }
   window.renderMaterialesTransito = transitView;
 
@@ -220,10 +220,10 @@
     if(action==='receive-invoice'){
       if(!can('materialesTransito'))return toast('Tu perfil no puede confirmar recepciones.');
       const received=button.dataset.value==='receive';
-      if(!confirm(`${received?'Confirmar recepción de todas las líneas de':'Volver a tránsito todas las líneas de'} la factura ${button.dataset.invoice}?`))return;
+      if(!confirm(`${received?'Confirmar recepción de todas las líneas del':'Volver a tránsito todas las líneas del'} documento ${button.dataset.invoice}?`))return;
       core().pushUndoState('actualizar recepción de factura');
       APP.transitMaterials=D.receiveInvoice(APP.transitMaterials,button.dataset.invoice,received,(APP.currentUserProfile || {}).email || 'Administrador',new Date().toISOString());
-      refresh();save(received?'Factura recibida. Sus avisos activos se retiraron.':'Factura devuelta a tránsito.');
+      refresh();save(received?'Documento recibido. Sus avisos activos se retiraron.':'Documento devuelto a tránsito.');
     }
     if(action==='create-client'){
       if(!can('configuracion'))return;

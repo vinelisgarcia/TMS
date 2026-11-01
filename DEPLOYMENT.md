@@ -117,3 +117,31 @@ Los adaptadores conservan ceros explícitos al guardar/recargar; un saldo ausent
 en datos antiguos se reconstruye con unidades confirmadas y sin stock. Las
 pruebas cubren pedido cubierto, parcial, falta total y actualización de un detalle
 abierto en otra sesión, incluida su recarga. No requiere migración de esquema.
+
+## Packing lists en Materiales en tránsito
+
+El mismo importador admite facturas y packing lists de Excel/CSV. Detecta la fila
+de encabezados después de títulos o filas vacías y procesa las hojas visibles
+que contengan columnas de material y cantidad. La planilla de entrada reconoce
+`Codigo cliente del producto`, `Descripción de Producto`, `Referencia proveedor`,
+`Packslip`, `Cantidad solicitada`, `PEDIDO DOM`, `Proveedor`, `Factura No.` y
+`Referencia embarque`. El código interno tiene prioridad sobre la referencia del
+proveedor; PEDIDO DOM no se interpreta como cliente.
+
+Se conserva la factura cuando existe; en su ausencia se identifica el documento
+por Packslip. La ETA y la asignación opcional de cliente se indican en el
+formulario cuando no vienen en el archivo. Antes de modificar el estado se
+confirman el número de líneas y la cantidad total. Las líneas repetidas del
+mismo documento/material/ETA/cliente dentro del archivo se suman. Recargar ese
+mismo grupo reemplaza su cantidad, conservando el identificador y la recepción.
+Las cantidades inválidas bloquean la carga completa. Los datos de origen se
+conservan en el estado compartido existente y en la exportación Excel; no se
+necesita migración de base de datos.
+
+Publicar juntos `index.html`, `tms-v2.js` y `tms-audit-ui.js`. Validar con
+`node tests/transit-import.test.cjs` y `node tests/transit-import-ui.cjs`, además
+de las regresiones de interfaz, calendario y móvil. La prueba de navegador usa
+datos sintéticos y bloquea Supabase. Puede validarse un archivo privado con
+`TMS_PACKING_FILE` y, opcionalmente, `TMS_PACKING_EXPECTED_LINES` y
+`TMS_PACKING_EXPECTED_QUANTITY`, sin copiarlo al repositorio ni cargarlo en
+producción. Usa `TMS_PLAYWRIGHT` y `TMS_TEST_URL` como las demás pruebas de UI.

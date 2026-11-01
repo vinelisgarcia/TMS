@@ -7048,22 +7048,78 @@
       descripcion: text(raw.descripcion),
       cantidad,
       cliente: text(raw.cliente),
+      tipoDocumento: raw.tipoDocumento || 'factura',
+      packingList: text(raw.packingList),
+      referenciaProveedor: text(raw.referenciaProveedor),
+      proveedor: text(raw.proveedor),
+      pedidoOrigen: text(raw.pedidoOrigen),
+      referenciaEmbarque: text(raw.referenciaEmbarque),
       importacionId: importMatch ? importMatch.id : '',
       createdAt: nowIso(),
       updatedAt: nowIso()
     };
   }
 
-  function parseTransitRowsFromObjects(rows, defaults) {
-    return (rows || []).map(row => {
-      const material = pickField(row, ['Referencia', 'REF', 'Código material', 'Codigo material', 'Material', 'Artículo', 'Articulo', 'SKU', 'Producto']);
-      const descripcion = pickField(row, ['Descripción', 'Descripcion', 'Descripción material', 'Descripcion material', 'Texto breve', 'Producto descripción', 'Producto descripcion']);
-      const cantidad = pickField(row, ['Cantidad', 'Cantidad factura', 'Qty', 'Quantity', 'Unidades']);
-      const factura = pickField(row, ['Factura', 'Invoice', 'Documento', 'Factura importación', 'Factura importacion', 'Referencia factura']) || defaults.factura;
+  function transitColumnAliases() {
+    return {
+      material: ['Código cliente del producto', 'Código material', 'Material', 'Artículo', 'SKU', 'Producto', 'Referencia', 'REF', 'Referencia proveedor'],
+      cantidad: ['Cantidad', 'Cantidad factura', 'Cantidad solicitada', 'Qty', 'Quantity', 'Unidades'],
+      packingList: ['Packslip', 'Packing list', 'Packing', 'Packing list No.', 'Número packing list'],
+      factura: ['Factura', 'Factura No.', 'Número de factura', 'Invoice', 'Invoice No.', 'Documento', 'Factura importación', 'Referencia factura']
+    };
+  }
+
+  function parseTransitRowsFromObjects(rows, defaults = {}) {
+    const aliases = transitColumnAliases();
+    return (rows || []).map((row, index) => {
+      const material = pickField(row, aliases.material);
+      const descripcion = pickField(row, ['Descripción', 'Descripción de Producto', 'Descripción material', 'Texto breve', 'Producto descripción']);
+      const cantidad = pickField(row, aliases.cantidad);
+      if (!text(material) && !text(cantidad)) return null;
+      if (/^(total|totales|totalgeneral)$/.test(normKey(material))) return null;
+      const quantityText = text(cantidad).replace(/\s/g, '');
+      if (!text(material) || !/^-?(?:\d+(?:[.,]\d+)?|[.,]\d+|\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,3}(?:\.\d{3})+,\d+)$/.test(quantityText) || num(cantidad) < 0) {
+        throw new Error(`Revisa material y cantidad en la línea ${index + 1} del detalle. No se cargó el archivo.`);
+      }
+      const packingList = text(pickField(row, aliases.packingList));
+      const invoice = text(pickField(row, aliases.factura));
+      const factura = invoice || packingList || defaults.factura;
       const eta = pickField(row, ['ETA', 'Fecha llegada', 'Fecha ETA', 'Llegada']) || defaults.eta;
       const cliente = pickField(row, ['Cliente', 'Destino', 'Solicitante']) || defaults.cliente;
-      return normalizeTransitMaterial({ factura, eta, codigoMaterial: material, descripcion, cantidad, cliente });
+      return normalizeTransitMaterial({ factura, eta, codigoMaterial: material, descripcion, cantidad, cliente,
+        tipoDocumento: pickField(row, ['Tipo documento']) === 'packing_list' || !invoice && packingList ? 'packing_list' : 'factura', packingList,
+        referenciaProveedor: pickField(row, ['Referencia proveedor']), proveedor: pickField(row, ['Proveedor']),
+        pedidoOrigen: pickField(row, ['PEDIDO DOM', 'Pedido origen']), referenciaEmbarque: pickField(row, ['Referencia embarque']) });
     }).filter(Boolean);
+  }
+
+  function parseTransitWorksheet(sheet, defaults) {
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+    const aliases = transitColumnAliases();
+    const has = (row, field) => row.some(cell => aliases[field].some(alias => normKey(alias) === normKey(cell)));
+    const header = matrix.findIndex(row => has(row, 'material') && has(row, 'cantidad'));
+    if (header < 0) return [];
+    const headers = matrix[header].map(text);
+    const rows = matrix.slice(header + 1).filter(row => !(has(row, 'material') && has(row, 'cantidad')));
+    return parseTransitRowsFromObjects(rows.map(row => Object.fromEntries(headers.filter(Boolean).map(label => [label, row[headers.indexOf(label)] ?? '']))), defaults);
+  }
+
+  function transitImportKey(item) {
+    return JSON.stringify([text(item.factura).toUpperCase(), normKey(item.codigoMaterial), text(item.eta), normKey(item.cliente)]);
+  }
+
+  function consolidateTransitRows(rows) {
+    const groups = new Map();
+    rows.forEach(row => {
+      const key = transitImportKey(row);
+      if (!groups.has(key)) { groups.set(key, { ...row }); return; }
+      const group = groups.get(key);
+      group.cantidad += row.cantidad;
+      ['packingList', 'referenciaProveedor', 'proveedor', 'pedidoOrigen', 'referenciaEmbarque'].forEach(field => {
+        group[field] = uniqueTexts([...(group[field] || '').split(' / '), ...(row[field] || '').split(' / ')]).filter(Boolean).join(' / ');
+      });
+    });
+    return [...groups.values()];
   }
 
   function parseTransitMaterialsFromText(rawText, defaults) {
@@ -7110,8 +7166,8 @@
     if (/\.(xlsx|xls|xml|csv)$/.test(name)) {
       const buffer = await readArrayBufferFile(file);
       const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      return parseTransitRowsFromObjects(XLSX.utils.sheet_to_json(sheet, { defval: '' }), defaults);
+      return wb.SheetNames.filter((name, index) => !wb.Workbook?.Sheets?.[index]?.Hidden)
+        .flatMap(name => parseTransitWorksheet(wb.Sheets[name], defaults));
     }
     if (/\.pdf$/.test(name) || file.type === 'application/pdf') return parseTransitMaterialsFromText(await extractPdfText(file), defaults);
     if (/\.(csv|txt)$/.test(name) || /^text\//.test(file.type || '')) return parseTransitMaterialsFromText(await readTextFile(file), defaults);
@@ -7122,11 +7178,11 @@
     ensureTransitMaterials();
     let created = 0;
     let updated = 0;
-    rows.forEach(next => {
-      const key = [next.factura, next.codigoMaterial, next.eta, next.cliente].map(normKey).join('|');
-      const idx = APP.transitMaterials.findIndex(item => [item.factura, item.codigoMaterial, item.eta, item.cliente].map(normKey).join('|') === key);
+    consolidateTransitRows(rows).forEach(next => {
+      const key = transitImportKey(next);
+      const idx = APP.transitMaterials.findIndex(item => transitImportKey(item) === key);
       if (idx >= 0) {
-        APP.transitMaterials[idx] = { ...APP.transitMaterials[idx], ...next, createdAt: APP.transitMaterials[idx].createdAt || nowIso(), updatedAt: nowIso() };
+        APP.transitMaterials[idx] = { ...APP.transitMaterials[idx], ...next, id: APP.transitMaterials[idx].id, createdAt: APP.transitMaterials[idx].createdAt || nowIso(), updatedAt: nowIso() };
         updated += 1;
       } else {
         APP.transitMaterials.push(next);
@@ -7158,19 +7214,24 @@
     const q = text((document.getElementById('transitSearch') || {}).value).toLowerCase();
     const rows = APP.transitMaterials.filter(item => !q || [item.codigoMaterial, item.descripcion, item.factura, item.cliente].some(value => text(value).toLowerCase().includes(q)));
     const analysis = transitAnalysis();
-    mount.innerHTML = `<div class="transit-module"><section class="transit-hero"><div><h2>Materiales en tránsito</h2><p>Carga materiales de facturas de importación con ETA. En Excel usa Referencia para el código de material y Cantidad para lo que llegará; el TMS cruza esos datos contra la queue y recomienda esperar la importación cuando puede convertir un despacho parcial en completo.</p></div><div class="import-actions"><button class="btn btn-success btn-sm" onclick="exportarMaterialesTransitoExcel()">Excel</button></div></section><section class="card" style="display:${canEdit ? 'block' : 'none'};"><div class="card-title">Cargar factura / material en tránsito</div><div class="transit-form-grid"><input id="transitFactura" class="form-control" placeholder="Factura importación"><label class="form-row">ETA<input id="transitEta" class="form-control" type="date"></label><input id="transitCliente" class="form-control" placeholder="Cliente opcional"><input id="transitFile" class="form-control" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf"></div><div class="import-actions" style="margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" class="import-bulk-status"></span></div></section><section class="transit-kpis"><div class="transit-kpi"><strong>${APP.transitMaterials.length}</strong><span>Líneas en tránsito</span></div><div class="transit-kpi"><strong>${analysis.materials}</strong><span>Materiales únicos</span></div><div class="transit-kpi"><strong>${analysis.totalQty.toLocaleString('es-DO')}</strong><span>Cantidad total</span></div><div class="transit-kpi"><strong>${analysis.matches.length}</strong><span>Matches en queue</span></div></section><section class="card"><div class="view-toolbar" style="justify-content:space-between;"><input id="transitSearch" class="search-input" value="${escapeHtml(q)}" placeholder="Buscar material, factura o cliente" oninput="renderMaterialesTransito()" style="max-width:340px;"><span class="badge badge-warn">${analysis.nextEta ? 'Próxima ETA ' + analysis.nextEta : 'Sin ETA próxima'}</span></div></section><section class="transit-table-wrap"><table class="transit-table"><thead><tr><th>Material</th><th>Factura</th><th>ETA</th><th>Cliente</th><th style="text-align:right;">Cantidad</th><th></th></tr></thead><tbody>${renderTransitMaterialRows(rows)}</tbody></table></section></div>`;
+    mount.innerHTML = `<div class="transit-module"><section class="transit-hero"><div><h2>Materiales en tránsito</h2><p>Carga materiales de facturas o packing lists con ETA. En Excel usa Referencia para el código de material y Cantidad para lo que llegará; el TMS cruza esos datos contra la queue y recomienda esperar la importación cuando puede convertir un despacho parcial en completo.</p></div><div class="import-actions"><button class="btn btn-success btn-sm" onclick="exportarMaterialesTransitoExcel()">Excel</button></div></section><section class="card" style="display:${canEdit ? 'block' : 'none'};"><div class="card-title">Cargar factura o packing list / material en tránsito</div><div class="transit-form-grid"><input id="transitFactura" class="form-control" placeholder="Factura o packing list"><label class="form-row">ETA<input id="transitEta" class="form-control" type="date"></label><input id="transitCliente" class="form-control" placeholder="Cliente opcional"><input id="transitFile" class="form-control" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf"></div><div class="import-actions" style="margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" class="import-bulk-status"></span></div></section><section class="transit-kpis"><div class="transit-kpi"><strong>${APP.transitMaterials.length}</strong><span>Líneas en tránsito</span></div><div class="transit-kpi"><strong>${analysis.materials}</strong><span>Materiales únicos</span></div><div class="transit-kpi"><strong>${analysis.totalQty.toLocaleString('es-DO')}</strong><span>Cantidad total</span></div><div class="transit-kpi"><strong>${analysis.matches.length}</strong><span>Matches en queue</span></div></section><section class="card"><div class="view-toolbar" style="justify-content:space-between;"><input id="transitSearch" class="search-input" value="${escapeHtml(q)}" placeholder="Buscar material, factura o cliente" oninput="renderMaterialesTransito()" style="max-width:340px;"><span class="badge badge-warn">${analysis.nextEta ? 'Próxima ETA ' + analysis.nextEta : 'Sin ETA próxima'}</span></div></section><section class="transit-table-wrap"><table class="transit-table"><thead><tr><th>Material</th><th>Factura</th><th>ETA</th><th>Cliente</th><th style="text-align:right;">Cantidad</th><th></th></tr></thead><tbody>${renderTransitMaterialRows(rows)}</tbody></table></section></div>`;
   };
 
   window.importarMaterialesTransito = async function importarMaterialesTransito() {
     if (!hasPermission('materialesTransito', 'importar')) return alert('Tu rol no puede importar materiales en tránsito.');
     const file = (document.getElementById('transitFile') || {}).files?.[0];
-    if (!file) return alert('Selecciona un archivo Excel o PDF.');
+    if (!file) return alert('Selecciona una factura o packing list en Excel, CSV, PDF o TXT.');
     const defaults = { factura: text((document.getElementById('transitFactura') || {}).value), eta: text((document.getElementById('transitEta') || {}).value), cliente: text((document.getElementById('transitCliente') || {}).value) };
     try {
       const status = document.getElementById('transitStatus');
       if (status) status.textContent = 'Procesando archivo...';
       const rows = await parseTransitMaterialsFile(file, defaults);
-      if (!rows.length) throw new Error('No detecté materiales y cantidades. En Excel usa columnas Referencia y Cantidad; opcional Descripción, Factura y ETA.');
+      if (!rows.length) throw new Error('No detecté materiales y cantidades. Usa Referencia o Código cliente del producto, y Cantidad o Cantidad solicitada. Puedes incluir Factura No., Packslip y ETA.');
+      const total = rows.reduce((sum, row) => sum + row.cantidad, 0);
+      if (!confirm(`¿Importar ${rows.length} líneas (${total.toLocaleString('es-DO')} unidades) de ${file.name}? Las líneas repetidas del mismo documento y material se suman; una nueva carga del mismo documento, material, ETA y cliente reemplaza su cantidad.`)) {
+        if (status) status.textContent = 'Carga cancelada. No se modificaron materiales.';
+        return;
+      }
       pushUndoState('importar materiales en tránsito');
       const result = upsertTransitMaterials(rows);
       construirQueueSemana();
@@ -7200,7 +7261,7 @@
   window.exportarMaterialesTransitoExcel = function exportarMaterialesTransitoExcel() {
     ensureTransitMaterials();
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.transitMaterials.map(item => ({ Factura: item.factura, ETA: item.eta, Material: item.codigoMaterial, Descripcion: item.descripcion, Cantidad: item.cantidad, Cliente: item.cliente }))), 'Materiales transito');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.transitMaterials.map(item => ({ Factura: item.tipoDocumento === 'packing_list' ? '' : item.factura, Documento: item.factura, 'Tipo documento': item.tipoDocumento || 'factura', Packslip: item.packingList || '', 'Referencia proveedor': item.referenciaProveedor || '', Proveedor: item.proveedor || '', 'Pedido origen': item.pedidoOrigen || '', 'Referencia embarque': item.referenciaEmbarque || '', ETA: item.eta, Material: item.codigoMaterial, Descripcion: item.descripcion, Cantidad: item.cantidad, Cliente: item.cliente }))), 'Materiales transito');
     XLSX.writeFile(wb, 'TMS_Materiales_Transito.xlsx');
   };
 
