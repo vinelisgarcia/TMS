@@ -7041,7 +7041,7 @@
     const eta = parseImportBulkDate(raw.eta);
     const importMatch = null; // Factura y ETA se gestionan directamente en Materiales en tránsito.
     return {
-      id: 'tm-' + normKey([factura, codigoMaterial, raw.descripcion, eta].join('-')) + '-' + Date.now().toString(36),
+      id: 'tm-' + (typeof crypto!=='undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)),
       factura,
       eta: eta || (importMatch && importMatch.eta) || '',
       codigoMaterial,
@@ -7064,6 +7064,65 @@
       const cliente = pickField(row, ['Cliente', 'Destino', 'Solicitante']) || defaults.cliente;
       return normalizeTransitMaterial({ factura, eta, codigoMaterial: material, descripcion, cantidad, cliente });
     }).filter(Boolean);
+  }
+
+  function transitMaterialIdentity(row) {
+    return JSON.stringify([TMSDomain.invoiceKey(row), text(row.codigoMaterial).toUpperCase(), text(row.eta), normKey(row.cliente)]);
+  }
+
+  function transitEntryHeader(matrix) {
+    const fields = {code:['codigoclientedelproducto'],description:['descripciondeproducto','descripciondelproducto','descripcionproducto'],quantity:['cantidadsolicitada'],invoice:['facturano','nofactura','numerodefactura','factura'],eta:['eta','fechallegada','fechaeta','llegada'],client:['clienteasignado'],order:['pedidodom'],supplierReference:['referenciaproveedor'],packslip:['packslip'],supplier:['proveedor'],shipment:['referenciaembarque']};
+    for(let row=0;row<Math.min(matrix.length,60);row++){
+      const labels=(matrix[row]||[]).map(normKey), mapping={};
+      Object.entries(fields).forEach(([field,aliases])=>{const column=labels.findIndex(label=>aliases.includes(label));if(column>=0)mapping[field]=column;});
+      if(mapping.code!==undefined && mapping.quantity!==undefined && mapping.invoice!==undefined)return {row,mapping};
+    }
+    return null;
+  }
+
+  function parseTransitEntryRows(matrix, header, defaults, source) {
+    const result=[];const map=header.mapping;
+    for(let index=header.row+1;index<matrix.length;index++){
+      const row=matrix[index]||[];if(!row.some(value=>text(value)))continue;
+      const get=field=>map[field]===undefined?'':row[map[field]];
+      const rawCode=get('code'), code=text(rawCode), rawQuantity=get('quantity');
+      if(normKey(code)==='codigoclientedelproducto' && normKey(rawQuantity)==='cantidadsolicitada')continue;
+      if(!code && /^(total|subtotal|totalgeneral)$/.test(normKey(row.find(value=>text(value)))))continue;
+      if(!code && !text(rawQuantity) && !text(get('invoice')))continue;
+      const where=`Hoja ${source.sheet}, fila ${index+1}`;
+      if(!code)throw new Error(`${where}: falta el código del producto.`);
+      if(typeof rawCode==='number' && !Number.isSafeInteger(rawCode))throw new Error(`${where}: guarda el código del producto como texto.`);
+      if(!text(rawQuantity) || (typeof rawQuantity==='number' && !Number.isFinite(rawQuantity)) || (typeof rawQuantity!=='number' && !/^[+\-\d.,\s]+$/.test(text(rawQuantity))))throw new Error(`${where}: cantidad solicitada no válida.`);
+      let numeric=typeof rawQuantity==='number'?rawQuantity:text(rawQuantity).replace(/\s/g,'');
+      if(typeof numeric==='string'){
+        if(numeric.includes(',')&&numeric.includes('.'))numeric=numeric.lastIndexOf(',')>numeric.lastIndexOf('.')?numeric.replace(/\./g,'').replace(',','.'):numeric.replace(/,/g,'');
+        else if(numeric.includes(','))numeric=/^[+-]?\d{1,3}(,\d{3})+$/.test(numeric)?numeric.replace(/,/g,''):numeric.replace(',','.');
+      }
+      const quantity=Number(numeric);if(!Number.isFinite(quantity)||quantity<0)throw new Error(`${where}: cantidad solicitada no válida.`);if(quantity===0)continue;
+      const invoice=text(get('invoice')||defaults.factura);if(!invoice)throw new Error(`${where}: falta Factura No.; indícala en la planilla o en el formulario.`);
+      let eta=get('eta')||defaults.eta||'';
+      if(typeof eta==='number'){
+        const date=XLSX.SSF.parse_date_code(eta,{date1904:!!source.date1904});
+        if(!date)throw new Error(`${where}: ETA no válida.`);
+        eta=`${date.y}-${String(date.m).padStart(2,'0')}-${String(date.d).padStart(2,'0')}`;
+      }
+      eta=parseImportBulkDate(eta);
+      if(eta){const date=new Date(eta+'T12:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(eta)||!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==eta)throw new Error(`${where}: ETA no válida.`);}
+      const item=normalizeTransitMaterial({codigoMaterial:code,descripcion:get('description'),cantidad:quantity,factura:invoice,eta,cliente:get('client')||defaults.cliente});
+      item.entradaMercancia={lineas:[{archivo:source.fileName,hoja:source.sheet,fila:index+1,pedidoDom:text(get('order')),referenciaProveedor:text(get('supplierReference')),packslip:text(get('packslip')),proveedor:text(get('supplier')),referenciaEmbarque:text(get('shipment'))}]};
+      result.push(item);
+    }
+    return result;
+  }
+
+  function consolidateTransitEntryRows(rows) {
+    const grouped=new Map();
+    rows.forEach(row=>{
+      const key=transitMaterialIdentity(row), prior=grouped.get(key);
+      if(prior){prior.cantidad=Math.round((prior.cantidad+row.cantidad)*1e10)/1e10;prior.entradaMercancia.lineas.push(...row.entradaMercancia.lineas);}
+      else grouped.set(key,row);
+    });
+    return [...grouped.values()];
   }
 
   function parseTransitMaterialsFromText(rawText, defaults) {
@@ -7109,7 +7168,20 @@
     const name = (file.name || '').toLowerCase();
     if (/\.(xlsx|xls|xml|csv)$/.test(name)) {
       const buffer = await readArrayBufferFile(file);
-      const wb = XLSX.read(buffer, { type: 'array', cellDates: false });
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: false, cellNF: true });
+      const templates=[];
+      for(const name of wb.SheetNames){
+        const sheet=wb.Sheets[name], matrix=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:true,range:0}), header=transitEntryHeader(matrix);
+        if(header){
+          // Identifier formatting may carry leading zeroes; quantities stay numeric.
+          for(let row=header.row+1;row<matrix.length;row++){
+            const column=header.mapping.code, value=matrix[row]?.[column], cell=sheet[XLSX.utils.encode_cell({r:row,c:column})];
+            if(Number.isSafeInteger(value) && /^0{2,}$/.test(cell?.z||''))matrix[row][column]=String(value).padStart(cell.z.length,'0');
+          }
+          templates.push({matrix,header,source:{sheet:name,fileName:file.name,date1904:wb.Workbook?.WBProps?.date1904}});
+        }
+      }
+      if(templates.length)return consolidateTransitEntryRows(templates.flatMap(entry=>parseTransitEntryRows(entry.matrix,entry.header,defaults,entry.source)));
       const sheet = wb.Sheets[wb.SheetNames[0]];
       return parseTransitRowsFromObjects(XLSX.utils.sheet_to_json(sheet, { defval: '' }), defaults);
     }
@@ -7123,10 +7195,10 @@
     let created = 0;
     let updated = 0;
     rows.forEach(next => {
-      const key = [next.factura, next.codigoMaterial, next.eta, next.cliente].map(normKey).join('|');
-      const idx = APP.transitMaterials.findIndex(item => [item.factura, item.codigoMaterial, item.eta, item.cliente].map(normKey).join('|') === key);
+      const key = transitMaterialIdentity(next);
+      const idx = APP.transitMaterials.findIndex(item => transitMaterialIdentity(item) === key);
       if (idx >= 0) {
-        APP.transitMaterials[idx] = { ...APP.transitMaterials[idx], ...next, createdAt: APP.transitMaterials[idx].createdAt || nowIso(), updatedAt: nowIso() };
+        APP.transitMaterials[idx] = { ...APP.transitMaterials[idx], ...next, id: APP.transitMaterials[idx].id || next.id, createdAt: APP.transitMaterials[idx].createdAt || nowIso(), updatedAt: nowIso() };
         updated += 1;
       } else {
         APP.transitMaterials.push(next);
@@ -7170,14 +7242,15 @@
       const status = document.getElementById('transitStatus');
       if (status) status.textContent = 'Procesando archivo...';
       const rows = await parseTransitMaterialsFile(file, defaults);
-      if (!rows.length) throw new Error('No detecté materiales y cantidades. En Excel usa columnas Referencia y Cantidad; opcional Descripción, Factura y ETA.');
+      if (!rows.length) throw new Error('No detecté materiales y cantidades. Usa una factura con Referencia y Cantidad o la planilla de entrada con Código cliente del producto, Cantidad solicitada y Factura No.');
       pushUndoState('importar materiales en tránsito');
       const result = upsertTransitMaterials(rows);
       construirQueueSemana();
       renderMaterialesTransito();
       renderCalendario();
       scheduleAutoSave();
-      alert(`Materiales en tránsito cargados: ${rows.length} líneas · ${result.created} nuevas · ${result.updated} actualizadas.`);
+      const missingEta=rows.filter(row=>!row.eta).length;
+      alert(`Materiales en tránsito cargados: ${rows.length} líneas · ${result.created} nuevas · ${result.updated} actualizadas.${missingEta?' '+missingEta+' sin ETA. Puedes indicar la llegada estimada al importar.':''}`);
     } catch (error) {
       console.error('Error importando materiales en tránsito:', error);
       const status = document.getElementById('transitStatus');

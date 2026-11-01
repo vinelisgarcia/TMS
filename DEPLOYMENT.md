@@ -117,3 +117,29 @@ Los adaptadores conservan ceros explícitos al guardar/recargar; un saldo ausent
 en datos antiguos se reconstruye con unidades confirmadas y sin stock. Las
 pruebas cubren pedido cubierto, parcial, falta total y actualización de un detalle
 abierto en otra sesión, incluida su recarga. No requiere migración de esquema.
+
+## Planilla de entrada de mercancía en tránsito
+
+El importador admite, además de las facturas y formatos anteriores, la planilla
+con `Código cliente del producto`, `Cantidad solicitada` y `Factura No.`. Detecta
+los encabezados después de títulos/filas vacías y busca hojas compatibles. El
+código del producto se conserva como referencia AD; no se utiliza Referencia
+proveedor como SKU ni Pedido DOM como cliente o pedido de venta.
+
+Las líneas se consolidan por factura, artículo, ETA y cliente asignado. Facturas
+con puntuación distinta siguen separadas. Una recarga sustituye únicamente las
+coincidencias de esa identidad y conserva el resto, sus identificadores y su
+recepción registrada. Se guarda la trazabilidad de las filas de la planilla,
+incluidos pedido DOM, proveedor, packslip y referencia de embarque.
+
+Factura y ETA de cada fila prevalecen sobre los campos del formulario. Si falta
+la factura, puede completarse con el formulario. Si falta ETA en ambos sitios,
+queda por confirmar y se indica al terminar; nunca se deduce del packslip. Un
+error de código, cantidad, factura o fecha bloquea toda la carga antes de cambiar
+los materiales existentes. No cambia el esquema de persistencia ni los permisos.
+
+Validación: `node --test tests/transit-entry-import.test.cjs` y
+`node tests/transit-entry-import-ui.cjs`. Los datos de prueba son ficticios y las
+peticiones a Supabase están bloqueadas. Un archivo privado adicional puede
+validarse localmente con `TMS_TRANSIT_ENTRY_XLSX` y, opcionalmente, un objeto JSON
+de totales esperados en `TMS_TRANSIT_ENTRY_EXPECTED`; no se copia al repositorio.

@@ -34,12 +34,12 @@
       invoices.get(id).rows.push(row);
     });
     mount.innerHTML = `<div class="audit-module-head"><div><p class="audit-eyebrow">Disponibilidad futura</p><h2>Materiales en tránsito</h2><p>Facturas, referencias y llegada estimada en un solo lugar.</p></div><button class="btn btn-outline" onclick="exportarMaterialesTransitoExcel()">Exportar Excel</button></div>
-      ${can('materialesTransito') || can('materialesTransito','importar') ? `<section class="card"><div class="card-title">Cargar materiales de una factura</div><div class="audit-form-grid">
-      <label>Factura<input id="transitFactura" placeholder="Número de factura" class="form-control"></label>
+      ${can('materialesTransito') || can('materialesTransito','importar') ? `<section class="card"><div class="card-title">Importar factura o planilla</div><div class="audit-form-grid">
+      <label>Factura<input id="transitFactura" placeholder="Si el archivo no la incluye" class="form-control"></label>
       <label>Llegada estimada<input id="transitEta" type="date" class="form-control"></label>
       <label>Cliente asignado, si aplica<input id="transitCliente" placeholder="Código o nombre exacto" class="form-control"></label>
-      <label>Archivo<input id="transitFile" type="file" accept=".xlsx,.xls,.xml,.csv,.txt,.pdf" class="form-control"></label></div>
-      <div class="audit-actions"><button class="btn btn-primary" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" role="status"></span></div></section>` : ''}
+      <label>Factura o planilla de entrada<input id="transitFile" type="file" accept=".xlsx,.xls,.xml,.csv,.txt,.pdf" class="form-control"></label></div>
+      <p class="audit-caption">La planilla lee sus facturas del Excel. Indica aquí la ETA si el archivo no la incluye.</p><div class="audit-actions"><button class="btn btn-primary" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" role="status"></span></div></section>` : ''}
       <div class="audit-stat-grid"><article><span>Facturas activas</span><strong>${new Set(all.filter(D.activeTransit).map(D.invoiceKey).filter(Boolean)).size}</strong></article><article><span>Referencias en tránsito</span><strong>${new Set(all.filter(D.activeTransit).map(row=>D.key(row.codigoMaterial))).size}</strong></article><article><span>Facturas recibidas</span><strong>${new Set(all.filter(row=>!D.activeTransit(row)).map(D.invoiceKey).filter(Boolean)).size}</strong></article></div>
       <div class="audit-toolbar"><div class="audit-tabs"><button data-audit="transit-tab" data-value="active" aria-pressed="${!received}">En tránsito</button><button data-audit="transit-tab" data-value="received" aria-pressed="${received}">Recibidas</button></div><label class="audit-search">Buscar<input id="auditTransitSearch" type="search" value="${escape(query)}" placeholder="Factura, referencia o cliente"></label></div>
       <div class="audit-invoices">${[...invoices.entries()].map(([id, group]) => {
