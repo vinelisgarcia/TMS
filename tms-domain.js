@@ -23,8 +23,19 @@
   };
   function invoiceKey(row) { return String(row.factura || '').trim().toUpperCase(); }
   function activeTransit(row) { return !row.receivedAt && row.estado !== 'recibida'; }
+  function transitNeed(line) {
+    if (!line || line.archivedAt) return 0;
+    const number = value => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+    let pending = number(line.cantidadPendienteSinStock);
+    // Zero confirmed/dispatchable units can mean the whole material is missing.
+    // Only an explicit unserved balance, not cantidadPendiente, may cap that need.
+    if (line.cantidadPendienteServir !== undefined && line.cantidadPendienteServir !== null && line.cantidadPendienteServir !== '') pending = Math.min(pending, number(line.cantidadPendienteServir));
+    const original = number(line.cantidadSolicitadaOriginal);
+    if (original > 0) pending = Math.min(pending, Math.max(0, original - number(line.cantidadFacturada)));
+    return pending;
+  }
   function transitForLine(line, materials) {
-    const pending = Math.max(0, Number(line.cantidadPendienteSinStock) || 0);
+    const pending = transitNeed(line);
     const result = { pending, quantity: 0, covered: 0, invoices: [], eta: '', rows: [], note: '' };
     if (!pending || !line.articulo) return result;
     const rows = (materials || []).filter(row => {
@@ -185,5 +196,5 @@
       { id: 'audit-20261023-facturado', titulo: 'Adjuntar reporte SAP de lo realmente facturado', notas: 'Cargar importes efectivos por cliente, pedido, referencia y fecha para comparar facturación con costo de transporte.' }
     ].map(row => ({ ...row, fecha: '2026-10-23', estado: 'pendiente', createdAt: '2026-10-22T12:00:00Z', updatedAt: '2026-10-22T12:00:00Z' }));
   }
-  return { key, rates, extras, isoDate, invoiceKey, activeTransit, transitForLine, calendarDispatchSummary, receiveInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
+  return { key, rates, extras, isoDate, invoiceKey, activeTransit, transitNeed, transitForLine, calendarDispatchSummary, receiveInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
 });

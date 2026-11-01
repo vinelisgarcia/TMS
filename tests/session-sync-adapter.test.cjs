@@ -282,3 +282,12 @@ test('full local storage does not prevent the real adapter from loading or commi
   assert.equal(db.saves().length, 1);
   assert.equal(db.db.tables.tms_order_lines.filter(row => row.metadata.incidencia === 'CLOUD SURVIVES FULL STORAGE').length, 1);
 });
+
+test('zero unserved balance survives saving and another session; legacy wholly missing stock keeps its need',async t=>{
+ const db=server(),a=adapter(db);t.after(a.stop);await a.load();
+ const current=a.APP.lineItems[0];current.cantidadSolicitadaOriginal=10;current.cantidadSolicitada=10;current.cantidadPendienteServir=0;current.cantidadPendienteSinStock=3;
+ await a.save();const saved=db.db.tables.tms_order_lines.find(row=>row.metadata.dataset==='current');assert.equal(saved.metadata.cantidadPendienteServir,0);
+ const b=adapter(db);t.after(b.stop);await b.load();assert.equal(b.APP.lineItems[0].cantidadPendienteServir,0);assert.equal(require('../tms-domain.js').transitNeed(b.APP.lineItems[0]),0);
+ const legacy=b.context.mapDbOrderLine({cantidad_solicitada:0,cantidad_facturada:0,metadata:{cantidadSolicitadaOriginal:6,cantidadPendienteSinStock:6}});
+ assert.equal(legacy.cantidadPendienteServir,6);assert.equal(require('../tms-domain.js').transitNeed(legacy),6);
+});

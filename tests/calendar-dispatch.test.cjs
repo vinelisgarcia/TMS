@@ -23,3 +23,19 @@ test('zero balances and pending-billing aliases keep their original accounting m
  const summary=D.calendarDispatchSummary([line({montoPlanificado:0,montoEntregadoNoFacturado:0,importeEntregadoNoFacturado:12}),line({montoPlanificado:0,montoEntregadoNoFacturado:0,montoPendienteFacturar:3})],[]);
  assert.equal(summary.confirmed,0);assert.equal(summary.pendingBilling,15);assert.equal(summary.total,15);
 });
+
+test('covered or fully served orders do not alert just because the same material is in transit',()=>{
+ const materials=[{factura:'INCOMING',codigoMaterial:'A',cantidad:50}];
+ for(const entry of [line({cantidadPendienteSinStock:0,cantidadPendienteServir:10}),line({cantidadPendienteSinStock:3,cantidadPendienteServir:0}),line({cantidadPendienteSinStock:3,cantidadSolicitadaOriginal:10,cantidadFacturada:10}),line({archivedAt:'now'})]){
+  assert.equal(D.transitForLine(entry,materials).note,'');assert.equal(D.calendarDispatchSummary([entry],materials).invoices.length,0);
+ }
+});
+test('mixed orders of one client and material alert only the outstanding line, including wholly missing stock',()=>{
+ const completed=line({pedidoCliente:'COMPLETE',cantidadPendienteServir:0}),partial=line({pedidoCliente:'PARTIAL',cantidadPendienteServir:2,cantidadPendienteSinStock:8}),missing=line({pedidoCliente:'MISSING',cantidadSolicitadaOriginal:6,cantidadSolicitada:0,cantidadPendiente:0,cantidadPendienteServir:6,cantidadPendienteSinStock:6});
+ const info=D.calendarDispatchSummary([completed,partial,missing],[{factura:'INCOMING',codigoMaterial:'A',cantidad:50}]);
+ assert.deepEqual(info.invoices[0].affected.map(row=>row.line.pedidoCliente),['PARTIAL','MISSING']);assert.deepEqual(info.invoices[0].affected.map(row=>row.pending),[2,6]);
+});
+test('a dispatch status inferred from its covered part does not erase a real remaining shortage',()=>{
+ const entry=line({cantidadSolicitadaOriginal:12,cantidadFacturada:8,cantidadSolicitada:0,cantidadPendiente:0,cantidadPendienteServir:4,cantidadPendienteSinStock:4,estadoEntrega:'entregado'});
+ assert.equal(D.transitNeed(entry),4);
+});

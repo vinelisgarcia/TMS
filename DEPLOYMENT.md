@@ -102,3 +102,18 @@ El calendario móvil utiliza fichas por día y tarjetas compactas de cliente. El
 menú de tres puntos conserva Mover, Completar y Nota; en escritorio las acciones
 siguen visibles. Los controles de lote aparecen al seleccionar despachos y se
 omite la cola vacía en móvil. En tablet se distribuyen los días en dos columnas.
+
+## Alertas de tránsito y saldo pendiente
+
+El cruce requiere una falta sin stock de la línea del pedido. El saldo explícito
+pendiente de servir limita esa falta; cero la elimina. La cantidad ya facturada
+contra el pedido original también limita el faltante. Un artículo disponible
+completo no genera aviso por compartir referencia con una importación, y otro
+pedido del cliente no hereda esa alerta. Las líneas totalmente sin stock siguen
+avisando aunque tengan cero unidades disponibles para el despacho.
+
+El control diario actualiza el saldo pendiente de servir de la línea programada.
+Los adaptadores conservan ceros explícitos al guardar/recargar; un saldo ausente
+en datos antiguos se reconstruye con unidades confirmadas y sin stock. Las
+pruebas cubren pedido cubierto, parcial, falta total y actualización de un detalle
+abierto en otra sesión, incluida su recarga. No requiere migración de esquema.

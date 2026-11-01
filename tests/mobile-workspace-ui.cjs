@@ -32,6 +32,11 @@ const base=process.env.TMS_TEST_URL||'http://127.0.0.1:8766';
   const chooser=page.waitForEvent('filechooser');await page.locator('#sapControlUpload').click();assert.equal(await (await chooser).element().getAttribute('id'),'ctrlFile');
   await page.locator('#ctrlFile').setInputFiles({name:'control-02.11.2026.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await workbook([{...sapRow,'Cantidad facturada':2,'Importe confirmado no entregado':800}])});
   await page.waitForFunction(()=>APP.controlLoaded&&document.getElementById('ctrlSuccessBanner').style.display==='flex');assert.equal(await page.locator('#ctrlSuccessBanner').isVisible(),true);
+  // A daily control with zero unserved units must clear the old route's transit need.
+  await page.locator('#ctrlFile').setInputFiles({name:'control-sin-pendiente.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await workbook([{...sapRow,'Cantidad pendiente de servir':0}])});
+  await page.waitForFunction(()=>APP.importFiles.control==='control-sin-pendiente.xlsx'&&APP.lineItems[0].cantidadPendienteServir===0);assert.equal(await page.evaluate(()=>TMSDomain.transitNeed(APP.lineItems[0])),0);
+  await page.locator('#ctrlFile').setInputFiles({name:'control-02.11.2026.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await workbook([{...sapRow,'Cantidad facturada':2,'Importe confirmado no entregado':800}])});
+  await page.waitForFunction(()=>APP.importFiles.control==='control-02.11.2026.xlsx'&&APP.lineItems[0].cantidadPendienteServir===10);assert.equal(await page.evaluate(()=>TMSDomain.transitNeed(APP.lineItems[0])),2);
   const warehouse={'Código':'C1','Cliente':'Cliente Móvil','Solicitud':'W-1','Pedido':'MOBILE-1','Linea':'1','Producto':'REF-M','Cantidad solicitada':5,'Cantidad completada':0,'Fecha de envío planificada':'02/11/2026'};
   for(const [id,name,row]of [['solicitudesPlanFileImport','solicitudes.xlsx',warehouse],['solicitudesControlFileImport','preparado.xlsx',{...warehouse,'Cantidad completada':2}]]){
    await page.locator('#'+id).setInputFiles({name,mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:await workbook([row])});await page.waitForFunction(name=>Object.values(APP.importFiles).includes(name),name);

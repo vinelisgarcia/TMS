@@ -808,8 +808,8 @@
       cantidadSolicitada: num(row.cantidad_solicitada),
       cantidadFacturada: num(row.cantidad_facturada),
       cantidadPendiente: num(row.cantidad_pendiente),
-      cantidadSolicitadaOriginal: num(metadata.cantidadSolicitadaOriginal || row.cantidad_solicitada),
-      cantidadPendienteServir: num(metadata.cantidadPendienteServir || row.cantidad_solicitada),
+      cantidadSolicitadaOriginal: num(metadata.cantidadSolicitadaOriginal ?? row.cantidad_solicitada),
+      cantidadPendienteServir: num(metadata.cantidadPendienteServir ?? (num(row.cantidad_solicitada) + num(metadata.cantidadPendienteSinStock))),
       cantidadPendienteSinStock: num(metadata.cantidadPendienteSinStock),
       montoPlanificado: num(metadata.montoPlanificado),
       montoEntregadoNoFacturado: num(metadata.montoEntregadoNoFacturado),
@@ -874,7 +874,7 @@
           montoPlanificado: num(item.montoPlanificado),
           montoEntregadoNoFacturado: num(item.montoEntregadoNoFacturado),
           cantidadSolicitadaOriginal: num(item.cantidadSolicitadaOriginal || item.cantidadSolicitada),
-          cantidadPendienteServir: num(item.cantidadPendienteServir || item.cantidadSolicitada),
+          cantidadPendienteServir: num(item.cantidadPendienteServir ?? (num(item.cantidadSolicitada) + num(item.cantidadPendienteSinStock))),
           cantidadPendienteSinStock: num(item.cantidadPendienteSinStock),
           observaciones: item.observaciones || '',
           incidencia: item.incidencia || '',
@@ -3256,6 +3256,7 @@
             item.cantidadFacturada = num(match.cantidadFacturada);
             item.cantidadPendiente = num(match.cantidadPendiente);
             item.cantidadPendienteSinStock = num(match.cantidadPendienteSinStock);
+            item.cantidadPendienteServir = num(match.cantidadPendienteServir);
             item.montoPlanificado = num(match.montoPlanificado);
             item.montoEntregadoNoFacturado = num(match.montoEntregadoNoFacturado);
             item.montoPendienteSinStock = num(match.montoPendienteSinStock);
@@ -3783,7 +3784,7 @@
         cantidadFacturada: orderLine ? num(orderLine.cantidadFacturada) : num(item.cantidadCompletada),
         monto: getCommercialLineAmount(item),
         transitNote: orderLine ? TMSDomain.transitForLine(orderLine, APP.transitMaterials).note : '',
-        pendingWithoutStock: orderLine ? num(orderLine.cantidadPendienteSinStock) : 0,
+        pendingWithoutStock: orderLine ? TMSDomain.transitNeed(orderLine) : 0,
         estado: section === 'en_ruta' ? text(item.estado || item.estadoAlmacen || deriveItemStatus(item)) : 'No considerado en ruta',
         section
       };
