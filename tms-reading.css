@@ -1,0 +1,37 @@
+[data-open-reading]{border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);font-size:17px;font-weight:650;min-width:44px;min-height:44px;padding:7px 9px;cursor:pointer}
+#readingSizeButton{margin-left:4px}
+#mobileReadingSizeButton{display:none}
+#readingSizeDialog{margin:auto;width:min(440px,calc(100% - 28px));max-height:85dvh;overflow:auto;border:1px solid var(--border);border-radius:20px;padding:22px;background:var(--glass-solid,var(--surface));color:var(--text);box-shadow:0 20px 65px #0004}
+#readingSizeDialog::backdrop{background:rgba(15,23,42,.48);backdrop-filter:blur(4px)}
+#readingSizeDialog header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+#readingSizeDialog h2{font-size:21px;margin:0;letter-spacing:-.4px}
+#readingSizeDialog [data-reading-close]{min-width:44px;min-height:44px;border:1px solid var(--border);border-radius:11px;background:var(--surface-2);color:var(--text);font-size:25px;cursor:pointer}
+.reading-size-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.reading-size-options button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;min-height:94px;min-width:0;padding:12px 5px;border:1px solid var(--border);border-radius:12px;color:var(--text);background:var(--surface-2);font-size:14px;cursor:pointer}
+.reading-size-options button[aria-pressed=true]{border-color:var(--primary);color:var(--primary);background:color-mix(in srgb,var(--primary) 9%,var(--surface))}
+.reading-sample-normal{font-size:17px}.reading-sample-large{font-size:22px}.reading-sample-extra{font-size:27px}
+#readingSizeDialog p{margin:16px 0 0;font-size:14px;color:var(--muted);line-height:1.6}
+@media screen{
+ :root body[data-reading-active=true] :is(#mainLayout,dialog):not(#readingSizeDialog) [data-tms-reading]{font-size:max(12px,calc(var(--reading-base-font)*var(--reading-scale)))!important;line-height:max(1.35em,calc(var(--reading-base-line)*var(--reading-scale)))!important}
+ body[data-reading-active=true] .calendar-dispatch-name{height:auto!important}
+ body[data-reading-active=true] .cal-dia-header{flex-wrap:wrap}
+ body[data-reading-active=true] .btn{height:auto;white-space:normal}
+ body[data-reading-active=true] .count-tabs button{height:auto}
+ body[data-reading-active=true] .cal-carril-title{flex-wrap:wrap}
+ body[data-reading-active=true] .calendar-dispatch-dialog h2{padding-right:0}
+}
+@media screen and (max-width:900px){
+ #readingSizeButton{display:none!important}
+ #mobileReadingSizeButton{display:block;flex-shrink:0;margin-left:auto}
+ .mobile-module-bar #mobileCurrentModule{flex:1;min-width:0;overflow-wrap:anywhere}
+ .mobile-module-bar{gap:8px}
+ body[data-reading-active=true] .calendar-dispatch-name{padding-right:76px}
+ body[data-reading-active=true] .calendar-dispatch-metrics{gap:8px}
+ body[data-reading-active=true] .calendar-dispatch-metrics dd{overflow-wrap:anywhere}
+ body[data-reading-size=extra] .audit-form-grid{grid-template-columns:minmax(0,1fr)}
+ body[data-reading-size=extra] #incidenciasDespacho .view-toolbar .import-actions{grid-template-columns:minmax(0,1fr)}
+ body[data-reading-size=extra] .sap-warehouse-actions{grid-template-columns:minmax(0,1fr)}
+ body[data-reading-size=extra] .calendar-selection-bar{flex-wrap:wrap}
+ body[data-reading-size=extra] .calendar-selection-bar .btn{flex:1 1 120px}
+}
+@media print{[data-open-reading],#readingSizeDialog{display:none!important}}

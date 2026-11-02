@@ -143,3 +143,19 @@ Validación: `node --test tests/transit-entry-import.test.cjs` y
 peticiones a Supabase están bloqueadas. Un archivo privado adicional puede
 validarse localmente con `TMS_TRANSIT_ENTRY_XLSX` y, opcionalmente, un objeto JSON
 de totales esperados en `TMS_TRANSIT_ENTRY_EXPECTED`; no se copia al repositorio.
+
+## Tamaño de lectura
+
+El botón Aa abre Normal, Grande (inicial) y Muy grande. La preferencia se guarda
+por usuario en el almacenamiento de este navegador y se actualiza entre pestañas
+del mismo navegador. No modifica datos operativos ni solicita permisos de edición.
+El tamaño se aplica al texto de módulos y detalles, con etiquetas de al menos
+12 px en los modos ampliados. Se recalculan los tamaños originales al cambiar de
+módulo, renderizar datos o redimensionar; no se acumula el aumento en texto anidado.
+El encabezado compacto y los controles de iconos conservan su disposición, y el
+escalado no se aplica a las exportaciones ni a la impresión.
+
+Validación: `node tests/reading-size-ui.cjs`, también con `TMS_TEST_ENGINE=webkit`.
+Comprueba tamaños, cierre del selector, persistencia por cuenta, actualización
+entre pestañas, texto nuevo, ausencia de cambios/guardados operativos y diez
+módulos a 320/390/768/1440 px con el tamaño mayor.
