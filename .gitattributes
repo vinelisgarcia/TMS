@@ -1,0 +1,2 @@
+# Keep pinned upstream distributions intact, including license comment spacing.
+vendor/** -whitespace linguist-vendored=true
