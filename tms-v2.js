@@ -1915,41 +1915,89 @@
 
   window.agregarNotaCalendario = function agregarNotaCalendario(fecha) {
     if (!fecha) return;
-    const texto = text(prompt('Nota pública para ' + fecha, ''));
-    if (!texto) return;
-    pushUndoState('agregar nota de calendario');
-    ensureCalendarNotes();
-    APP.calendarNotes.push({
-      id: 'calnote-' + Date.now() + '-' + Math.random().toString(16).slice(2),
-      fecha,
-      texto,
-      author: getCalendarNoteAuthor(),
-      createdAt: nowIso(),
-      updatedAt: nowIso()
+    openCalendarNoteEditor(fecha, '', function (texto) {
+      if (!texto) return;
+      pushUndoState('agregar nota de calendario');
+      ensureCalendarNotes();
+      APP.calendarNotes.push({
+        id: 'calnote-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+        fecha,
+        texto,
+        author: getCalendarNoteAuthor(),
+        createdAt: nowIso(),
+        updatedAt: nowIso()
+      });
+      renderCalendario();
+      scheduleAutoSave();
     });
-    renderCalendario();
-    scheduleAutoSave();
   };
 
   window.editarNotaCalendario = function editarNotaCalendario(id) {
     ensureCalendarNotes();
     const note = APP.calendarNotes.find(item => item.id === id);
     if (!note) return;
-    const next = prompt('Editar nota pública. Deja vacío para eliminarla.', note.texto);
-    if (next === null) return;
-    pushUndoState('editar nota de calendario');
-    const texto = text(next);
-    if (!texto) APP.calendarNotes = APP.calendarNotes.filter(item => item.id !== id);
-    else {
-      note.texto = texto;
-      note.author = getCalendarNoteAuthor();
-      note.updatedAt = nowIso();
-    }
-    renderCalendario();
-    scheduleAutoSave();
+    openCalendarNoteEditor(note.fecha, note.texto, function (texto) {
+      pushUndoState('editar nota de calendario');
+      if (!texto) APP.calendarNotes = APP.calendarNotes.filter(item => item.id !== id);
+      else {
+        note.texto = texto;
+        note.author = getCalendarNoteAuthor();
+        note.updatedAt = nowIso();
+      }
+      renderCalendario();
+      scheduleAutoSave();
+    });
   };
 
+  function openCalendarNoteEditor(fecha, value, save) {
+    let modal = document.getElementById('calendarDayNoteDialog');
+    if (!modal) {
+      modal = document.createElement('dialog'); modal.id = 'calendarDayNoteDialog'; modal.className = 'calendar-dispatch-dialog';
+      modal.setAttribute('aria-labelledby','calendarDayNoteTitle'); document.body.appendChild(modal);
+    }
+    modal.innerHTML = `<h2 id="calendarDayNoteTitle">Nota del calendario · ${escapeHtml(fecha)}</h2><label for="calendarDayNoteText">Nota pública</label><textarea id="calendarDayNoteText" class="form-control" rows="5"></textarea><p>Deja el texto vacío para eliminar una nota existente.</p><div class="modal-actions"><button class="btn btn-outline" data-day-report>Informe ejecutivo</button><button class="btn btn-outline" data-day-cancel>Cancelar</button><button class="btn btn-primary" data-day-save>Guardar</button></div>`;
+    const input = document.getElementById('calendarDayNoteText'); input.value = value;
+    modal.onclose = () => { if (!modal.open) { unsubmittedDrafts.delete(input); modal.replaceChildren(); } };
+    modal.querySelector('[data-day-cancel]').onclick = () => modal.close();
+    modal.querySelector('[data-day-save]').onclick = () => { save(text(input.value)); modal.close(); };
+    modal.querySelector('[data-day-report]').onclick = () => {
+      if (!hasPermission('calendario','ver')) return;
+      const groups = Object.values(APP.rutas[fecha] || {}).flat();
+      const row = {customer:fecha,label:'Nota pública',value:text(input.value) || '(Vacía)'};
+      const context = {source:'day',groups,transitMaterials:APP.transitMaterials || [],author:getCalendarNoteAuthor(),day:fecha,...(value && text(input.value) === value ? {notes:[{...row,status:'Guardado'}]} : {drafts:[row]})};
+      try { window.TMSCalendarReports.preview(window.TMSCalendarReports.build(context,TMSDomain)); } catch (error) { alert(error.message); }
+    };
+    modal.showModal(); input.focus();
+  }
+
   let calendarDispatchDetail = null;
+
+  // Resolve current data at report generation time, never export the whole calendar.
+  window.getCalendarExecutiveContext = function (source) {
+    if (!hasPermission('calendario', 'ver')) throw new Error('Tu perfil no puede consultar el calendario.');
+    let groups = [], invoiceKey = null;
+    if (source === 'dispatch') {
+      const ref = calendarDispatchDetail;
+      if (!ref) throw new Error('Abre nuevamente el despacho.');
+      const group = ((APP.rutas[ref.fecha] || {})[ref.camion] || []).find(row => row.id === ref.groupId);
+      if (group) groups = [group];
+      if (ref.transitOnly) invoiceKey = ref.invoiceKey;
+    } else {
+      const ref = APP.moveCliente || {};
+      if (source === 'move' && (ref.queueRouteName || ref.queueIdx !== undefined)) {
+        const queue = ref.queueRouteName ? APP.queueSemana.filter(row => queueByRouteName(row) === ref.queueRouteName) : [APP.queueSemana[ref.queueIdx]].filter(Boolean);
+        groups = queue.map(row => ({nombre:row.nombre,codigo:row.codigo,fecha:'Sin programar',camion:row.camion || '',rutaNombre:queueByRouteName(row),items:[row.item]}));
+      } else if (source === 'move' && ref.selectedKeys) {
+        const keys = new Set(ref.selectedKeys);
+        Object.values(APP.rutas || {}).forEach(lanes => Object.values(lanes).forEach(rows => rows.forEach(group => { if (keys.has(getGroupSelectionKey(group))) groups.push(group); })));
+      } else {
+        const group = ((APP.rutas[ref.fecha] || {})[ref.cam] || []).find(row => row.id === ref.reportGroupId);
+        if (group) groups = [group];
+      }
+    }
+    if (!groups.length) throw new Error('El despacho cambió o ya no está disponible. Cierra esta ventana y vuelve a abrirlo.');
+    return safeClone({source,groups,invoiceKey,transitMaterials:APP.transitMaterials || [],author:getCalendarNoteAuthor()});
+  };
 
   function calendarDispatchMetricsHtml(summary) {
     return `<dl class="calendar-dispatch-metrics"><div><dt>Pedidos</dt><dd>${summary.orders}${summary.unidentifiedOrders ? ' + sin identificar' : ''}</dd></div><div><dt>Confirmado</dt><dd>${formatMonto(summary.confirmed)}</dd></div><div><dt>Pend. facturar</dt><dd>${formatMonto(summary.pendingBilling)}</dd></div><div><dt>Valor en ruta</dt><dd>${formatMonto(summary.total)}</dd></div></dl>`;
@@ -1997,7 +2045,7 @@
         const outside = event.target === modal && (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom);
         if (outside || event.target.closest('[data-calendar-detail-close]')) modal.close();
       });
-      modal.addEventListener('close', () => { calendarDispatchDetail = null; });
+      modal.addEventListener('close', () => { if (!modal.open) calendarDispatchDetail = null; });
       document.body.appendChild(modal);
     }
     renderCalendarDispatchDetail();
@@ -2507,7 +2555,7 @@
   window.abrirMoveModal = function abrirMoveModalV2(fecha, camion, idx) {
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
-    APP.moveCliente = { fecha, cam: camion, idx };
+    APP.moveCliente = { fecha, cam: camion, idx, reportGroupId: group.id };
     document.getElementById('moveModalClienteNombre').textContent = `${group.nombre} · Pedido ${group.pedidoCliente}`;
     const dates = buildMoveDateOptions(group.items[0], fecha);
     setMoveDateInput(dates, fecha);
@@ -2968,7 +3016,7 @@
   window.abrirNotaModal = function abrirNotaModalV2(fecha, camion, idx, options) {
     const group = getGroupByRouteRef(fecha, camion, idx);
     if (!group) return;
-    APP.moveCliente = { fecha, cam: camion, idx, completeOnSave: !!(options && options.completeOnSave) };
+    APP.moveCliente = { fecha, cam: camion, idx, reportGroupId: group.id, completeOnSave: !!(options && options.completeOnSave) };
     APP.pendingTruckPhoto = null;
     document.getElementById('notaModalNombre').textContent = `${group.nombre} · Pedido ${group.pedidoCliente}`;
     document.getElementById('notaInput').value = group.nota || '';
@@ -5489,7 +5537,7 @@
   function trackUnsubmittedDraft(event) {
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
-    if (!control.closest('#mainLayout') || control.closest('#inventario')) return;
+    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog')) || control.closest('#inventario')) return;
     if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
