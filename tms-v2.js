@@ -4107,6 +4107,7 @@
     resumen.textContent = `${filtered.filter(item => clienteTieneConfigV2(item.codigo)).length} configurados`;
     if (!filtered.length) {
       list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><p>Sin clientes para configurar.</p></div>';
+      renderConfigAuxSections();
       return;
     }
     if (!APP.configClienteSel || !filtered.some(item => item.codigo === APP.configClienteSel)) APP.configClienteSel = filtered[0].codigo;
@@ -4300,6 +4301,79 @@
     else reader.readAsArrayBuffer(file);
   };
 
+  const accessUi = { tab: 'users', search: '', role: '', status: '' };
+
+  function accessAccountStatus(profile) {
+    const account = getProfileAccountMeta(profile);
+    if (profile.activo === false) return { key: 'inactive', label: 'Inactivo' };
+    if (account.authNeedsConfirmation) return { key: 'pending', label: 'Confirmar correo' };
+    if (account.passwordChangeRequired) return { key: 'pending', label: 'Cambiar contraseña' };
+    return { key: 'active', label: 'Activo' };
+  }
+
+  function renderAccessSettings(roleOptions) {
+    const profiles = APP.userProfiles || [], admin = isAdminUser(), disabled = admin ? '' : 'disabled';
+    const pending = profiles.filter(profile => accessAccountStatus(profile).key === 'pending').length;
+    const active = profiles.filter(profile => accessAccountStatus(profile).key === 'active').length;
+    return `<section id="accessSettings" class="card access-settings" aria-labelledby="accessTitle">
+      <header class="access-heading"><div><p class="access-eyebrow">ADMINISTRACIÓN</p><h2 id="accessTitle">Equipo y accesos</h2><p>Gestiona tu equipo y lo que puede hacer cada rol.</p></div><span class="access-admin-tag">${admin ? 'Administración de accesos' : 'Consulta de accesos'}</span></header>
+      <dl class="access-overview"><div><dt>Usuarios</dt><dd>${profiles.length}</dd></div><div><dt>Accesos activos</dt><dd>${active}</dd></div><div><dt>Acción pendiente</dt><dd>${pending}</dd></div><div><dt>Roles</dt><dd>${roleOptions.length}</dd></div></dl>
+      <div class="access-tabs" role="tablist" aria-label="Administración de accesos"><button id="accessUsersTab" type="button" role="tab" aria-controls="accessUsersPanel" aria-selected="${accessUi.tab === 'users'}" tabindex="${accessUi.tab === 'users' ? 0 : -1}" onclick="cambiarPestanaAccesos('users')" onkeydown="navegarPestanasAccesos(event)">Usuarios <span>${profiles.length}</span></button><button id="accessRolesTab" type="button" role="tab" aria-controls="accessRolesPanel" aria-selected="${accessUi.tab === 'roles'}" tabindex="${accessUi.tab === 'roles' ? 0 : -1}" onclick="cambiarPestanaAccesos('roles')" onkeydown="navegarPestanasAccesos(event)">Roles y permisos <span>${roleOptions.length}</span></button></div>
+      <div id="accessUsersPanel" role="tabpanel" aria-labelledby="accessUsersTab" ${accessUi.tab !== 'users' ? 'hidden' : ''}>
+        <div class="access-section-head"><div><h3>Directorio de usuarios</h3><p>Busca una persona o filtra por rol y estado.</p></div><button type="button" class="btn btn-primary" onclick="abrirAltaUsuario()" ${disabled}>+ Nuevo usuario</button></div>
+        <details id="accessCreateUser" class="access-create"><summary>Crear acceso de usuario</summary><div class="access-create-body"><div class="access-form-grid">
+          <label>Nombre completo<input id="userNameInput" class="form-control" placeholder="Nombre y apellido" autocomplete="off" ${disabled}></label>
+          <label>Correo electrónico<input id="userEmailInput" class="form-control" type="email" placeholder="nombre@empresa.com" autocomplete="off" ${disabled}></label>
+          <label>Contraseña temporal<span class="password-field-wrap"><input id="userPasswordInput" class="form-control" type="password" minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password" ${disabled}><button type="button" class="btn btn-outline" aria-label="Mostrar contraseña temporal" aria-pressed="false" onclick="toggleUserPasswordVisibility()" ${disabled}>Ver</button></span></label>
+          <label>Rol asignado<select id="userRoleInput" class="form-control" ${disabled}>${roleOptions.map(role => `<option value="${escapeHtml(role)}" ${role === 'Solo lectura' ? 'selected' : ''}>${escapeHtml(role)}</option>`).join('')}</select></label>
+        </div><div class="access-form-footer"><p>El usuario deberá cambiar la contraseña temporal al entrar.</p><button class="btn btn-primary" onclick="crearUsuarioPerfil()" ${disabled}>Crear usuario</button></div></div></details>
+        <div class="access-filters"><label class="access-search">Buscar usuario<input id="accessUserSearch" class="form-control" type="search" placeholder="Nombre o correo" value="${escapeHtml(accessUi.search)}" oninput="filtrarUsuariosAccesos()"></label><label>Rol<select id="accessFilterRole" class="form-control" onchange="filtrarUsuariosAccesos()"><option value="">Todos</option>${roleOptions.map(role => `<option value="${escapeHtml(role)}" ${role === accessUi.role ? 'selected' : ''}>${escapeHtml(role)}</option>`).join('')}</select></label><label>Estado<select id="accessFilterStatus" class="form-control" onchange="filtrarUsuariosAccesos()"><option value="">Todos</option>${[['active','Activo'],['pending','Pendiente'],['inactive','Inactivo']].map(([key,label]) => `<option value="${key}" ${key === accessUi.status ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>
+        <p id="accessResultCount" class="access-result-count" role="status"></p><div class="access-user-grid">${profiles.map((profile,index) => {
+          const status = accessAccountStatus(profile), perms = getPermissionsForRole(profile.rol), modules = Object.entries(MODULE_LABELS).filter(([key]) => perms[key] && (perms[key].ver || perms[key].editar || perms[key].importar));
+          const initials = text(profile.nombre || profile.email || '?').split(/\s+/).slice(0,2).map(word => word[0]).join('').toUpperCase();
+          return `<article class="access-user" data-user-index="${index}" data-user-search="${escapeHtml((profile.nombre + ' ' + profile.email).toLocaleLowerCase('es'))}" data-user-role="${escapeHtml(profile.rol)}" data-user-status="${status.key}"><header><span class="access-avatar" aria-hidden="true">${escapeHtml(initials)}</span><div><h4>${escapeHtml(profile.nombre || 'Sin nombre')}</h4><p>${escapeHtml(profile.email || 'Sin correo')}</p></div><span class="access-status access-status-${status.key}">${status.label}</span></header><div class="access-user-meta"><span class="access-role-tag">${escapeHtml(profile.rol)}</span><span>${profile.rol === 'Admin' ? 'Acceso total' : modules.length + ' módulos habilitados'}</span></div><details class="access-user-permissions"><summary>Ver permisos del rol</summary><ul>${modules.map(([key,label]) => `<li><span>${escapeHtml(label)}</span><strong>${perms[key].importar ? 'Importar' : perms[key].editar ? 'Editar' : 'Ver'}</strong></li>`).join('') || '<li>Sin módulos habilitados</li>'}</ul></details><footer>${profile.rol === 'Admin' ? '<span class="access-protected">Cuenta administradora</span>' : `<button type="button" class="btn btn-outline" onclick="enviarResetPasswordUsuario(${index})" ${disabled}>Restablecer contraseña</button><button type="button" class="btn btn-outline access-delete" aria-label="Eliminar usuario ${escapeHtml(profile.nombre)}" onclick="eliminarUsuarioPerfil(${index})" ${disabled}>Eliminar</button>`}</footer></article>`;
+        }).join('')}</div><div id="accessNoResults" class="access-empty" hidden><strong>No encontramos usuarios</strong><p>Prueba otro nombre, correo o filtro.</p><button class="btn btn-outline" onclick="limpiarFiltrosAccesos()">Limpiar filtros</button></div>
+      </div>
+      <div id="accessRolesPanel" role="tabpanel" aria-labelledby="accessRolesTab" ${accessUi.tab !== 'roles' ? 'hidden' : ''}>
+        <div class="access-section-head"><div><h3>Permisos por rol</h3><p>Define los módulos y acciones disponibles para cada perfil.</p></div><button class="btn btn-primary" onclick="guardarPermisosRol()" ${disabled}>Guardar permisos</button></div>
+        <div class="access-role-controls"><label>Rol a configurar<select id="rolePermissionSelect" class="form-control" onchange="seleccionarRolPermisos(this.value)">${roleOptions.map(role => `<option value="${escapeHtml(role)}" ${role === APP.selectedRolePermission ? 'selected' : ''}>${escapeHtml(role)}</option>`).join('')}</select></label><p id="accessRoleAssignment">${profiles.filter(profile => profile.rol === APP.selectedRolePermission).length} usuarios con este rol</p><details class="access-new-role"><summary>Crear rol</summary><div><label>Nombre del rol<input id="newRoleNameInput" class="form-control" placeholder="Ej. Supervisor" ${disabled}></label><button class="btn btn-outline" onclick="agregarRolPermisos()" ${disabled}>Crear rol</button></div></details></div>
+        <p class="access-permission-help">Ver permite consultar. Editar permite modificar. Importar permite cargar archivos.</p>
+        <div class="access-matrix-wrap"><table class="data-table role-permission-table access-matrix"><caption class="sr-only">Permisos del rol seleccionado por módulo</caption><thead><tr><th scope="col">Módulo</th><th scope="col">Ver</th><th scope="col">Editar</th><th scope="col">Importar</th></tr></thead><tbody id="accessRoleMatrix">${renderRolePermissionRows(APP.selectedRolePermission)}</tbody></table></div>
+        <footer class="access-role-footer"><p class="access-permission-help">Los cambios se aplican a todos los usuarios de este rol al guardar. Admin mantiene acceso total al sistema.</p><button class="btn btn-primary" onclick="guardarPermisosRol()" ${disabled}>Guardar cambios del rol</button></footer>
+      </div>
+    </section>`;
+  }
+
+  window.cambiarPestanaAccesos = function (tab) {
+    accessUi.tab = tab === 'roles' ? 'roles' : 'users';
+    [['users','Users'],['roles','Roles']].forEach(([key,id]) => {
+      const selected = key === accessUi.tab, button = document.getElementById('access'+id+'Tab');
+      button.setAttribute('aria-selected',String(selected)); button.tabIndex = selected ? 0 : -1;
+      document.getElementById('access'+id+'Panel').hidden = !selected;
+    });
+  };
+  window.navegarPestanasAccesos = function (event) {
+    if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault(); const tab = event.key === 'Home' ? 'users' : event.key === 'End' ? 'roles' : accessUi.tab === 'users' ? 'roles' : 'users';
+    cambiarPestanaAccesos(tab); document.getElementById(tab === 'users' ? 'accessUsersTab' : 'accessRolesTab').focus();
+  };
+  window.abrirAltaUsuario = function () {
+    const form = document.getElementById('accessCreateUser'); form.open = true; form.scrollIntoView({block:'nearest',behavior:'smooth'}); document.getElementById('userNameInput').focus();
+  };
+  window.filtrarUsuariosAccesos = function () {
+    const search = document.getElementById('accessUserSearch'); if (!search) return;
+    accessUi.search = search.value; accessUi.role = document.getElementById('accessFilterRole').value; accessUi.status = document.getElementById('accessFilterStatus').value;
+    let count = 0; document.querySelectorAll('#accessSettings [data-user-index]').forEach(card => {
+      const match = normKey(card.dataset.userSearch).includes(normKey(accessUi.search)) && (!accessUi.role || card.dataset.userRole === accessUi.role) && (!accessUi.status || card.dataset.userStatus === accessUi.status);
+      card.hidden = !match; if (match) count++;
+    });
+    document.getElementById('accessResultCount').textContent = count + ' de ' + APP.userProfiles.length + ' usuarios';
+    document.getElementById('accessNoResults').hidden = count > 0;
+  };
+  window.limpiarFiltrosAccesos = function () {
+    ['accessUserSearch','accessFilterRole','accessFilterStatus'].forEach(id => { document.getElementById(id).value = ''; }); filtrarUsuariosAccesos();
+  };
+
   function renderConfigAuxSections() {
     const mount = document.getElementById('configExtrasMount');
     if (!mount) return;
@@ -4339,69 +4413,7 @@
           </tr>`).join('') : '<tr><td colspan="5">Sin rutas configuradas aún. Se crearán automáticamente al importar o asignar clientes.</td></tr>'}</tbody>
         </table></div>
       </div>
-      <div class="card">
-        <div class="card-title">Permisos por rol</div>
-        <div class="config-help-note" style="margin-bottom:12px;">Primero configura qué puede ver, editar o importar cada rol. Al crear un usuario solo tendrás que asignarle un rol.</div>
-        <div class="role-permission-toolbar">
-          <label class="form-row" style="margin-bottom:0;">Rol a configurar
-            <select id="rolePermissionSelect" class="form-control" onchange="seleccionarRolPermisos(this.value)">
-              ${roleOptions.map(role => `<option value="${role}" ${role === APP.selectedRolePermission ? 'selected' : ''}>${role}</option>`).join('')}
-            </select>
-          </label>
-          <label class="form-row" style="margin-bottom:0;">Nuevo rol
-            <input id="newRoleNameInput" class="form-control" placeholder="Ej. Supervisor">
-          </label>
-          <button class="btn btn-outline btn-sm" onclick="agregarRolPermisos()">Crear rol</button>
-          <button class="btn btn-primary btn-sm" onclick="guardarPermisosRol()">Guardar permisos del rol</button>
-        </div>
-        <div class="table-wrap"><table class="data-table role-permission-table">
-          <thead><tr><th>Módulo</th><th>Ver</th><th>Editar</th><th>Importar</th></tr></thead>
-          <tbody>${renderRolePermissionRows(APP.selectedRolePermission)}</tbody>
-        </table></div>
-      </div>
-      <div class="card">
-        <div class="card-title">Usuarios</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px;">
-          <label class="form-row">Nombre
-            <input id="userNameInput" class="form-control" placeholder="Nombre completo">
-          </label>
-          <label class="form-row">Email
-            <input id="userEmailInput" class="form-control" type="email" placeholder="correo@empresa.com">
-          </label>
-          <label class="form-row">Contraseña inicial
-            <span class="password-field-wrap">
-              <input id="userPasswordInput" class="form-control" type="password" minlength="6" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
-              <button type="button" class="btn btn-outline btn-sm" onclick="toggleUserPasswordVisibility()">Ver</button>
-            </span>
-          </label>
-          <label class="form-row">Rol
-            <select id="userRoleInput" class="form-control">
-              ${roleOptions.map(role => `<option value="${role}">${role}</option>`).join('')}
-            </select>
-          </label>
-        </div>
-        <div class="config-help-note" style="margin-bottom:12px;">La contraseña inicial se envía a Supabase Auth al crear el acceso. Para usuarios existentes, usa reset de contraseña; por seguridad Supabase no permite editar contraseñas de otros usuarios desde esta pantalla sin backend administrativo.</div>
-        <div style="margin-bottom:12px;">
-          <button class="btn btn-primary btn-sm" onclick="crearUsuarioPerfil()">Crear usuario</button>
-        </div>
-        <div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado acceso</th><th>Permisos efectivos</th><th>Detalle</th><th>Acciones</th></tr></thead>
-          <tbody>${APP.userProfiles.map((profile, index) => {
-            const account = getProfileAccountMeta(profile);
-            const statusLabel = account.authNeedsConfirmation ? 'Pendiente correo' : account.passwordChangeRequired ? 'Cambio requerido' : 'Activo';
-            const statusClass = account.authNeedsConfirmation || account.passwordChangeRequired ? 'badge-warn' : 'badge-ok';
-            return `<tr>
-            <td>${profile.nombre}</td>
-            <td>${profile.email || '—'}</td>
-            <td>${profile.rol}</td>
-            <td><span class="badge ${statusClass}">${statusLabel}</span></td>
-            <td>${profile.rol === 'Admin' ? 'Acceso total' : summarizePermissions(getPermissionsForRole(profile.rol))}</td>
-            <td>${renderPermissionChips(getPermissionsForRole(profile.rol))}</td>
-            <td>${profile.rol === 'Admin' ? '<span class="badge badge-ok">Base</span>' : `<button class="btn btn-outline btn-sm" onclick="enviarResetPasswordUsuario(${index})">Enviar reset</button> <button class="btn btn-outline btn-sm" onclick="eliminarUsuarioPerfil(${index})">Eliminar</button>`}</td>
-          </tr>`;
-          }).join('')}</tbody>
-        </table></div>
-      </div>
+      ${renderAccessSettings(roleOptions)}
       <div class="card">
         <div class="card-title">Costes operativos</div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">
@@ -4414,6 +4426,7 @@
         </div>
       </div>
     `;
+    filtrarUsuariosAccesos();
   }
 
   window.sincronizarPermisosPorRol = function sincronizarPermisosPorRol() {
@@ -4426,6 +4439,8 @@
     const input = document.getElementById('userPasswordInput');
     if (!input) return;
     input.type = input.type === 'password' ? 'text' : 'password';
+    const button = input.parentElement.querySelector('button');
+    if (button) { const shown = input.type === 'text'; button.textContent = shown ? 'Ocultar' : 'Ver'; button.setAttribute('aria-pressed',String(shown)); button.setAttribute('aria-label',shown ? 'Ocultar contraseña temporal' : 'Mostrar contraseña temporal'); }
   };
 
   function renderRolePermissionRows(role) {
@@ -4434,17 +4449,18 @@
       const actions = perms[module] || {};
       const canImport = module === 'importar' || module === 'configuracion';
       return `<tr>
-        <td><strong>${label}</strong></td>
-        <td><input type="checkbox" class="rolePerm" data-module="${module}" data-action="ver" ${actions.ver ? 'checked' : ''}></td>
-        <td><input type="checkbox" class="rolePerm" data-module="${module}" data-action="editar" ${actions.editar ? 'checked' : ''}></td>
-        <td>${canImport ? `<input type="checkbox" class="rolePerm" data-module="${module}" data-action="importar" ${actions.importar ? 'checked' : ''}>` : '<span style="color:var(--muted);">—</span>'}</td>
+        <th scope="row">${escapeHtml(label)}</th>
+        <td><label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Ver ${escapeHtml(label)}" data-module="${module}" data-action="ver" ${actions.ver ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label></td>
+        <td><label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Editar ${escapeHtml(label)}" data-module="${module}" data-action="editar" ${actions.editar ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label></td>
+        <td>${canImport ? `<label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Importar ${escapeHtml(label)}" data-module="${module}" data-action="importar" ${actions.importar ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label>` : '<span class="access-unavailable" aria-label="No aplica">—</span>'}</td>
       </tr>`;
     }).join('');
   }
 
   window.seleccionarRolPermisos = function seleccionarRolPermisos(role) {
     APP.selectedRolePermission = role;
-    renderConfigAuxSections();
+    document.getElementById('accessRoleMatrix').innerHTML = renderRolePermissionRows(role);
+    document.getElementById('accessRoleAssignment').textContent = APP.userProfiles.filter(profile => profile.rol === role).length + ' usuarios con este rol';
   };
 
   window.agregarRolPermisos = function agregarRolPermisos() {
@@ -5538,7 +5554,7 @@
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
     if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog')) || control.closest('#inventario')) return;
-    if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
+    if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
     unsubmittedDrafts.add(control);
@@ -5872,7 +5888,7 @@
           ${routeOptions.map(route => `<option value="${route}">${route}</option>`).join('')}
         </select>
         <select id="cfComEstado" class="search-input" onchange="renderComercial()">
-          <option value="">Todos los estados</option>
+          <option value="">Todos</option>
           <option value="pendiente">Pendiente</option>
           <option value="parcial">Parcial</option>
           <option value="entregado">Entregado</option>

@@ -1,0 +1,78 @@
+#accessSettings{padding:26px;overflow:hidden;min-width:0;border:1px solid var(--border);border-radius:18px;background:var(--glass-solid,var(--surface))}
+#accessSettings [hidden]{display:none!important}
+#accessSettings .access-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:24px}
+#accessSettings .access-eyebrow{font-size:10px;font-weight:800;letter-spacing:1.7px;color:var(--primary);margin:0 0 8px}
+#accessSettings h2{font-size:24px;letter-spacing:-.6px;line-height:1.25;margin:0 0 9px}
+#accessSettings .access-heading>div>p:last-child,#accessSettings .access-section-head p{font-size:13px;line-height:1.6;color:var(--muted);margin:0}
+#accessSettings .access-admin-tag{background:var(--surface-2);color:var(--muted);border:1px solid var(--border);padding:7px 10px;border-radius:20px;font-size:11px;white-space:nowrap}
+#accessSettings .access-overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 24px}
+#accessSettings .access-overview>div{padding:17px 18px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
+#accessSettings .access-overview dt{font-size:12px;color:var(--muted)}
+#accessSettings .access-overview dd{margin:9px 0 0;font-size:27px;font-weight:750;line-height:1;color:var(--text)}
+#accessSettings .access-tabs{display:flex;gap:5px;border-bottom:1px solid var(--border);margin-bottom:24px}
+#accessSettings .access-tabs button{display:flex;align-items:center;gap:9px;background:none;border:none;border-bottom:3px solid transparent;padding:12px 16px;color:var(--muted);font-size:14px;font-weight:650;cursor:pointer;min-height:48px}
+#accessSettings .access-tabs button[aria-selected=true]{border-color:var(--primary);color:var(--primary)}
+#accessSettings .access-tabs button span{border-radius:20px;background:var(--surface-2);padding:3px 7px;font-size:11px}
+#accessSettings .access-section-head{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px}
+#accessSettings h3{font-size:17px;line-height:1.4;margin:0 0 5px}
+#accessSettings .btn{min-height:42px;white-space:normal;justify-content:center}
+#accessSettings label{display:flex;flex-direction:column;gap:7px;font-size:12px;font-weight:600;color:var(--text);min-width:0}
+#accessSettings .form-control{min-width:0!important;width:100%;max-width:100%;min-height:44px;font-size:13px}
+#accessSettings .access-create{margin-bottom:20px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)}
+#accessSettings summary{cursor:pointer;min-height:44px;padding:13px 16px;font-size:13px;font-weight:600;line-height:1.5}
+#accessSettings summary::marker{color:var(--primary)}
+#accessSettings .access-create-body{padding:6px 18px 18px}
+#accessSettings .access-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+#accessSettings .password-field-wrap{display:flex;gap:6px;min-width:0}#accessSettings .password-field-wrap input{flex:1;min-width:0}#accessSettings .password-field-wrap button{flex:0 0 auto}
+#accessSettings .access-form-footer{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px}
+#accessSettings .access-form-footer p{font-size:12px;line-height:1.5;color:var(--muted);margin:0;max-width:470px}
+#accessSettings .access-filters{display:grid;grid-template-columns:minmax(180px,2fr) repeat(2,minmax(140px,1fr));gap:12px;align-items:end}
+#accessSettings .access-result-count{font-size:12px;color:var(--muted);margin:14px 0}
+#accessSettings .access-user-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+#accessSettings .access-user{border:1px solid var(--border);border-radius:14px;padding:18px;min-width:0;background:var(--glass-solid,var(--surface))}
+#accessSettings .access-user>header{display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;align-items:center}
+#accessSettings .access-avatar{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:color-mix(in srgb,var(--primary) 10%,var(--surface));color:var(--primary);font-size:13px;font-weight:750}
+#accessSettings .access-user h4{font-size:15px;margin:0 0 4px;line-height:1.4;overflow-wrap:anywhere}
+#accessSettings .access-user header p{font-size:12px;line-height:1.5;color:var(--muted);margin:0;overflow-wrap:anywhere}
+#accessSettings .access-status{grid-column:2;justify-self:start;display:inline-flex;padding:4px 8px;border-radius:6px;font-size:10px;font-weight:650;line-height:1.5}
+#accessSettings .access-status-active{background:#e9f6ed;color:#27653d}#accessSettings .access-status-pending{background:#fff4dd;color:#885a0d}#accessSettings .access-status-inactive{background:var(--surface-2);color:var(--muted)}
+#accessSettings .access-user-meta{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:16px 0 9px;font-size:11px;color:var(--muted)}
+#accessSettings .access-role-tag{font-weight:650;color:var(--primary);background:color-mix(in srgb,var(--primary) 7%,var(--surface));padding:5px 8px;border-radius:6px;overflow-wrap:anywhere}
+#accessSettings .access-user-permissions summary{padding:9px 0;font-size:12px;color:var(--muted)}
+#accessSettings .access-user-permissions ul{list-style:none;padding:0;margin:4px 0 14px;display:grid;gap:7px}
+#accessSettings .access-user-permissions li{display:flex;justify-content:space-between;gap:14px;font-size:12px;line-height:1.5;padding:5px 0;border-bottom:1px solid var(--border)}
+#accessSettings .access-user-permissions li strong{font-size:11px;color:var(--primary);font-weight:600}
+#accessSettings .access-user footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:14px;border-top:1px solid var(--border);margin-top:8px;flex-wrap:wrap}
+#accessSettings .access-user footer .btn{font-size:11px;padding:8px 11px}
+#accessSettings .access-delete{border-color:transparent;color:var(--danger)}
+#accessSettings .access-protected{font-size:12px;color:var(--muted);padding:10px 0}
+#accessSettings .access-empty{text-align:center;padding:36px 15px;border:1px dashed var(--border);border-radius:12px;background:var(--surface-2)}
+#accessSettings .access-empty strong{font-size:15px}#accessSettings .access-empty p{font-size:13px;color:var(--muted)}
+#accessSettings .access-role-controls{display:flex;align-items:end;gap:16px;flex-wrap:wrap;padding:18px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);margin-bottom:14px}
+#accessSettings .access-role-controls>label{flex:1;min-width:180px}
+#accessSettings #accessRoleAssignment{font-size:12px;color:var(--muted);padding:12px 0;margin:0}
+#accessSettings .access-new-role{margin-left:auto}
+#accessSettings .access-new-role>div{display:flex;align-items:end;gap:10px;padding:0 0 8px}
+#accessSettings .access-new-role summary{color:var(--primary);padding:10px 0}
+#accessSettings .access-permission-help{font-size:12px;line-height:1.7;color:var(--muted);margin:12px 0}
+#accessSettings .access-matrix-wrap{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+#accessSettings .access-matrix{width:100%;min-width:0;table-layout:fixed;margin:0}
+#accessSettings .access-matrix th:first-child{width:43%;text-align:left;padding:12px 16px}
+#accessSettings .access-matrix th,#accessSettings .access-matrix td{white-space:normal;overflow-wrap:anywhere;text-align:center;font-size:12px;padding:5px;vertical-align:middle}
+#accessSettings .access-matrix thead th{font-size:11px;padding-top:14px;padding-bottom:14px;background:var(--surface-2);color:var(--muted);font-weight:650}
+#accessSettings .access-matrix tbody th{font-weight:550;background:none}
+#accessSettings .access-check{position:relative;display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;min-width:0;cursor:pointer}
+#accessSettings .access-check input{width:20px;height:20px;accent-color:var(--primary);cursor:pointer;margin:0}
+#accessSettings .access-unavailable{color:var(--muted)}
+#accessSettings :is(button,summary,input,select):focus-visible{outline:3px solid color-mix(in srgb,var(--primary) 65%,transparent);outline-offset:3px}
+#accessSettings .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:1100px){#accessSettings .access-user-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:650px){#accessSettings{padding:16px;border-radius:14px}#accessSettings .access-heading{display:block}#accessSettings .access-admin-tag{display:inline-flex;margin-top:12px;font-size:10px}#accessSettings .access-overview{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#accessSettings .access-overview>div{padding:14px}#accessSettings .access-overview dd{font-size:24px}#accessSettings .access-tabs button{padding:12px 8px;font-size:12px;gap:6px;flex:1;justify-content:center}#accessSettings .access-section-head{align-items:flex-start;flex-direction:column}#accessSettings .access-section-head>.btn{width:100%}#accessSettings .access-filters{grid-template-columns:repeat(2,minmax(0,1fr))}#accessSettings .access-search{grid-column:1/-1}#accessSettings .access-form-grid{grid-template-columns:minmax(0,1fr)}#accessSettings .access-form-footer{align-items:stretch;flex-direction:column}#accessSettings .access-create-body{padding:4px 12px 14px}#accessSettings .access-user{padding:14px}#accessSettings .access-user footer>.btn:first-child{flex:1}#accessSettings .access-role-controls{padding:12px;gap:9px}#accessSettings .access-role-controls>label{width:100%;min-width:0}#accessSettings .access-new-role{width:100%;margin-left:0}#accessSettings .access-new-role>div{flex-direction:column;align-items:stretch}#accessSettings .access-matrix th:first-child{width:40%;padding:10px 8px}#accessSettings .access-matrix th,#accessSettings .access-matrix td{font-size:11px;padding:3px}#accessSettings .access-check{width:38px;height:44px}}
+
+#accessSettings .access-create:not([open]){display:none}
+#accessSettings select.form-control{-webkit-appearance:none;appearance:none;display:block;padding-right:32px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4 3 3 3-3' fill='none' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;background-size:12px}
+#accessSettings .access-role-footer{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-top:16px}
+#accessSettings .access-role-footer p{max-width:650px}
+#accessSettings .access-role-footer button{flex-shrink:0}
+@media(max-width:650px){#accessSettings .access-role-footer{align-items:stretch;flex-direction:column;gap:8px}}
+@media(max-width:650px){#accessSettings .access-role-controls>label{flex:1 1 100%}#accessSettings .access-overview>div{padding:12px}#accessSettings .access-overview dd{margin-top:6px}#accessSettings .access-admin-tag{display:none}}
