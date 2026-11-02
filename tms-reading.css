@@ -12,7 +12,7 @@
 .reading-sample-normal{font-size:17px}.reading-sample-large{font-size:22px}.reading-sample-extra{font-size:27px}
 #readingSizeDialog p{margin:16px 0 0;font-size:14px;color:var(--muted);line-height:1.6}
 @media screen{
- :root body[data-reading-active=true] :is(#mainLayout,dialog):not(#readingSizeDialog) [data-tms-reading]{font-size:max(12px,calc(var(--reading-base-font)*var(--reading-scale)))!important;line-height:max(1.35em,calc(var(--reading-base-line)*var(--reading-scale)))!important}
+ :root body[data-reading-active=true] :is(#mainLayout,dialog,.inv-modal):not(#readingSizeDialog) [data-tms-reading]{font-size:max(12px,calc(var(--reading-base-font)*var(--reading-scale)))!important;line-height:max(1.35em,calc(var(--reading-base-line)*var(--reading-scale)))!important}
  body[data-reading-active=true] .calendar-dispatch-name{height:auto!important}
  body[data-reading-active=true] .cal-dia-header{flex-wrap:wrap}
  body[data-reading-active=true] .btn{height:auto;white-space:normal}

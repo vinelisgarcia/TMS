@@ -47,9 +47,10 @@ test('original template imports barcodes/master and sums repeated location rows,
   C.importMaster(data,[['CODIGO','UBICACION','STOCK UBICACION'],['0001','A01',10],['0001','A01',2],['0001','A02',12]],{code:0,location:1,stock:2},'positions',{parseNumber:D.parseNumber});
   const item=C.resolve(data,'750000000001');assert.equal(item.code,'0001');assert.equal(item.locations[0].stock,12);assert.equal(item.masterStock,24);C.createCycle(data,{ready:false});C.addItem(data,'0001');record(data,'0001','A01',12);record(data,'0001','A02',12);const row=C.itemReport(C.active(data),'0001');assert.equal(row.referenceStock,24);assert.equal(row.referenceDifference,0);
 });
-test('unknown location requires actual location entry and cannot borrow the warehouse ID',()=>{
-  const data={sources:{ct:D.consolidate([['Material','Quantity','Warehouse'],['A',1,'1015']],{source:'ct'})}};C.createCycle(data,{ready:false});C.addItem(data,'A');assert.throws(()=>record(data,'A','',1),/ubicación real/);record(data,'A','',1,{actualLocation:'RACK-3'});assert.equal(C.itemReport(C.active(data),'A').complete,true);
+test('unknown CT locations do not block a confirmed material count or create a fictitious bin',()=>{
+  const data={sources:{ct:D.consolidate([['Material','Quantity','Warehouse'],['A',1,'1015']],{source:'ct'})}};C.createCycle(data,{ready:false});C.addItem(data,'A');const saved=record(data,'A','',1);assert.equal(saved.locationConfirmed,false);assert.equal(saved.ctLocationConfirmed,false);assert.equal(saved.actualLocation,'');assert.equal(C.itemReport(C.active(data),'A').complete,true);assert.equal(C.catalog(data)[0].locations.length,0);
 });
+
 test('only physically complete and processed CT-only items enter the AD-registration output',()=>{
   const data=fixture();C.createCycle(data,report(data));C.addItem(data,'C');record(data,'C','C01',4);assert.equal(C.itemReport(C.active(data),'C').readyForAD,false);C.processItem(data,'C');assert.equal(C.itemReport(C.active(data),'C').readyForAD,true);assert.equal(data.sources.ad.materials.some(row=>row.code==='C'),false);
 });
@@ -80,4 +81,24 @@ test('AD minus CT reverses ranked membership and old convention cycles remain ar
  assert.equal(ranks.positive[0].code,'B');assert.equal(ranks.negative[0].code,'A');assert.equal(ranks.unvalued[0].code,'C');
  const old=C.createCycle(data,r,{id:'old'});record(data,'B','B01',2);delete old.differenceConvention;
  const fresh=C.createCycle(data,r,{id:'new'});assert.equal(old.status,'archived');assert.equal(old.records.length,1);assert.equal(fresh.differenceConvention,'ad_ct');
+});
+
+test('material order takes priority over unconfirmed location order',()=>{
+ const data={sources:{ct:ct([['10','Diez',1,'Piece','A01'],['2','Dos',1,'Piece','Z99']])}};C.createCycle(data,{ready:false});C.addItem(data,'10');C.addItem(data,'2');assert.deepEqual(C.tasks(C.active(data)).map(row=>row.code),['2','10']);
+});
+test('user reasons and responsible party are independent and every note preserves author and count',()=>{
+ const labels=C.differenceReasons.map(row=>row.label);for(const reason of ['En revisión de CT','Pedido Interno AD pendiente revertir','Duplicidad en CT','Duplicidad en AD','Ajuste inventario positivo CT','Ajuste inventario negativo CT','Mudanza CT','Rotura'])assert.ok(labels.includes(reason));
+ const data=fixture();C.createCycle(data,report(data));record(data,'B','B01',2);
+ const first=C.addDifferenceNote(data,'B',{responsible:'CT',reason:'ct_review',notes:'Validar stock'},{user:'uno@example.invalid',now:'2026-11-02T12:00:00Z'});
+ C.addDifferenceNote(data,'B',{responsible:'AD',reason:'ad_internal_reversal',notes:'Revertir interno'},{user:'dos@example.invalid'});
+ let row=C.itemReport(C.active(data),'B');assert.equal(row.followups.length,2);assert.equal(row.followups[0].by,'uno@example.invalid');assert.equal(row.followups[0].countedQuantity,2);assert.equal(row.followupCurrent,true);
+ const saved=C.active(data).records[0];C.correctRecord(data,saved.id,3,'Reconteo');row=C.itemReport(C.active(data),'B');assert.equal(row.followupCurrent,false);assert.equal(first.countedQuantity,2);assert.equal(row.followups[0].notes,'Validar stock');
+ C.addDifferenceNote(data,'B',{responsible:'CT',reason:'ct_move',notes:'Nueva revisión'},{user:'dos@example.invalid'});assert.equal(C.itemReport(C.active(data),'B').followupCurrent,true);
+});
+test('count and note validation are atomic, and optional observed locations are never CT-confirmed',()=>{
+ const data=fixture();C.createCycle(data,report(data));const prior=JSON.stringify(data);
+ assert.throws(()=>record(data,'B','B01',2,{responsible:'CT',differenceReason:'invalid'}),/motivo/);assert.equal(JSON.stringify(data),prior);
+ assert.throws(()=>C.addDifferenceNote(data,'B',{responsible:'OTHER',reason:'ct_review'}),/responsable/);assert.equal(JSON.stringify(data),prior);
+ const saved=record(data,'B','B01',2,{actualLocation:'',unconfirmed:true,responsible:'AD',differenceReason:'ad_duplicate',note:'Verificar duplicación'});
+ assert.equal(saved.actualLocation,'');assert.equal(saved.ctLocationConfirmed,false);assert.ok(saved.differenceNoteId);assert.equal(C.itemReport(C.active(data),'B').followups[0].reason,'ad_duplicate');
 });

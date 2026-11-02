@@ -146,3 +146,30 @@ negativo (rojo) cuando CT tiene más. El top 10 usa positivos y el top 20 los
 negativos más extremos. Los artículos solo CT siguen visibles sin valoración.
 Los ciclos anteriores conservan referencias; iniciar un nuevo ciclo aplica
 los tops de esta convención sin eliminar conteos anteriores.
+
+## Conteo con ubicaciones sin confirmar y apuntes de diferencias
+
+El guiado mantiene los tops obligatorios y ordena los códigos de material antes
+de las ubicaciones de referencia. Una ubicación no informada por CT puede quedar
+en blanco: se confirma el artículo y la cantidad, sin inventar un pasillo ni usar
+el almacén 1015 como ubicación. Las posiciones observadas se distinguen de una
+confirmación oficial de CT. Si existe una referencia cargada, el operador también
+puede seleccionar Sin ubicación confirmada.
+
+Los motivos disponibles son En revisión de CT, Pedido Interno AD pendiente
+revertir, Duplicidad en CT, Duplicidad en AD, Ajuste inventario positivo CT, Ajuste
+inventario negativo CT y Mudanza CT. Se incluye Rotura, solicitado previamente.
+El responsable CT/AD se selecciona aparte; no se infiere culpabilidad del motivo.
+
+Puede añadirse un apunte al guardar el conteo o desde Resultados y bitácora. El
+conteo puede guardarse sin clasificar cuando la investigación siga pendiente.
+Cada apunte guarda responsable, motivo, observaciones, usuario, fecha y cantidad
+contada en ese momento. Se conservan todos los apuntes; no se sustituyen por el
+último. Si cambia el conteo, se señala que el apunte previo requiere revisión.
+Los apuntes no modifican cantidades CT/AD ni realizan ajustes en sus sistemas.
+
+El Excel de conteos añade la hoja Apuntes, los campos de clasificación en Resumen
+y una columna explícita de confirmación de ubicación por CT en Detalle. Las
+sesiones comparten los apuntes mediante la revisión atómica existente. Un
+formulario de apunte sin guardar se conserva ante cambios simultáneos y al
+recargar. No requiere migración: se guarda dentro del payload privado existente.

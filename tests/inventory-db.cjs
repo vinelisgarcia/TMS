@@ -36,6 +36,7 @@ const ADMIN='11111111-1111-4111-8111-111111111111',READER='22222222-2222-4222-82
     C.createCycle(value,{ready:false},{id:'shared-cycle'});C.addItem(value,'TEST');
     C.recordCount(value,{code:'TEST',expectedLocation:'A01',actualLocation:'A02',quantity:2,confirmed:true},{id:'shared-record',user:'editor@example.invalid'});
     C.processItem(value,'TEST');
+    C.addDifferenceNote(value,'TEST',{responsible:'CT',reason:'ct_move',notes:'Observación ficticia'},{user:'editor@example.invalid'});
     assert.equal((await save(2,{tms_inventory_state:[{id:true,payload:value}]})).revision,3);
     const persisted=(await snapshot()).tables.tms_inventory_state[0].payload;
     assert.deepEqual(persisted.counting,value.counting);
