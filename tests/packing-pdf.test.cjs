@@ -10,3 +10,17 @@ test('invoice punctuation is preserved when matching identifiers',()=>{const res
 test('reference variants with punctuation are distinct complete identifiers',()=>{assert.equal(P.matches('SUP-1-A Origin: CN','SUP-1'),false);assert.equal(P.matches('SUP-1/2 Origin: CN','SUP-1'),false);assert.equal(P.matches('SUP-1 Origin: CN','SUP-1'),true);});
 test('table columns are read only from explicit field and unit headings',()=>{const page={page:1,text:'Invoice No: INV-1',rows:[{text:'SKU Country of origin HS Code Unit net weight kg',cells:[{text:'SKU',x:10},{text:'Country of origin',x:100},{text:'HS Code',x:200},{text:'Unit net weight kg',x:300}]},{text:'SUP-1 CN 69111000 0.5',cells:[{text:'SUP-1',x:10},{text:'CN',x:100},{text:'69111000',x:200},{text:'0.5',x:300}]}]};const result=P.analyze({hash:'h',name:'table.pdf',pages:[page]},lines);assert.equal(result.facts.find(fact=>fact.field==='PAIS').value,'CN');assert.equal(result.facts.find(fact=>fact.field==='KG NETO UD').value,.5);});
 test('text rows retain page ordering and adjacent reference fragments',()=>{const rows=P.textRows([{str:'SUP-',width:20,transform:[1,0,0,10,10,100]},{str:'1',width:5,transform:[1,0,0,10,30,100]},{str:'Origin: CN',width:30,transform:[1,0,0,10,70,100]},{str:'Footer',transform:[1,0,0,10,10,20]}]);assert.equal(rows[0].text,'SUP-1 Origin: CN');assert.equal(rows[1].text,'Footer');});
+test('OCR table words are grouped by geometry across blocks and retain explicit headings',()=>{
+ const word=(text,x,y,width=70)=>({text,bbox:{x0:x,y0:y,x1:x+width,y1:y+20},confidence:94});
+ const data={blocks:[{paragraphs:[{lines:[{words:[word('SKU',10,10),word('Country',100,10),word('of',175,10,15),word('origin',195,10)]},{words:[word('SUP-1',10,50),word('CN',100,50)]}]}]},{paragraphs:[{lines:[{words:[word('HS',300,10,20),word('Code',325,10)]},{words:[word('69111000',300,50)]}]}]}]};
+ const rows=P.ocrRows(data);assert.equal(rows.length,2);assert.equal(rows[0].text,'SKU Country of origin HS Code');
+ const result=P.analyze({hash:'h',name:'packing-list.pdf',pages:[{page:1,text:'Packing list\nInvoice No: INV-1',rows,method:'ocr',confidence:94}]},lines);
+ assert.equal(result.kind,'Packing list');assert.equal(result.facts.find(fact=>fact.field==='PAIS').value,'CN');assert.equal(result.facts.find(fact=>fact.field==='ARANCELARIO').value,'69111000');assert.equal(result.facts[0].method,'ocr');
+});
+test('OCR inline field labels do not turn a matched material row into a table heading',()=>{
+ const words=['SUP-1','Origin:','CN;','HS','Code:','69111000'];let x=0;const cells=words.map(text=>{const cell={text,x,width:60};x+=70;return cell;});const row={text:words.join(' '),cells,method:'ocr'};
+ const result=P.analyze({hash:'h',name:'scan.pdf',pages:[{page:1,text:'Invoice No: INV-1\n'+row.text,rows:[row],confidence:90}]},lines);assert.equal(result.facts.find(fact=>fact.field==='PAIS').value,'CN');assert.equal(result.facts.find(fact=>fact.field==='ARANCELARIO').value,'69111000');
+});
+test('generic PDF content remains identifiable without invoice or article matches',()=>{
+ const result=P.analyze(document('BILL OF LADING\nContainer: TEST1234567\nTotal gross weight: 500 kg'),lines);assert.equal(result.kind,'Documento de transporte');assert.deepEqual(result.facts,[]);assert.deepEqual(result.invoiceNos,[]);
+});

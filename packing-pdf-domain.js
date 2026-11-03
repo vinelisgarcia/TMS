@@ -10,6 +10,12 @@
   const rows=[];items.filter(item=>item.str?.trim()).forEach(item=>{const x=item.transform?.[4]||0,y=item.transform?.[5]||0;let row=rows.find(row=>Math.abs(row.y-y)<=2);if(!row){row={y,cells:[]};rows.push(row);}row.cells.push({text:item.str,x,width:item.width||0});});
   return rows.sort((a,b)=>b.y-a.y).map(row=>{row.cells.sort((a,b)=>a.x-b.x);let text='';row.cells.forEach((cell,index)=>{const prev=row.cells[index-1];text+=(index&&cell.x-prev.x-prev.width>1.5?' ':'')+cell.text;});return {text,cells:row.cells};});
  }
+ function ocrRows(data){
+  const words=(data.blocks||[]).flatMap(block=>(block.paragraphs||[]).flatMap(paragraph=>(paragraph.lines||[]).flatMap(line=>line.words||[]))),rows=[];
+  for(const word of words){if(!word.text?.trim()||!word.bbox)continue;const box=word.bbox,y=(box.y0+box.y1)/2,height=box.y1-box.y0;let row=rows.find(row=>Math.abs(row.y-y)<=Math.max(3,Math.min(8,height*.45)));if(!row){row={y,cells:[]};rows.push(row);}row.cells.push({text:word.text,x:box.x0,width:box.x1-box.x0,confidence:word.confidence});}
+  return rows.length?rows.sort((a,b)=>a.y-b.y).map(row=>{row.cells.sort((a,b)=>a.x-b.x);return {text:row.cells.map(cell=>cell.text).join(' '),cells:row.cells,method:'ocr'};}):String(data.text||'').split('\n').filter(text=>text.trim()).map(text=>({text,cells:[],method:'ocr'}));
+ }
+ function documentKind(text){if(/\b(?:PACKING\s+LIST|LISTA\s+DE\s+EMPAQUE)\b/i.test(text))return 'Packing list';if(/\b(?:BILL\s+OF\s+LADING|AIR\s*WAYBILL|CONOCIMIENTO\s+DE\s+EMBARQUE)\b/i.test(text))return 'Documento de transporte';if(/\b(?:INVOICE|FACTURA)\b/i.test(text))return 'Factura';return 'Documento PDF';}
  function invoiceNumbers(text){const found=[];const pattern=/(?:\bINVOICE\s*(?:NO\.?|NUMBER|#)|\bFACTURA\s*(?:NO\.?|NUMERO|N[º°.]|#))\s*[:#-]?\s*([A-Z0-9][A-Z0-9/_.-]{1,45})/gi;for(const match of text.matchAll(pattern)){if(!['DATE','FECHA','NUMBER','NO','NUMERO'].includes(normalize(match[1])))found.push(match[1]);}return [...new Set(found)];}
  const defs={
   COUNTRYOFORIGIN:{field:'PAIS'},COO:{field:'PAIS'},ORIGIN:{field:'PAIS'},ORIGEN:{field:'PAIS'},
@@ -47,23 +53,30 @@
   m=text.match(/\b(?:PACKAGE\s+TYPE|TIPO\s+CONTENEDOR)\s*[:=]\s*([^;|]{1,40}?)(?=\s+(?:LENGTH|WIDTH|HEIGHT|GROSS|BOX)\b|[;|]|$)/i);if(m)add('TIPO CONTENEDOR',valueFor({field:'TIPO CONTENEDOR'},m[1].trim()));
   return facts;
  }
+ function headerCells(cells){
+  const detected=[];
+  for(let start=0;start<cells.length;start++){
+   for(let length=Math.min(6,cells.length-start);length>=1;length--){const group=cells.slice(start,start+length),definition=defs[normalize(group.map(cell=>cell.text).join(' '))];if(definition){detected.push({x:cells[start].x,definition});start+=length-1;break;}}
+  }
+  return detected;
+ }
  function analyze(document,lines){
   const invoiceNos=invoiceNumbers(document.pages.map(page=>page.text).join('\n')),facts=[];
   for(const page of document.pages){
    const pageNos=invoiceNumbers(page.text),invoice=document.invoiceOverride|| (pageNos.length===1?pageNos[0]:invoiceNos.length===1?invoiceNos[0]:'');let header=[];
    page.rows.forEach((row,rowIndex)=>{
-    const detected=(row.cells||[]).map(cell=>({...cell,definition:defs[normalize(cell.text)]})).filter(cell=>cell.definition);
-    if(detected.length>=2){header=detected.map(cell=>({x:cell.x,definition:cell.definition}));return;}
     const matching=lines.filter(line=>[line.data.ARTICULO,line.source.supplierReference].some(ref=>normalize(ref).length>=3&&matches(row.text,ref)));
+    const detected=headerCells(row.cells||[]);
+    if(!matching.length&&detected.length>=2){header=detected;return;}
     if(!matching.length)return;
     const targets=matching.filter(line=>!invoice||!line.source.invoice||invoiceId(line.source.invoice)===invoiceId(invoice));
     const values=inlineFacts(row.text);if(invoice)values.push({field:'FACTURA',value:invoice});
     header.forEach((column,index)=>{const next=header[index+1];const raw=(row.cells||[]).filter(cell=>cell.x>=column.x-4&&(!next||cell.x<next.x-4)).map(cell=>cell.text).join(' ').trim();const value=valueFor(column.definition,raw);if(value!==null)values.push({field:column.definition.field,value,readOnly:!!column.definition.readOnly});});
     const unique=new Map();values.forEach(value=>unique.set(value.field+'|'+String(value.value),value));
-    for(const value of unique.values())facts.push({...value,id:[document.hash,page.page,rowIndex,value.field,String(value.value)].join('|'),docHash:document.hash,file:document.name,page:page.page,row:rowIndex+1,evidence:row.text,invoice,targetIds:targets.map(line=>line.id),reference:[...new Set(matching.map(line=>line.data.ARTICULO))].join(', ')});
+    for(const value of unique.values())facts.push({...value,id:[document.hash,page.page,rowIndex,value.field,String(value.value)].join('|'),docHash:document.hash,file:document.name,page:page.page,row:rowIndex+1,evidence:row.text,method:row.method||'text',confidence:row.method==='ocr'?page.confidence:null,invoice,targetIds:targets.map(line=>line.id),reference:[...new Set(matching.map(line=>line.data.ARTICULO))].join(', ')});
    });
   }
-  return {invoiceNos,facts};
+  return {invoiceNos,facts,kind:documentKind(document.pages.map(page=>page.text).join('\n'))};
  }
- return {normalize,number,textRows,inlineFacts,analyze,matches};
+ return {normalize,number,textRows,ocrRows,documentKind,inlineFacts,analyze,matches};
 });

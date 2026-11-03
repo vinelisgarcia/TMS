@@ -21,10 +21,13 @@ Un archivo con el mismo SHA-256 no vuelve a sumarse aunque se cambie su nombre.
 Una selección que contiene errores se rechaza sin incorporar parcialmente filas.
 
 Los datos físicos y aduaneros ausentes se completan en el editor de cada línea.
-También se pueden agregar varias facturas PDF con texto seleccionable desde
-**Facturas PDF** o desde la entrada general de documentos. PDF.js y su worker se
-sirven desde el propio TMS; el contenido se lee en el navegador. La lectura
-conserva todas las páginas, identifica etiquetas explícitas y cruza la referencia
+También se pueden agregar documentos PDF de cualquier tipo desde **Documentos
+PDF** o desde la entrada general: facturas, packing lists, transporte y otros
+soportes, con texto, escaneados o mixtos. PDF.js extrae el texto y Tesseract.js 7
+aplica OCR en español e inglés a las páginas con imágenes o sin texto legible.
+Los lectores, fuentes, motores y modelos se sirven desde el TMS y la lectura se
+realiza en el navegador, sin enviar los documentos a servicios OCR externos.
+La lectura conserva las páginas, identifica etiquetas explícitas y cruza la referencia
 AD o del proveedor y el número de factura con la planilla cargada. Si hay varias
 líneas posibles, la revisión exige elegir destino. Un número de factura que
 contradice el de la planilla no produce una asignación automática.
@@ -42,10 +45,21 @@ El Excel añade **Datos de facturas PDF**, con documento, página, fila, referen
 y registro de valores anteriores. El texto completo y la evidencia original se
 consultan dentro del TMS; no se copian al packing list. Retirar un PDF revierte sus
 valores vigentes, respetando los cambios manuales posteriores y las revisiones
-de otros PDF. Los PDF duplicados por contenido no se vuelven a cargar. Las páginas
-sin texto se identifican como pendientes de OCR o revisión de página en blanco;
-no se consideran leídas. Los formatos con etiquetas o columnas no reconocidas
-conservan su texto para revisión y requieren adaptar el lector con un ejemplo.
+de otros PDF. Los PDF duplicados por contenido no se vuelven a cargar. Cada página
+indica si se leyó por texto u OCR; los escaneos tienen vista previa y confianza
+OCR. Las páginas en blanco se identifican sin marcarlas como errores. La lectura
+incompleta o de baja confianza requiere revisión visual expresa antes de la
+descarga final; no inventa campos. Un documento sin referencias reconocidas
+conserva su texto para consulta y permite completar la planilla manualmente.
+Los encabezados de tablas OCR se reconstruyen a partir de las palabras y posiciones.
+
+Los PDF protegidos solicitan contraseña, con reintento y cancelación; la contraseña
+no se conserva en documentos, registros ni Excel. El usuario puede cancelar la
+lectura y la revocación de acceso detiene el proceso. Se mantienen los límites
+de 50 MB por documento y 300 páginas. Un archivo corrupto se rechaza de forma
+explícita; un escaneo ilegible o un idioma OCR no admitido puede necesitar una
+copia más nítida o revisión manual. La extracción de texto no implica que cualquier
+diseño arbitrario pueda convertirse automáticamente en las 23 columnas.
 
 Las dimensiones se expresan en metros y los pesos en kg. El peso bruto y el volumen
 se cuentan una sola vez por CAJAS_ID. Se rechazan totales físicos completos si hay
@@ -73,6 +87,8 @@ node --test tests/packing-miami.test.cjs
 node tests/packing-miami-ui.cjs
 node --test tests/packing-pdf.test.cjs
 node tests/packing-pdf-ui.cjs
+node tests/packing-pdf-ocr-ui.cjs
+TMS_TEST_ENGINE=webkit node tests/packing-pdf-ocr-ui.cjs
 node tests/jamaica-access-ui.cjs
 node tests/access-settings-ui.cjs
 ```
