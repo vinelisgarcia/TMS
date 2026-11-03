@@ -3531,38 +3531,21 @@
 
   window.renderSolicitudCard = renderWarehouseCard;
 
-  function getWarehouseScheduledDate(item) {
-    const exact = (APP.lineItems || []).find(line =>
-      text(line.clienteId) === text(item.codigo) &&
-      (!item.pedidoCliente || text(line.pedidoCliente) === text(item.pedidoCliente))
-    );
-    const anyClientLine = exact || (APP.lineItems || []).find(line => text(line.clienteId) === text(item.codigo));
-    if (anyClientLine && anyClientLine.fechaPlanificada) return anyClientLine.fechaPlanificada;
-    const legacyClient = (APP.clientes || []).find(client => text(client.codigo) === text(item.codigo));
-    return (legacyClient && legacyClient.fecha) || item.fechaEnvio || item.fechaLiberacion || fechaToStr(new Date());
+  function getWarehouseReportContext() {
+    return {plan:APP.solicitudesPlanAlmacen,control:APP.solicitudesControlAlmacen,legacy:APP.solicitudesAlmacen,lineItems:APP.lineItems,files:[APP.importFiles.solicitudesPlan,APP.importFiles.solicitudesControl,APP.solicitudesFileName],author:getCalendarNoteAuthor()};
   }
 
-  function getWarehouseClientName(item) {
-    const line = (APP.lineItems || []).find(row => text(row.clienteId) === text(item.codigo));
-    const legacyClient = (APP.clientes || []).find(client => text(client.codigo) === text(item.codigo));
-    return item.cliente || (line && line.clienteNombre) || (legacyClient && legacyClient.nombre) || item.codigo || 'Cliente sin nombre';
-  }
+  window.getWarehouseExecutiveContext = function (scope) {
+    if (!hasPermission('solicitudesAlmacen', 'ver')) throw new Error('Tu perfil no puede consultar las solicitudes a almacén.');
+    return safeClone({...getWarehouseReportContext(),mode:scope==='all'?'programadas':APP.solicitudesVista||'programadas',search:scope==='all'?'':text(document.getElementById('solSearch')?.value)});
+  };
 
   function getWarehouseRequestAmount(item) {
     return getCommercialLineAmount(item);
   }
 
   function getWarehouseRowsForView(mode) {
-    const source = mode === 'completadas'
-      ? (APP.solicitudesControlAlmacen.length ? APP.solicitudesControlAlmacen : APP.solicitudesAlmacen)
-      : (APP.solicitudesPlanAlmacen.length ? APP.solicitudesPlanAlmacen : APP.solicitudesAlmacen);
-    return (source || []).map(item => ({
-      ...item,
-      fechaProgramada: getWarehouseScheduledDate(item),
-      clienteNombreVista: getWarehouseClientName(item),
-      montoProgramado: getWarehouseRequestAmount(item),
-      estadoVista: item.cantidadPendiente <= 0 ? 'Completada' : item.cantidadCompletada > 0 ? 'Parcial' : 'Pendiente'
-    }));
+    return TMSWarehouseReportDomain.rows({...getWarehouseReportContext(),mode}).map(item=>({...item,montoProgramado:getWarehouseRequestAmount(item)}));
   }
 
   function renderWarehouseProgrammedCard(item, showReason) {
@@ -3600,10 +3583,10 @@
       const allItems = [...clients.values()].flat();
       const amount = allItems.reduce((sum, item) => sum + num(item.montoProgramado), 0);
       return `<div class="card" style="margin-bottom:14px;">
-        <div class="card-title" style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><span>Fecha ${escapeHtml(date)} · ${escapeHtml(fechaLabel(date))}</span><span class="badge badge-pend">${allItems.length} solicitudes · ${formatMonto(amount)}</span></div>
+        <div class="card-title" style="display:flex;justify-content:space-between;gap:10px;align-items:center;"><span>Entrega: ${escapeHtml(date)}</span><span class="badge badge-pend">${new Set(allItems.map(item=>JSON.stringify([item.codigo,item.solicitud]))).size} solicitudes · ${allItems.length} líneas · ${formatMonto(amount)}</span></div>
         ${[...clients.entries()].sort((a, b) => text(a[1][0].clienteNombreVista).localeCompare(text(b[1][0].clienteNombreVista))).map(([code, items]) => {
           const clientAmount = items.reduce((sum, item) => sum + num(item.montoProgramado), 0);
-          return `<details style="margin-bottom:10px;" open><summary style="cursor:pointer;font-weight:800;color:var(--primary);margin-bottom:8px;">${escapeHtml(items[0].clienteNombreVista)} · ${escapeHtml(code)} · ${items.length} solicitudes · ${formatMonto(clientAmount)}</summary>${items.map(item => renderWarehouseProgrammedCard(item, mode === 'pendientes')).join('')}</details>`;
+          return `<details style="margin-bottom:10px;" open><summary style="cursor:pointer;font-weight:800;color:var(--primary);margin-bottom:8px;">${escapeHtml(items[0].clienteNombreVista)} · ${escapeHtml(code)} · ${new Set(items.map(item=>item.solicitud)).size} solicitudes · ${items.length} líneas · ${formatMonto(clientAmount)}</summary>${items.map(item => renderWarehouseProgrammedCard(item, mode === 'pendientes')).join('')}</details>`;
         }).join('')}
       </div>`;
     }).join('');
@@ -3613,7 +3596,7 @@
     const pending = rows.filter(item => item.estadoVista !== 'Completada');
     if (!pending.length) return 'Resumen jueves: no hay solicitudes pendientes de preparar.';
     const withoutReason = pending.filter(item => !text(item.motivoNoPreparada)).length;
-    return `Resumen jueves: ${pending.length} solicitudes pendientes de preparar. ${withoutReason} sin motivo registrado.`;
+    return `Resumen jueves: ${pending.length} líneas pendientes de preparar. ${withoutReason} sin motivo registrado.`;
   }
 
   window.actualizarMotivoSolicitud = function actualizarMotivoSolicitud(solicitud, pedidoCliente, articulo, codigo, value) {
@@ -3638,8 +3621,9 @@
     const cont = document.getElementById('solicitudesContainer');
     const resumen = document.getElementById('solicitudesResumen');
     if (!cont || !resumen) return;
-    const baseRows = APP.solicitudesPlanAlmacen.length || APP.solicitudesControlAlmacen.length ? [...APP.solicitudesPlanAlmacen, ...APP.solicitudesControlAlmacen] : APP.solicitudesAlmacen;
-    resumen.textContent = APP.solicitudesLoaded ? `${baseRows.length} solicitudes` : 'Sin archivo';
+    const baseRows = getWarehouseRowsForView('programadas');
+    window.TMSWarehouseReports?.refresh();
+    resumen.textContent = APP.solicitudesLoaded ? `${new Set(baseRows.map(row=>JSON.stringify([row.codigo,row.solicitud]))).size} solicitudes · ${baseRows.length} líneas` : 'Sin archivo';
     if (!APP.solicitudesLoaded || !baseRows.length) {
       cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📦</div><p>No hay solicitudes registradas.</p></div>';
       return;
@@ -3656,10 +3640,10 @@
         <div class="card-title">Solicitudes programadas</div>
         <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:10px;">Agrupadas por la fecha de entrega definida en Calendario. Usa pendientes para registrar por qué no se prepararon antes del resumen de jueves.</div>
         <div class="view-toolbar" style="gap:8px;">
-          <button class="filter-btn ${mode === 'programadas' ? 'active' : ''}" onclick="cambiarVistaSolicitudes('programadas')">Solicitudes planificadas</button>
+          <button class="filter-btn ${mode === 'programadas' ? 'active' : ''}" onclick="cambiarVistaSolicitudes('programadas')">Todas las solicitudes</button>
           <button class="filter-btn ${mode === 'pendientes' ? 'active' : ''}" onclick="cambiarVistaSolicitudes('pendientes')">Pendientes de preparar</button>
           <button class="filter-btn ${mode === 'completadas' ? 'active' : ''}" onclick="cambiarVistaSolicitudes('completadas')">Completadas</button>
-          <span class="badge badge-c1">${activeRows.length} solicitudes</span>
+          <span class="badge badge-c1">${new Set(activeRows.map(item=>JSON.stringify([item.codigo,item.solicitud]))).size} solicitudes · ${activeRows.length} líneas</span>
           <span class="badge badge-ok">${formatMonto(totalAmount)}</span>
         </div>
         <div class="import-report" style="margin-top:8px;">${escapeHtml(buildWarehouseThursdaySummary(pendingRows))}</div>
@@ -5794,7 +5778,7 @@
           <header><span class="sap-tile-icon" aria-hidden="true">03</span><div><h2>Solicitudes a almacén</h2><p>Solicitado y preparado</p></div></header>
           <div id="importTableSolStatus" class="sap-file-status" role="status">Sin archivo</div>
           <div class="sap-warehouse-actions"><button type="button" class="btn btn-primary" data-sap-upload="warehouse-plan" onclick="document.getElementById('solicitudesPlanFileImport').click()">Cargar solicitudes</button><button type="button" class="btn btn-outline" data-sap-upload="warehouse-control" onclick="document.getElementById('solicitudesControlFileImport').click()">Cargar control</button></div>
-          <small id="importTableNewCount" class="sap-import-count"></small>
+          <small id="importTableNewCount" class="sap-import-count"></small><button type="button" class="btn btn-outline warehouse-report-trigger" data-warehouse-report="all" onclick="TMSWarehouseReports.open('all')" disabled>Informe ejecutivo</button>
         </section>
       </div>
       <details class="sap-import-help"><summary>Ayuda de importación</summary><p>Programación: archivo SAP de pedidos de cliente. Control diario: cierre SAP; requiere una programación cargada. Almacén: solicitudes y su control de preparación.</p><p>Cada carga actualiza su documento. Revisa el archivo antes de reemplazarlo.</p></details>`;
