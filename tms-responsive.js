@@ -17,7 +17,7 @@
     logout:'M10 3H4v18h6m4-14 5 5-5 5m-6-5h13'
   };
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name] || paths.comercial}"/></svg>`;
-  const labels = {importar:'Importar SAP',dashboard:'Dashboard',calendario:'Calendario',inventario:'Inventario',comercial:'Comercial',materialesTransito:'En tránsito',prioridades:'Prioridades',incidenciasDespacho:'Incidencias',configClientes:'Configuración',solicitudesAlmacen:'Solicitudes',auditoriaJamaica:'Auditoría Jamaica'};
+  const labels = {importar:'Importar SAP',dashboard:'Dashboard',calendario:'Calendario',inventario:'Inventario',comercial:'Comercial',materialesTransito:'En tránsito',prioridades:'Prioridades',incidenciasDespacho:'Incidencias',configClientes:'Configuración',solicitudesAlmacen:'Solicitudes',auditoriaJamaica:'Auditoría Jamaica',packingMiami:'Packing list Miami'};
   let onlyDeliveries = true, frame = 0, calendarToolsMobile = null;
   const activeId = () => document.querySelector('.view.active')?.id || '';
   function modules() {
@@ -70,7 +70,7 @@
     if(id==='menu'){openModules();return;}
     if(!modules().some(row=>row.id===id))return;
     document.getElementById('mobileModulesDialog')?.close();
-    if(id==='auditoriaJamaica'){window.open('./auditoria-jamaica.html','_blank','noopener,noreferrer');return;}
+    if(id==='auditoriaJamaica'){window.abrirAuditoriaJamaica();return;}
     window.cambiarVista(id,document.getElementById('nav-'+id));updateNavigation();
   }
   function updateCalendar() {

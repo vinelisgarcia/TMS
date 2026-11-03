@@ -137,7 +137,9 @@
     configuracion: 'Configuración',
     solicitudesAlmacen: 'Solicitudes almacén',
     almacen: 'Almacén',
-    inventario: 'Inventario CT / AD'
+    inventario: 'Inventario CT / AD',
+    auditoriaJamaica: 'Auditoría Jamaica',
+    packingMiami: 'Packing list Miami'
   };
 
   function syncThemeButtons() {
@@ -508,7 +510,6 @@
   function buildDefaultRolePermissions() {
     return {
       Admin: buildPermissions('full', 'Admin'),
-      Operaciones: buildPermissions('ops', 'Operaciones'),
       Comercial: buildPermissions('commercial', 'Comercial'),
       Almacén: buildPermissions('warehouse', 'Almacén'),
       'Solo lectura': buildPermissions('read_only', 'Solo lectura')
@@ -518,6 +519,7 @@
   function ensureRolePermissions() {
     const defaults = buildDefaultRolePermissions();
     APP.rolePermissions = APP.rolePermissions || {};
+    delete APP.rolePermissions.Operaciones;
     Object.keys(defaults).forEach(role => {
       APP.rolePermissions[role] = APP.rolePermissions[role] || defaults[role];
     });
@@ -1022,6 +1024,8 @@
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen',
       inventario: 'inventario',
+      packingMiami: 'packingMiami',
+      auditoriaJamaica: 'auditoriaJamaica',
       reportes: 'reportes'
     }[viewId] || viewId;
   }
@@ -1033,6 +1037,11 @@
     const perms = getPermissionsForRole(role);
     return !!(perms && perms[moduleName] && perms[moduleName][action]);
   }
+
+  window.abrirAuditoriaJamaica = function () {
+    if (!hasPermission('auditoriaJamaica','ver')) return alert('Tu rol no tiene acceso a Auditoría Jamaica.');
+    window.open('./auditoria-jamaica.html','_blank','noopener,noreferrer');
+  };
 
   function isAdminUser() {
     return !!(APP.currentUserProfile && APP.currentUserProfile.rol === 'Admin');
@@ -1092,7 +1101,9 @@
       configClientes: 'configuracion',
       solicitudesAlmacen: 'solicitudesAlmacen',
       almacen: 'almacen',
-      inventario: 'inventario'
+      inventario: 'inventario',
+      packingMiami: 'packingMiami',
+      auditoriaJamaica: 'auditoriaJamaica'
     };
     Object.entries(navMap).forEach(([viewId, moduleName]) => {
       const allowed = hasPermission(moduleName, 'ver');
@@ -1116,6 +1127,7 @@
       badge.textContent = `${email} · ${APP.currentUserProfile.rol}`;
     }
     enforceCurrentViewPermission();
+    if (window.TMSPacking) window.TMSPacking.refreshPermissions();
     window.dispatchEvent(new Event('tms-permissions-changed'));
   }
 
@@ -4388,7 +4400,7 @@
     ensureRolePermissions();
     const roleOptions = Object.keys(APP.rolePermissions);
     if (!APP.selectedRolePermission || !APP.rolePermissions[APP.selectedRolePermission]) {
-      APP.selectedRolePermission = roleOptions[0] || 'Operaciones';
+      APP.selectedRolePermission = roleOptions[0] || 'Solo lectura';
     }
     mount.innerHTML = `
       <div class="card" style="margin-top:16px;">
@@ -4447,11 +4459,11 @@
     const perms = getPermissionsForRole(role);
     return Object.entries(MODULE_LABELS).map(([module, label]) => {
       const actions = perms[module] || {};
-      const canImport = module === 'importar' || module === 'configuracion';
+      const canImport = module === 'importar' || module === 'configuracion' || module === 'packingMiami';
       return `<tr>
         <th scope="row">${escapeHtml(label)}</th>
         <td><label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Ver ${escapeHtml(label)}" data-module="${module}" data-action="ver" ${actions.ver ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label></td>
-        <td><label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Editar ${escapeHtml(label)}" data-module="${module}" data-action="editar" ${actions.editar ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label></td>
+        <td>${module === 'auditoriaJamaica' ? '<span class="access-unavailable" aria-label="No aplica">—</span>' : `<label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Editar ${escapeHtml(label)}" data-module="${module}" data-action="editar" ${actions.editar ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label>`}</td>
         <td>${canImport ? `<label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Importar ${escapeHtml(label)}" data-module="${module}" data-action="importar" ${actions.importar ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label>` : '<span class="access-unavailable" aria-label="No aplica">—</span>'}</td>
       </tr>`;
     }).join('');
@@ -4467,6 +4479,7 @@
     const input = document.getElementById('newRoleNameInput');
     const role = text(input && input.value);
     if (!role) return alert('Escribe el nombre del nuevo rol.');
+    if (normKey(role) === 'operaciones') return alert('El rol Operaciones fue retirado. Elige otro nombre.');
     if (APP.rolePermissions[role]) return alert('Ese rol ya existe.');
     pushUndoState('crear rol');
     APP.rolePermissions[role] = buildPermissions('read_only', role);
@@ -4603,7 +4616,9 @@
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true },
-      inventario: { ver: true, editar: true, importar: true }
+      inventario: { ver: true, editar: true, importar: true },
+      auditoriaJamaica: { ver: true, editar: false, importar: false },
+      packingMiami: { ver: true, editar: true, importar: true }
     };
     if (role === 'Admin' || scope === 'full') return all;
     if (scope === 'read_only') {
@@ -4713,7 +4728,7 @@
     const nombre = text(document.getElementById('userNameInput').value);
     const email = text(document.getElementById('userEmailInput').value);
     const password = String((document.getElementById('userPasswordInput') || {}).value || '');
-    const rol = text(document.getElementById('userRoleInput').value) || 'Operaciones';
+    const rol = text(document.getElementById('userRoleInput').value) || 'Solo lectura';
     if (!nombre || !email || !password) {
       alert('Completa nombre, email y contraseña para crear el usuario.');
       return;
@@ -5553,7 +5568,7 @@
   function trackUnsubmittedDraft(event) {
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
-    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog')) || control.closest('#inventario')) return;
+    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog')) || control.closest('#inventario') || control.closest('#packingMiami')) return;
     if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
