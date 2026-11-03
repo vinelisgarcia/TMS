@@ -210,7 +210,7 @@
  body #calendario .calendar-note-add{min-width:44px;min-height:44px;border:0;background:transparent;color:var(--primary);font-size:10px;padding:6px}
  body #calendario .calendar-note-list{padding-top:8px;gap:5px}
  body #calendario .cal-carril{border:0;background:transparent;padding:0;margin:0;box-shadow:none}
- body #calendario .cal-carril-header{margin:0;padding:7px 2px;background:transparent!important;border:0;display:block;border-radius:0;text-align:left}
+ body #calendario .cal-carril-header{margin:0;padding:7px 2px;background:transparent;border:0;display:block;border-radius:0;text-align:left}
  body #calendario .cal-carril-title{gap:5px;align-items:center}
  body #calendario .cal-carril-title>span{font-size:10px;font-weight:650;flex:1;min-width:0;line-height:1.5}
  body #calendario .calendar-lane-select{min-height:34px;font-size:9px;background:transparent;border-color:var(--border);padding:5px 7px;border-radius:8px}
@@ -243,3 +243,16 @@
 @media print{.calendar-card-tools{display:none!important}.calendar-load-compact{display:none!important}.calendar-load-full{display:block!important}}
 
 @media screen and (max-width:900px){body #calContainer.calendar-no-selection .calendar-topbar,body #queueSemanaSection.calendar-queue-empty{display:none!important}}
+
+/* Clear boundaries between truck plans on every screen size. */
+@media screen{
+ body #calendario .cal-carril{margin:12px 0 0;padding:8px;min-width:0;border:1px solid #a8bfd4;border-radius:12px;background:color-mix(in srgb,#214e78 5%,var(--surface));box-shadow:0 2px 8px #183f6609}
+ body #calendario .cal-carril+.cal-carril{margin-top:22px}
+ body #calendario .cal-carril-header{display:block;margin:0 0 10px;padding:11px 12px;border:0;border-radius:8px;background:#183f66!important;color:#fff!important;text-align:left;line-height:1.5}
+ body #calendario .cal-carril-title{gap:8px;align-items:center;flex-wrap:wrap}
+ body #calendario .cal-carril-title>span{flex:1 1 120px;min-width:0;font-size:12px;font-weight:800;line-height:1.5;overflow-wrap:anywhere;color:#fff}
+ body #calendario .cal-carril-header small{color:#dceafa;font-size:11px;font-weight:500;line-height:1.5;margin-top:5px}
+ body #calendario .calendar-lane-select{min-height:36px;padding:7px 9px;border:1px solid #ffffff70;border-radius:8px;background:#ffffff18;color:#fff;font-size:10px;font-weight:700;white-space:normal}
+ body #calendario .calendar-lane-select:hover{background:#ffffff30}
+ body #calendario .calendar-lane-select:focus-visible{outline:2px solid #fff;outline-offset:3px}
+}
