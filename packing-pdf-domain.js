@@ -3,7 +3,7 @@
  const normalize=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'');
  const invoiceId=value=>String(value??'').trim().toUpperCase().replace(/\s+/g,'');
  const escape=value=>String(value).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- const matches=(text,value)=>!!String(value||'').trim()&&new RegExp('(^|[^A-Z0-9])'+escape(String(value).trim())+'(?=$|[^A-Z0-9])','i').test(text);
+ const matches=(text,value)=>!!String(value||'').trim()&&new RegExp('(^|[^A-Z0-9._/-])'+escape(String(value).trim())+'(?=$|[^A-Z0-9._/-])','i').test(text);
  const convert=(value,factor)=>Number((value*factor).toPrecision(14));
  function number(raw){const s=String(raw??'').trim();if(/^\d+$/.test(s))return Number(s);if(/^\d+[.,]\d+$/.test(s)){const [whole,fraction]=s.split(/[.,]/);if(fraction.length===3&&Number(whole)!==0)return null;return Number(s.replace(',','.'));}if(/^\d{1,3}(?:,\d{3})+\.\d+$/.test(s))return Number(s.replace(/,/g,''));if(/^\d{1,3}(?:\.\d{3})+,\d+$/.test(s))return Number(s.replace(/\./g,'').replace(',','.'));return null;}
  function textRows(items){
