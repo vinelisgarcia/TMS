@@ -142,15 +142,41 @@
   function cancelImport(){pending=null;document.getElementById('inventoryImportDialog')?.remove();if(sync){sync.markDirty();sync.refresh().catch(()=>{});}}
   function openCase(code){
     const row=report().rows.find(item=>item.code===code);if(!row)return;editor=code;const follow=getCase(code),editable=can('editar');
-    modal('inventoryCaseDialog',`<h3>${escape(row.code)} · ${escape(row.description)}</h3><p class="inv-muted">CT ${number(row.ctQty)} · AD ${number(row.adQty)} · Diferencia ${number(row.difference)} · Impacto ${money(row.impactDop)}</p><div class="inv-form"><label>Estado<select id="inventoryCase_status" ${!editable?'disabled':''}>${Object.entries(workflow).map(([key,label])=>`<option value="${key}" ${key===follow.status?'selected':''}>${label}</option>`).join('')}</select></label><label>Responsable<input id="inventoryCase_owner" value="${escape(follow.owner)}" ${!editable?'readonly':''}></label><label>Referencia de ajuste / soporte<input id="inventoryCase_document" value="${escape(follow.document)}" ${!editable?'readonly':''}></label><label class="inv-wide">Notas de revisión<textarea id="inventoryCase_note" rows="4" ${!editable?'readonly':''}>${escape(follow.note)}</textarea></label></div><p class="inv-muted">Registrar el seguimiento no cambia las cantidades de los reportes. Un ajuste debe verificarse en una nueva carga.</p><div class="inv-actions">${editable?'<button class="btn btn-primary" data-inv="save-case">Guardar seguimiento</button>':''}<button class="btn btn-outline" data-inv="close-case">Cerrar</button></div><details><summary>Detalle de filas consolidadas CT / AD</summary>${['ct','ad'].map(source=>`<h4 style="margin-top:12px">${source.toUpperCase()}</h4><div class="table-wrap"><table class="inv-table"><thead><tr><th>Fila</th><th>Almacén</th><th>Lote / tipo de stock</th><th>Cantidad</th><th>Valor DOP</th></tr></thead><tbody>${(row[source]?.details||[]).map(detail=>`<tr><td>${detail.row}</td><td>${escape(detail.warehouse)}</td><td>${escape(detail.batch||detail.stockType||'')}</td><td>${number(detail.quantity)} ${escape(detail.unit)}</td><td>${source==='ad'?money(detail.totalValueDop):'—'}</td></tr>`).join('')||'<tr><td colspan="5">No registrado en esta fuente.</td></tr>'}</tbody></table></div>`).join('')}</details>`);
+    modal('inventoryCaseDialog',`<h3>${escape(row.code)} · ${escape(row.description)}</h3><p class="inv-muted">CT ${number(row.ctQty)} · AD ${number(row.adQty)} · Diferencia ${number(row.difference)} · Impacto ${money(row.impactDop)}</p><div class="inv-form"><label>Estado<select id="inventoryCase_status" ${!editable?'disabled':''}>${Object.entries(workflow).map(([key,label])=>`<option value="${key}" ${key===follow.status?'selected':''}>${label}</option>`).join('')}</select></label><label>Responsable<input id="inventoryCase_owner" value="${escape(follow.owner)}" ${!editable?'readonly':''}></label><label>Referencia de ajuste / soporte (opcional)<input id="inventoryCase_document" value="${escape(follow.document)}" ${!editable?'readonly':''}></label><label class="inv-wide">Notas de revisión<textarea id="inventoryCase_note" rows="4" aria-describedby="inventoryCaseNoteHelp" ${!editable?'readonly':''}>${escape(follow.note)}</textarea><small id="inventoryCaseNoteHelp">Obligatorias para registrar una rectificación o justificar una diferencia. La referencia de soporte es opcional.</small></label></div><p class="inv-muted">Registrar el seguimiento no cambia las cantidades de los reportes. Un ajuste debe verificarse en una nueva carga.</p><div id="inventoryCaseMessage" class="inv-notice" role="status" aria-live="polite" hidden></div><div class="inv-actions">${editable?'<button class="btn btn-primary" data-inv="save-case">Guardar seguimiento</button>':''}<button class="btn btn-outline" data-inv="close-case">Cerrar</button></div><details><summary>Detalle de filas consolidadas CT / AD</summary>${['ct','ad'].map(source=>`<h4 style="margin-top:12px">${source.toUpperCase()}</h4><div class="table-wrap"><table class="inv-table"><thead><tr><th>Fila</th><th>Almacén</th><th>Lote / tipo de stock</th><th>Cantidad</th><th>Valor DOP</th></tr></thead><tbody>${(row[source]?.details||[]).map(detail=>`<tr><td>${detail.row}</td><td>${escape(detail.warehouse)}</td><td>${escape(detail.batch||detail.stockType||'')}</td><td>${number(detail.quantity)} ${escape(detail.unit)}</td><td>${source==='ad'?money(detail.totalValueDop):'—'}</td></tr>`).join('')||'<tr><td colspan="5">No registrado en esta fuente.</td></tr>'}</tbody></table></div>`).join('')}</details>`);
   }
   function readCaseForm(){return Object.fromEntries(['status','owner','document','note'].map(key=>[key,document.getElementById('inventoryCase_'+key)?.value||'']));}
-  async function saveCase(){
-    if(!can('editar')||!editor)throw new Error('No tienes permiso para cambiar el seguimiento.');
-    const fields=readCaseForm();if(!workflow[fields.status])throw new Error('Estado no válido.');
-    if(['rectificado','justificado'].includes(fields.status)&&(!fields.note.trim()||!fields.document.trim()))throw new Error('Indica una nota y una referencia de soporte para documentar la rectificación o justificación.');
-    data.cases[caseKey(editor)]={...fields,updatedAt:new Date().toISOString(),updatedBy:user?.email||''};editor=null;document.getElementById('inventoryCaseDialog')?.remove();renderTable();await save();
+  function caseNotice(value,error=false){
+    const node=document.getElementById('inventoryCaseMessage');if(!node)return;
+    node.textContent=value;node.hidden=!value;node.classList.toggle('inv-error',error);node.setAttribute('role',error?'alert':'status');
+    if(value)node.scrollIntoView({block:'nearest'});
   }
+  async function saveCase(){
+    const dialog=document.getElementById('inventoryCaseDialog');if(!dialog||dialog.dataset.saving==='true')return;
+    const code=editor,account=user?.id,controls=[...dialog.querySelectorAll('input,select,textarea,button')].map(node=>({node,disabled:node.disabled})),button=dialog.querySelector('[data-inv="save-case"]');
+    try{
+      if(!can('editar')||!code)throw new Error('No tienes permiso para cambiar el seguimiento.');
+      const fields=Object.fromEntries(Object.entries(readCaseForm()).map(([key,value])=>[key,value.trim()]));
+      if(!workflow[fields.status])throw new Error('Estado no válido.');
+      const note=document.getElementById('inventoryCase_note');note?.removeAttribute('aria-invalid');
+      if(['rectificado','justificado'].includes(fields.status)&&!fields.note){note?.setAttribute('aria-invalid','true');note?.focus();throw new Error('Añade una nota de revisión para registrar la rectificación o justificar la diferencia. La referencia de soporte es opcional.');}
+      dialog.dataset.saving='true';dialog.querySelector('.inv-dialog').setAttribute('aria-busy','true');controls.forEach(({node})=>node.disabled=true);button.textContent='Guardando…';caseNotice('Guardando el seguimiento compartido…');
+      if(!sync||sync.getState().revision===null)await start();
+      if(!dialog.isConnected||editor!==code||user?.id!==account||!can('editar'))throw new Error('El acceso o la sesión cambió. Vuelve a abrir el seguimiento.');
+      data.cases[caseKey(code)]={...fields,updatedAt:new Date().toISOString(),updatedBy:user?.email||''};
+      const saved=await save();
+      if(!dialog.isConnected||editor!==code||user?.id!==account)return;
+      if(saved!==true)throw new Error('No se pudo confirmar el guardado. Tu registro se conserva para volver a intentarlo.');
+      editor=null;dialog.remove();renderTable();sync.markDirty();notify('Seguimiento guardado y sincronizado.');
+    }catch(error){
+      if(dialog.isConnected&&editor===code&&user?.id===account){
+        const recovery=dialog.dataset.saving==='true'?' Tus datos se conservan en esta ventana. '+(sync?.getState().conflict?'Cierra y revisa las opciones de sincronización; descarga tu copia antes de cargar la versión compartida.':'Puedes volver a intentar Guardar seguimiento.'):'';
+        caseNotice((error.message||'No se pudo guardar el seguimiento.').trim().replace(/[.!?]+$/,'')+'.'+recovery,true);
+      }
+    }finally{
+      if(dialog.isConnected){delete dialog.dataset.saving;dialog.querySelector('.inv-dialog').removeAttribute('aria-busy');controls.forEach(({node,disabled})=>node.disabled=disabled||(!can('editar')&&node.dataset.inv!=='close-case'));if(button)button.textContent='Guardar seguimiento';}
+    }
+  }
+
   function downloadBackup(){if(!sync)return;const blob=new Blob([JSON.stringify(sync.exportPending(),null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='TMS-inventario-pendiente.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   function exportExcel(){
     if(!can('ver'))return;const result=report();if(!result.ready)throw new Error('Carga ambos reportes antes de exportar.');
@@ -170,7 +196,7 @@
     if(target.closest('#inventoryImportDialog')&&target.id!=='inventorySheet'){pending.preview=null;document.getElementById('inventoryConfirmImport').disabled=true;}
     if(['inventoryStatus','inventoryFollowup'].includes(target.id)){filters[target.id==='inventoryStatus'?'status':'followup']=target.value;filters.page=0;renderTable();}
   });
-  document.addEventListener('input',event=>{if(event.target.id==='inventorySearch'){filters.search=event.target.value;filters.page=0;renderTable();}if(event.target.closest('#inventoryCaseDialog'))sync?.markDirty();});
+  document.addEventListener('input',event=>{if(event.target.id==='inventorySearch'){filters.search=event.target.value;filters.page=0;renderTable();}if(event.target.closest('#inventoryCaseDialog')){event.target.removeAttribute('aria-invalid');sync?.markDirty();}});
   document.addEventListener('click',event=>{
     const button=event.target.closest('[data-inv]');if(!button||button.disabled)return;
     const actions={preview:previewImport,confirm:confirmImport,'cancel-import':cancelImport,'case':()=>openCase(button.dataset.code),'save-case':saveCase,'close-case':()=>{editor=null;document.getElementById('inventoryCaseDialog')?.remove();sync?.markDirty();sync?.refresh().catch(()=>{});},export:exportExcel,backup:downloadBackup,prev:()=>{filters.page--;renderTable();},next:()=>{filters.page++;renderTable();},reload:async()=>{if(syncState.conflict&&!confirm('¿Cargar la versión compartida? Puedes descargar tu copia antes de continuar.'))return;pending=null;editor=null;document.getElementById('inventoryImportDialog')?.remove();document.getElementById('inventoryCaseDialog')?.remove();if(sync?.getState().revision===null)await start();else if(syncState.conflict){await sync.discardAndReload();window.InventoryCounts?.discardDraft();window.InventoryCounts?.mount();}else if(sync?.getState().dirty)await save();else await sync?.refresh();notify('Versión compartida del inventario actualizada.');}};

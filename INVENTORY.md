@@ -48,8 +48,13 @@ explícito sí se conserva como cero. CT FOB y sus monedas no se usan para valor
 las diferencias DOP. Las fechas distintas generan un aviso de corte.
 
 El seguimiento permite responsable, notas, estado y soporte. Registrar una
-rectificación o justificación exige nota y referencia. No realiza ajustes en los
-sistemas de origen: la confirmación económica se verifica en una nueva carga.
+rectificación o justificación exige una nota de revisión; la referencia de ajuste
+o soporte es opcional. Se permite registrar materiales solo en CT y sin
+valoración AD. Los avisos de validación y errores aparecen dentro del formulario.
+El diálogo muestra Guardando y se cierra tras recibir la confirmación de la RPC.
+Si falla el guardado o existe un conflicto entre sesiones, conserva los campos y
+la copia local para reintentar o revisar la versión compartida. Los datos de los
+reportes no cambian: la confirmación económica se verifica en una nueva carga.
 
 ## Carpeta en la nube
 
@@ -76,6 +81,8 @@ Aplicar la migración antes de publicar los archivos nuevos. Ejecutar:
 node --test tests/inventory-domain.test.cjs tests/inventory-sync.test.cjs
 node tests/inventory-db.cjs
 node tests/inventory-ui-smoke.cjs
+node tests/inventory-case-ui.cjs
+TMS_TEST_ENGINE=webkit node tests/inventory-case-ui.cjs
 ```
 
 Los tests de base usan PGlite instalado fuera del repositorio como se documenta

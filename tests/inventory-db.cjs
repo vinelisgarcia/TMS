@@ -30,7 +30,7 @@ const ADMIN='11111111-1111-4111-8111-111111111111',READER='22222222-2222-4222-82
     assert.equal((await snapshot()).revision,1);check('invalid payload and cross-module table writes are rejected atomically');
     await db.exec('reset role');assert.equal(await q('select revision as result from public.tms_sync_state'),42);check('inventory saves do not change the main TMS revision');
     await auth(READER);assert.equal((await snapshot()).revision,1);await assert.rejects(()=>save(1,payload),error=>error.code==='42501');check('explicit inventory reader may view but cannot save');
-    await auth(EDITOR);value.cases.A={status:'en_revision'};assert.equal((await save(1,{tms_inventory_state:[{id:true,payload:value}]})).revision,2);check('only an explicitly permitted role may edit inventory');
+    await auth(EDITOR);value.cases.A={status:'rectificado',owner:'AD',note:'Seguimiento sintético con nota de revisión.',document:''};assert.equal((await save(1,{tms_inventory_state:[{id:true,payload:value}]})).revision,2);assert.deepEqual((await snapshot()).tables.tms_inventory_state[0].payload.cases.A,value.cases.A);check('permitted editor saves and retrieves a follow-up with notes and an optional empty support reference');
     const C=require('../inventory-counts-domain.js');
     C.importMaster(value,[['CODIGO','UBICACION'],['TEST','A01']],{code:0,location:1},'positions');
     C.createCycle(value,{ready:false},{id:'shared-cycle'});C.addItem(value,'TEST');
