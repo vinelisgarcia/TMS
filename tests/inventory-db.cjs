@@ -43,6 +43,17 @@ const ADMIN='11111111-1111-4111-8111-111111111111',READER='22222222-2222-4222-82
     await assert.rejects(()=>save(2,payload),error=>error.code==='40001');
     assert.equal(C.itemReport(C.active((await snapshot()).tables.tms_inventory_state[0].payload),'TEST').quantity,2);
     check('count cycles, corrected locations, records and processing survive RPC roundtrip; stale session cannot erase them');
+    const Trace=require('../inventory-trace-domain.js');
+    Object.assign(value.sources.ct,{semanticHash:'CT-TRACE',asOf:'2026-10-30',fileName:'CT-sintetico.csv'});value.sources.ct.materials.push({code:'TRACE',description:'Material ficticio',quantity:5,unit:'UND'});
+    value.sources.ad={semanticHash:'AD-BASE',asOf:'2026-10-30',fileName:'AD-base.xlsx',materials:[]};
+    Trace.register(value,'TRACE',{id:'MOV-TRACE',type:'entrada',quantity:5,effectiveDate:'2026-10-31',owner:'AD',reason:'Registro sintético de entrada.'},{user:'editor@example.invalid',today:'2026-11-03'});
+    assert.equal((await save(3,{tms_inventory_state:[{id:true,payload:value}]})).revision,4);
+    assert.deepEqual((await snapshot()).tables.tms_inventory_state[0].payload.tracking,value.tracking);
+    value.sources.ad={semanticHash:'AD-NUEVO',asOf:'2026-11-01',fileName:'AD-nuevo.xlsx',materials:[{code:'TRACE',description:'Material ficticio',quantity:5,unit:'UND'}]};
+    Trace.checks(value,{user:'editor@example.invalid'});Trace.review(value,'MOV-TRACE',{id:'REVIEW-TRACE',result:'verified',note:'Revisión sintética del nuevo corte.'},{user:'editor@example.invalid'});
+    assert.equal((await save(4,{tms_inventory_state:[{id:true,payload:value}]})).revision,5);
+    assert.deepEqual((await snapshot()).tables.tms_inventory_state[0].payload.tracking,value.tracking);
+    await assert.rejects(()=>save(4,payload),error=>error.code==='40001');check('movement ledger, source-cut evidence and manual verification survive the existing RPC; stale writers cannot erase them');
     await db.exec('reset role');await db.exec(`update public.tms_user_profiles set activo=false where auth_user_id='${EDITOR}'`);await auth(EDITOR);await assert.rejects(snapshot,error=>error.code==='42501');check('inactive accounts cannot read inventory');
     await auth(ADMIN);await assert.rejects(()=>db.exec("update public.tms_inventory_state set payload='{}'"),error=>error.code==='42501');check('direct unversioned authenticated writes are denied');
     await auth(null,'anon');await assert.rejects(snapshot,error=>error.code==='42501');check('anonymous callers cannot read private quantities or DOP valuation');

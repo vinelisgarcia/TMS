@@ -20,7 +20,8 @@ en la configuración de roles. La migración no modifica las matrices existentes
 Los originales no se suben a una ubicación pública ni se incluyen en el código.
 La base privada almacena los datos normalizados, trazabilidad por fila, nombre,
 fecha, usuario y huellas del reporte. No se precargan archivos del usuario en el
-sitio publicado. Una nueva pareja de reportes tiene su propio seguimiento.
+sitio publicado. Cada pareja de reportes mantiene sus observaciones; el historial
+por material permanece disponible después de reemplazar los archivos.
 
 ## Cálculo
 
@@ -180,3 +181,60 @@ y una columna explícita de confirmación de ubicación por CT en Detalle. Las
 sesiones comparten los apuntes mediante la revisión atómica existente. Un
 formulario de apunte sin guardar se conserva ante cambios simultáneos y al
 recargar. No requiere migración: se guarda dentro del payload privado existente.
+
+
+## Movimientos AD y trazabilidad entre cortes
+
+Desde Revisar en un material se puede marcar **Registrar una entrada o salida ya
+realizada en AD**. Se indican tipo, cantidad positiva y fecha efectiva; el
+responsable, el motivo y el soporte opcional se toman de los campos del seguimiento.
+La fecha del movimiento es distinta de la fecha/usuario que registran la anotación.
+El movimiento no altera las cantidades ni la valoración de los reportes cargados.
+
+**Movimientos y trazabilidad AD** muestra entradas, salidas y neto por material y
+unidad, estado de contraste y un historial de observaciones, movimientos, nuevos
+cortes y revisiones. Cada cambio de una observación agrega una versión; las
+observaciones anteriores disponibles se conservan como tales. No se extraen
+cantidades de su texto para inventar movimientos históricos. Se congelan las
+referencias de los archivos/cortes y sus cantidades disponibles antes de reemplazar
+una fuente. Los saldos históricos que ya no están disponibles permanecen desconocidos.
+
+Al cargar otro AD se compara su cantidad con el saldo AD base más las entradas
+menos las salidas registradas después de ese corte. Los movimientos del mismo
+material/corte se consideran juntos para calcular ese saldo, sin duplicar el
+saldo base por cada entrada. Un movimiento de la misma fecha del corte requiere
+confirmar que el archivo aún no lo incluía; los anteriores al corte se mantienen
+como históricos para revisión documental. Un reporte cuyo corte preceda al
+movimiento no puede verificarlo. Las unidades incompatibles bloquean la proyección.
+
+El nuevo archivo genera evidencia de contraste, incluso si el saldo es distinto.
+**Saldo compatible** es un indicador; la confirmación la realiza un usuario con
+permiso de edición y una nota de revisión. Las ventas, despachos y otros movimientos
+pueden explicar cambios adicionales. Cada revisión se aplica únicamente a la
+anotación seleccionada, conservando los movimientos que formaron la base del saldo
+esperado. Las revisiones anteriores y los archivos usados permanecen en el historial.
+
+Las anotaciones guardadas se corrigen mediante anulación con motivo y un registro
+nuevo, conservando el original. La anulación solo afecta el registro del TMS.
+Los reintentos conservan el identificador de un movimiento pendiente para evitar
+sumarlo dos veces. Los formularios de movimiento y revisión se recuperan al recargar;
+los conflictos entre sesiones conservan la copia local y no sobrescriben la compartida.
+
+Se añaden Movimientos AD e Historial inventario al Excel de conciliación, respetando
+los materiales filtrados. El libro del visor de trazabilidad permite exportar el
+historial completo o el material buscado, incluidos cortes anteriores.
+
+La persistencia utiliza `tracking.version = 1` y `tracking.events` dentro del payload
+privado existente. La misma RPC/revisión atómica y permisos de inventario protegen
+el guardado. No requiere nuevas tablas ni migración SQL: el contrato vigente admite
+el estado adicional y se valida el viaje de ida/vuelta con PGlite. El historial es
+la trazabilidad operativa de la aplicación, con anulaciones visibles en su interfaz.
+
+Pruebas adicionales:
+
+```sh
+node --test tests/inventory-trace.test.cjs
+node tests/inventory-trace-ui.cjs
+TMS_TEST_ENGINE=webkit node tests/inventory-trace-ui.cjs
+node tests/inventory-db.cjs
+```
