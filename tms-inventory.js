@@ -213,7 +213,7 @@
   window.addEventListener('tms-permissions-changed',()=>{
     if(!can('ver')&&sync){sync.stop();data=empty();user=null;pending=null;editor=null;document.getElementById('inventoryImportDialog')?.remove();document.getElementById('inventoryCaseDialog')?.remove();render();}
   });
-  client()?.auth.onAuthStateChange?.((event,session)=>{if(user&&(event==='SIGNED_OUT'||session?.user&&session.user.id!==user.id)){sync?.stop();data=empty();user=null;}});
+  client()?.auth.onAuthStateChange?.((event,session)=>{if(user&&(event==='SIGNED_OUT'||session?.user&&session.user.id!==user.id)){sync?.stop();data=empty();user=null;pending=null;editor=null;document.getElementById('inventoryImportDialog')?.remove();document.getElementById('inventoryCaseDialog')?.remove();window.InventoryTrace?.reset();render();}});
   window.guardarCambiosVistaActual=function(){if(document.querySelector('.view.active')?.id==='inventario')return save().catch(error=>notify(error.message));return window.guardarEnSupabase();};
   function pendingTraceIds(ids){if(sync?.getState().saving)return [];const saved=sync?.exportPending().base?.tms_inventory_state?.[0]?.payload?.tracking?.events||[];const committed=new Set(saved.map(event=>event.id));return ids.filter(id=>!committed.has(id));}
   window.TMSInventory={pendingTraceIds,edit:editInventory,currentUser:()=>user,can,markDraft:()=>sync?.markDirty(),pairKey,open,start,render,prepareImport,confirmImport,save,getReport:report,getState:()=>copy(data),getSyncState:()=>sync?.getState()||syncState};
