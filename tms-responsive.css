@@ -195,6 +195,25 @@
 .calendar-load-compact{display:none!important}
 .calendar-card-tools,.calendar-card-tools>.cal-card-actions{display:contents}
 .calendar-card-tools>summary{display:none}
+@media screen{
+ body #calendario .cal-card{padding:8px!important;margin-bottom:5px;min-height:0}
+ body #calendario .cal-card .calendar-dispatch-name{line-height:1.25;min-height:0}
+ body #calendario .cal-card .calendar-dispatch-code{margin:0 0 3px;line-height:1.25}
+ body #calendario .cal-card .calendar-dispatch-metrics{margin:4px 0 0;gap:3px 8px;padding:4px 0 0;border-top:1px solid var(--border)}
+ body #calendario .cal-card .calendar-dispatch-metrics dt{line-height:1.25}
+ body #calendario .cal-card .calendar-dispatch-metrics dd{margin:0;line-height:1.25}
+ body #calendario .cal-card .calendar-transit-chip{padding:5px 7px;margin:5px 0 0;min-height:34px;line-height:1.35}
+}
+@media screen and (min-width:901px){
+ body #calendario .cal-card-topline{float:right;min-height:28px;margin:0 0 0 4px;padding:0}
+ body #calendario .cal-card-topline>.badge,body #calendario .cal-card-check>span{display:none}
+ body #calendario .cal-card-check{min-width:28px;min-height:28px;padding:5px;margin:0;cursor:pointer}
+ body #calendario .cal-card-check input{width:17px;height:17px;min-width:17px;min-height:17px;margin:0}
+ body #calendario .cal-card .calendar-dispatch-name{width:calc(100% - 32px);text-align:left}
+ body #calendario .cal-card .calendar-dispatch-metrics{clear:both}
+ body #calendario .cal-card-actions{margin-top:5px;gap:3px;flex-wrap:wrap}
+ body #calendario .cal-card-actions .btn{min-height:28px;padding:3px 5px!important}
+}
 @media screen and (max-width:900px){
  body #calendario .cal-month-section{border:0;border-radius:0;background:transparent;box-shadow:none;margin-bottom:18px}
  body #calendario .cal-week-title{background:transparent;color:var(--muted);padding:4px 2px 9px;font-size:10px;letter-spacing:.03em;text-transform:uppercase}
@@ -216,7 +235,7 @@
  body #calendario .calendar-lane-select{min-height:34px;font-size:9px;background:transparent;border-color:var(--border);padding:5px 7px;border-radius:8px}
  body #calendario .calendar-load-full{display:none}
  body #calendario .calendar-load-compact{display:block!important;font-size:10px;color:var(--muted);margin-top:-2px;font-weight:400}
- body #calendario .cal-card{padding:12px!important;margin:0 0 8px;position:relative;border:1px solid var(--border);border-left:3px solid #8296dc;border-radius:12px!important;background:var(--surface-2)!important;box-shadow:none!important;cursor:pointer}
+ body #calendario .cal-card{padding:8px!important;margin:0 0 5px;position:relative;border:1px solid var(--border);border-left:3px solid #8296dc;border-radius:12px!important;background:var(--surface-2)!important;box-shadow:none!important;cursor:pointer}
  body #calendario .cal-card:last-child{margin-bottom:0}
  body #calendario .cal-card-selected{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 7%,var(--glass-solid))!important}
  body #calendario .cal-card:has(.calendar-card-tools[open]){z-index:40}
