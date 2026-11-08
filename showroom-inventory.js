@@ -10,7 +10,7 @@
   const unitMoney=value=>value===null||value===undefined?'Sin valoración':new Intl.NumberFormat('es-DO',{style:'currency',currency:'DOP',minimumFractionDigits:2,maximumFractionDigits:6}).format(value);
   const can=action=>!!(window.TMSAuditCore&&window.TMSAuditCore.hasPermission('showroom',action));
   const client=()=>typeof SB!=='undefined'?SB:window.SB;
-  let data=empty(),sync=null,user=null,starting=null,pending=null,editor=null,message='',syncState={phase:'disconnected'};
+  let data=empty(),sync=null,user=null,starting=null,pending=null,editor=null,message='',schemaMissing=false,syncState={phase:'disconnected'};
   const filters={search:'',status:'differences',followup:'',page:0};
   const statuses={equal:'Coincide',difference:'Diferencia',only_ct:'Solo físico',only_ad:'Solo virtual',not_counted:'Sin conteo físico',unit_conflict:'Unidades incompatibles'};
   const workflow={pendiente:'Pendiente',en_revision:'En revisión',rectificado:'Rectificación registrada',justificado:'Diferencia justificada'};
@@ -45,9 +45,14 @@
       const result=await client().auth.getUser();if(result.error)throw result.error;
       const next=result.data?.user;if(!next)throw new Error('Inicia sesión para usar el inventario.');
       if(user&&user.id!==next.id){sync?.stop();data=empty();pending=null;editor=null;}
-      user=next;await getSync().start(user);
+      user=next;schemaMissing=false;await getSync().start(user);
     })();
-    try{await starting;}catch(error){notify(error.message);throw error;}finally{starting=null;}
+    try{await starting;}catch(error){
+      if(['PGRST202','42883','42P01'].includes(error.code)){
+        schemaMissing=true;sync?.stop();render();
+      }else notify(error.message);
+      throw error;
+    }finally{starting=null;}
   }
   async function open(){render();try{await start();}catch(_){} }
   async function save(){
@@ -63,6 +68,11 @@
   function render(){
     const mount=document.getElementById('showroomMount');if(!mount)return;
     if(!can('ver')){mount.innerHTML='<div class="inv-empty"><h3>Inventario del showroom</h3><p>Solicita al administrador acceso a este módulo.</p></div>';window.ShowroomCounts?.reset();return;}
+    if(schemaMissing){
+      window.ShowroomCounts?.reset();
+      mount.innerHTML='<header class="inv-head"><div><div class="inv-eyebrow">Inventario del showroom</div><h2>Activación pendiente</h2></div></header><section class="card"><p role="status">El módulo está publicado, pero su base de datos necesita activación por el administrador. Las cargas y los conteos estarán disponibles después de activarla.</p><div class="inv-actions"><button class="btn btn-outline" onclick="TMSShowroom.open()">Comprobar activación</button></div></section>';
+      return;
+    }
     const result=report(),s=result.summary;
     mount.innerHTML=`<header class="inv-head"><div><div class="inv-eyebrow">Conciliación del showroom</div><h2>Inventario del showroom</h2><p>Compara el stock virtual de Álvarez con el conteo físico del showroom y prioriza las diferencias en DOP.</p></div><div class="inv-actions"><span id="showroomSyncStatus" class="inv-pill"></span><button class="btn btn-outline" data-show-inv="export" ${!result.ready?'disabled':''}>Exportar Excel</button></div></header><div id="showroomMessage" class="inv-notice" role="status" ${!message?'hidden':''}>${escape(message)}</div><div id="showroomSyncPanel" class="inv-notice" hidden></div><div class="inv-sources">${sourceCard('ct','Showroom · conteo físico')}${sourceCard('ad','Álvarez · stock virtual')}</div>${result.ready?`<div class="inv-grid"><div class="inv-kpi"><span>Diferencias con valoración</span><strong>${money(s.grossImpactDop)}</strong><small>Impacto absoluto · no compensa sobrantes con faltantes</small></div><div class="inv-kpi"><span>Materiales con diferencias</span><strong>${number(s.differences)}</strong><small>${number(s.equal)} coinciden · ${number(s.materials)} en el cruce</small></div><div class="inv-kpi"><span>Pendientes de valoración</span><strong>${number(s.unvalued)}</strong><small>No se consideran impacto cero</small></div><div class="inv-kpi"><span>Diferencia neta valorada</span><strong>${money(s.netImpactDop)}</strong><small>Signo de Físico menos virtual</small></div></div>${result.issues.map(issue=>`<div class="inv-notice">${escape(issue)}</div>`).join('')}${priorityPanels(result)}<section class="card"><div class="card-title">Conciliación y rectificación</div><div class="inv-toolbar"><input id="showroomSearch" type="search" placeholder="Buscar material o descripción" value="${escape(filters.search)}"><select id="showroomStatus"><option value="differences">Con diferencias</option><option value="all">Todos</option><option value="equal">Coinciden</option><option value="only_ct">Solo físico</option><option value="not_counted">Sin conteo físico</option><option value="unvalued">Sin valoración</option><option value="unit_conflict">Unidades incompatibles</option></select><select id="showroomFollowup"><option value="">Todo el seguimiento</option>${Object.entries(workflow).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select></div><div id="showroomResults"></div></section>`:`<div class="inv-empty"><h3>${data.sources.ct?'Falta cargar el reporte virtual':data.sources.ad?'Falta cargar el conteo físico':'Carga los dos reportes para comparar'}</h3><p class="inv-muted">El módulo no inventa un inventario ausente ni lo trata como stock cero.</p></div>`}<details class="card inv-method"><summary>Método de valoración y opciones de carga</summary><p><strong>Consolidación:</strong> cada material suma todas sus cantidades y todos sus valores virtuales. El costo ponderado se calcula después de consolidar: valor total virtual en DOP ÷ cantidad virtual. La diferencia es Físico − virtual; el impacto para priorizar es su valor absoluto × costo ponderado. El costo no se redondea antes del cálculo; el impacto de cada material se redondea a centavos. No se utiliza un valor físico ni una tasa de cambio supuesta.</p><p><strong>Carga directa disponible:</strong> Excel XLSX/XLS o CSV. Revisa hoja, columnas, unidad y fecha antes de confirmar. Cada reporte sustituye la fuente seleccionada; no se acumulan las dos versiones del mismo inventario.</p><p><strong>Carpeta en la nube:</strong> puede alimentar el mismo proceso cuando se defina Drive, OneDrive u otro proveedor, la carpeta y sus permisos. Requiere una conexión y un sincronizador; esta pantalla no simula esa conexión. Por ahora, los archivos se procesan al cargarlos y el inventario consolidado se guarda de forma privada en el TMS.</p><p>El seguimiento documenta la revisión; no modifica SAP ni el archivo de conteo. Un nuevo par de reportes inicia su propio seguimiento.</p></details>`;
     const status=document.getElementById('showroomStatus');if(status)status.value=filters.status;

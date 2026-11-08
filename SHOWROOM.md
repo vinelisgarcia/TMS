@@ -57,6 +57,11 @@ Admin tiene acceso; los otros roles requieren permisos explícitos del módulo
 `showroom` (`ver`, `editar`, `importar`). Tener permisos de `inventario` no concede
 acceso al showroom. Solo se publica la revisión mediante Realtime, no los datos.
 
+Si se publica la interfaz antes de aplicar la migración, el módulo detecta la
+función ausente, muestra «Activación pendiente» y deshabilita las cargas y
+conteos. «Comprobar activación» vuelve a intentar la lectura; al aplicar la
+migración se habilita el flujo normal. Los demás módulos siguen operativos.
+
 Publicar juntos index.html, tms-v2.js, tms-responsive.js, tms-inventory.css,
 inventory-counts-domain.js y los cuatro archivos showroom-*.js. Recargar las
 sesiones abiertas. La preparación del código y las pruebas no aplican la
