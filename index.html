@@ -994,7 +994,7 @@ html { -webkit-text-size-adjust: 100%; }
 #logoutBtn:hover { background: rgba(255,255,255,0.28); }
 </style>
 <link rel="stylesheet" href="./tms-glass.css?v=20261022-audit">
-<link rel="stylesheet" href="./tms-inventory.css?v=20261103-trace">
+<link rel="stylesheet" href="./tms-inventory.css?v=20261108-showroom">
 <link rel="stylesheet" href="./tms-responsive.css?v=20261106-compact-client-cards">
 <link rel="stylesheet" href="./tms-reading.css?v=20261102-count-notes">
 <link rel="stylesheet" href="./calendar-reports.css?v=20261103-warehouse">
@@ -1048,6 +1048,7 @@ html { -webkit-text-size-adjust: 100%; }
         <option value="calendario">Calendario</option>
         <option value="comercial">Vista Comercial</option>
         <option value="inventario">Inventario CT / AD</option>
+        <option value="showroom">Inventario showroom</option>
         <option value="rutas">Rutas</option>
         <option value="importaciones">Importaciones</option>
         <option value="auditoriaJamaica" hidden>Auditoría Jamaica</option>
@@ -1077,6 +1078,7 @@ html { -webkit-text-size-adjust: 100%; }
       <span class="nav-icon">👔</span><span class="nav-label">Vista Comercial</span>
     </button>
     <button class="nav-btn" id="nav-inventario" onclick="cambiarVista('inventario',this)" style="display:none"><span class="nav-icon">▦</span><span class="nav-label">Inventario CT / AD</span></button>
+    <button class="nav-btn" id="nav-showroom" onclick="cambiarVista('showroom',this)" style="display:none"><span class="nav-icon">▦</span><span class="nav-label">Inventario showroom</span></button>
     <button class="nav-btn" id="nav-rutas" onclick="cambiarVista('rutas',this)">
       <span class="nav-icon">🧭</span><span class="nav-label">Rutas</span>
     </button>
@@ -1107,6 +1109,7 @@ html { -webkit-text-size-adjust: 100%; }
 
   <!-- CONTENT -->
   <div id="content">
+    <div id="showroom" class="view"><div id="showroomNavMount"></div><div id="showroomMount"></div><div id="showroomCountMount" hidden></div></div>
     <div id="inventario" class="view"><div id="inventoryNavMount"></div><div id="inventoryMount"></div><div id="inventoryCountMount" hidden></div></div>
     <div id="packingMiami" class="view"></div>
 
@@ -4624,15 +4627,19 @@ window.addEventListener('DOMContentLoaded', async () => {
 <script src="./tms-domain.js?v=20261101-transit"></script>
 <script src="./tms-sync.js?v=20261031-inventory"></script>
 <script src="./warehouse-report-domain.js?v=20261103-executive"></script>
-<script src="./tms-v2.js?v=20261103-warehouse-reports"></script>
+<script src="./tms-v2.js?v=20261108-showroom"></script>
 <script src="./tms-audit-ui.js?v=20261101-entry-template"></script>
 <script src="./inventory-domain.js?v=20261031-ad-ct"></script>
-<script src="./inventory-counts-domain.js?v=20261102-difference-notes"></script>
+<script src="./inventory-counts-domain.js?v=20261108-showroom"></script>
 <script src="./inventory-trace-domain.js?v=20261103-trace"></script>
 <script src="./tms-inventory.js?v=20261103-trace"></script>
 <script src="./inventory-trace.js?v=20261103-trace"></script>
 <script src="./inventory-counts.js?v=20261102-difference-notes"></script>
-<script src="./tms-responsive.js?v=20261102-miami-access"></script>
+<script src="./showroom-domain.js?v=20261108-showroom"></script>
+<script src="./showroom-counts-domain.js?v=20261108-showroom"></script>
+<script src="./showroom-inventory.js?v=20261108-showroom"></script>
+<script src="./showroom-counts.js?v=20261108-showroom"></script>
+<script src="./tms-responsive.js?v=20261108-showroom"></script>
 <script src="./tms-reading.js?v=20261102-count-notes"></script>
 <script src="./calendar-reports.js?v=20261102-executive"></script>
 <script src="./warehouse-reports.js?v=20261103-executive"></script>
