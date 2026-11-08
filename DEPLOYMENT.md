@@ -1,5 +1,10 @@
 # Sincronización de sesiones
 
+El nuevo módulo independiente de showroom requiere aplicar la migración aditiva
+`0010_showroom_inventory.sql` antes de publicar su frontend. Ver
+[SHOWROOM.md](SHOWROOM.md) para el alcance, los permisos y las pruebas. Preparar
+el cambio en una rama no aplica esa migración ni publica el sitio.
+
 La versión `20261031-session-sync` usa `tms_get_snapshot` para leer una copia
 consistente y `tms_save_snapshot` para guardar todas las tablas modificadas en una
 transacción con revisión esperada. Una revisión antigua produce `40001` sin

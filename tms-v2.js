@@ -139,7 +139,8 @@
     almacen: 'Almacén',
     inventario: 'Inventario CT / AD',
     auditoriaJamaica: 'Auditoría Jamaica',
-    packingMiami: 'Packing list Miami'
+    packingMiami: 'Packing list Miami',
+    showroom: 'Inventario showroom'
   };
 
   function syncThemeButtons() {
@@ -503,7 +504,8 @@
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true },
-      inventario: { ver: true, editar: true, importar: true }
+      inventario: { ver: true, editar: true, importar: true },
+      showroom: { ver: true, editar: true, importar: true }
     };
   }
 
@@ -1026,6 +1028,7 @@
       inventario: 'inventario',
       packingMiami: 'packingMiami',
       auditoriaJamaica: 'auditoriaJamaica',
+      showroom: 'showroom',
       reportes: 'reportes'
     }[viewId] || viewId;
   }
@@ -1065,7 +1068,7 @@
   }
 
   function getFirstAllowedView() {
-    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'inventario', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'configClientes'];
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'inventario', 'showroom', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || '';
   }
 
@@ -1103,7 +1106,8 @@
       almacen: 'almacen',
       inventario: 'inventario',
       packingMiami: 'packingMiami',
-      auditoriaJamaica: 'auditoriaJamaica'
+      auditoriaJamaica: 'auditoriaJamaica',
+      showroom: 'showroom'
     };
     Object.entries(navMap).forEach(([viewId, moduleName]) => {
       const allowed = hasPermission(moduleName, 'ver');
@@ -1117,7 +1121,7 @@
     const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
     document.body.classList.toggle('role-readonly', !hasPermission(activeModule, 'editar'));
     const undoBtn = document.getElementById('undoStateBtn');
-    if (activeModule === 'inventario') { if (undoBtn) undoBtn.disabled = true; }
+    if (['inventario', 'showroom'].includes(activeModule)) { if (undoBtn) undoBtn.disabled = true; }
     else updateUndoButton();
     const saveBtn = document.getElementById('saveStateBtn');
     if (saveBtn) saveBtn.title = isAdminUser() ? 'Guardar cambios globales' : 'Guardar cambios operativos; usuarios y roles solo Admin';
@@ -1150,6 +1154,7 @@
       originalCambiarVista(id, btn);
       syncMobileModuleSelect();
       if (id === 'inventario' && window.TMSInventory) window.TMSInventory.open();
+      if (id === 'showroom' && window.TMSShowroom) window.TMSShowroom.open();
       if (id === 'rutas') renderRouteCatalog();
       if (id === 'importaciones') renderImportaciones();
       if (id === 'materialesTransito') renderMaterialesTransito();
@@ -4602,7 +4607,8 @@
       almacen: { ver: true, editar: true },
       inventario: { ver: true, editar: true, importar: true },
       auditoriaJamaica: { ver: true, editar: false, importar: false },
-      packingMiami: { ver: true, editar: true, importar: true }
+      packingMiami: { ver: true, editar: true, importar: true },
+      showroom: { ver: true, editar: true, importar: true }
     };
     if (role === 'Admin' || scope === 'full') return all;
     if (scope === 'read_only') {
@@ -5552,7 +5558,7 @@
   function trackUnsubmittedDraft(event) {
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
-    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog')) || control.closest('#inventario') || control.closest('#packingMiami')) return;
+    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami')) return;
     if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
