@@ -42,9 +42,10 @@
   function snapshot(item,reason,required){return {code:item.code,description:item.description||'',unit:item.unit||'UND',stockCT:item.stockCT,stockAD:item.stockAD,adRegistered:!!item.adRegistered,costAD:item.costAD,masterStock:item.masterStock??null,expectedLocations:item.locations.length?copy(item.locations):[{location:'',stock:null}],required:!!required,reasons:reason?[reason]:[]};}
   function createCycle(data,report,options={}){
     const s=ensure(data),previous=active(data);
-    if(previous&&previous.status==='open'&&previous.sourcePair===pair(data)&&previous.differenceConvention==='ad_ct')return previous;
+    const convention=options.differenceConvention||'ad_ct';
+    if(previous&&previous.status==='open'&&previous.sourcePair===pair(data)&&previous.differenceConvention===convention)return previous;
     if(previous&&previous.status==='open'){previous.status='archived';previous.archivedAt=stamp(options);}
-    const cycle={id:options.id||uid(),differenceConvention:'ad_ct',sourcePair:pair(data),sourceDates:{ct:data.sources?.ct?.asOf||null,ad:data.sources?.ad?.asOf||null},createdAt:stamp(options),createdBy:options.user||'',status:'open',items:{},records:[],audit:[],processed:{}};
+    const cycle={id:options.id||uid(),differenceConvention:convention,sourcePair:pair(data),sourceDates:{ct:data.sources?.ct?.asOf||null,ad:data.sources?.ad?.asOf||null},createdAt:stamp(options),createdBy:options.user||'',status:'open',items:{},records:[],audit:[],processed:{}};
     const lookup=new Map(catalog(data).map(item=>[item.code,item]));
     for(const row of priorities(report).mandatory){const item=lookup.get(row.code);if(item)cycle.items[row.code]=snapshot(item,row.reason,true);}
     s.cycles.push(cycle);s.activeCycleId=cycle.id;return cycle;
