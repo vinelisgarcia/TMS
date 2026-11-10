@@ -42,8 +42,11 @@ sin registro virtual queda sin valoración; puede añadirse al guiado y, una vez
 contado y procesado, exportarse como propuesta de alta virtual. El TMS no ajusta
 SAP ni inventa costos para completar el informe.
 
-La exportación incluye conciliación filtrada, fuentes/método, detalle físico y
-virtual, con ubicaciones, responsables y notas. Los conteos conservan las hojas
+La exportación de conciliación respeta los filtros y contiene una única hoja con
+seis columnas: Referencia, Descripción, Inventario (cantidad virtual), Valor
+económico Virtual (valor total consolidado en DOP), Conteo físico y Diferencia
+(físico menos virtual). Un conteo ausente o una valoración desconocida se
+exportan como celdas vacías. Los conteos conservan las hojas
 Resumen, Detalle, Correcciones, Guiado, Ciclo y Altas virtuales. Un nuevo ciclo
 archiva el anterior y conserva las referencias con las que se inició.
 

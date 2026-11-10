@@ -44,7 +44,17 @@ const initial=()=>({version:1,sources:{ct:null,ad:null},cases:{},settings:{sameS
     const ctExcel=await a.evaluate(csv=>{const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(ShowroomDomain.parseCsv(csv)),'Stock CT');return Array.from(new Uint8Array(XLSX.write(book,{type:'array',bookType:'xlsx'})));},ct.toString());
     const beforeExcel=db.revision;await upload(a,'ct',{name:'CT.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(ctExcel)});assert.equal(db.revision,beforeExcel,'CT Excel and CSV represent the same showroom, not additional stock');
     const rev=db.revision;await upload(a,'ct',{name:'CT-copia.csv',mimeType:'text/csv',buffer:ct});assert.equal(db.revision,rev);assert.match(await a.locator('#showroomMessage').innerText(),/ya está cargado/);
-    const download=a.waitForEvent('download');await a.locator('[data-show-inv="export"]').click();assert.match((await download).suggestedFilename(),/\.xlsx$/);
+    const exportRows=async()=>{
+      const download=a.waitForEvent('download');await a.locator('[data-show-inv="export"]').click();const file=await download;assert.match(file.suggestedFilename(),/\.xlsx$/);
+      const bytes=require('node:fs').readFileSync(await file.path());
+      return a.evaluate(bytes=>{const book=XLSX.read(new Uint8Array(bytes),{type:'array',cellNF:true}),sheet=book.Sheets.Conciliacion;return {names:book.SheetNames,range:sheet['!ref'],rows:XLSX.utils.sheet_to_json(sheet,{header:1,defval:null}),cells:Object.fromEntries(Object.entries(sheet).filter(([key])=>!key.startsWith('!')))};},[...bytes]);
+    };
+    const exported=await exportRows();assert.deepEqual(exported.names,['Conciliacion']);assert.equal(exported.range,'A1:F4');
+    assert.deepEqual(exported.rows[0],['Referencia','Descripción','Inventario','Valor económico Virtual','Conteo físico','Diferencia']);
+    const exportedByCode=Object.fromEntries(exported.rows.slice(1).map(row=>[row[0],row]));
+    assert.deepEqual(exportedByCode.A,['A','Articulo A',30,500,20,-10]);assert.deepEqual(exportedByCode.B,['B','Articulo B',1,1000,5,4]);assert.deepEqual(exportedByCode.C,['C','Articulo C',0,null,2,2]);
+    for(const [key,cell]of Object.entries(exported.cells)){if(/^[C-F][2-9]/.test(key)&&cell.v!==undefined)assert.equal(cell.t,'n');if(/^D[2-9]/.test(key)&&cell.t==='n')assert.match(cell.z,/RD\$/);}
+    await a.locator('#showroomStatus').selectOption('all');const allExported=await exportRows();assert.equal(allExported.range,'A1:F5');assert.deepEqual(allExported.rows.find(row=>row[0]==='D'),['D','Articulo D',3,300,null,null]);await a.locator('#showroomStatus').selectOption('differences');
     const b=await pageFor();await a.locator('[data-show-inv="case"][data-code="B"]').click();await a.locator('#showroomCase_owner').fill('Alice pendiente');
     await b.locator('[data-show-inv="case"][data-code="A"]').click();await b.locator('#showroomCase_owner').fill('Bob guardado');await b.locator('#showroomCase_status').selectOption('en_revision');await b.locator('[data-show-inv="save-case"]').click();await b.waitForFunction(()=>TMSShowroom.getSyncState().phase==='synced');
     await a.evaluate(revision=>window.__showroomChange({new:{revision}}),db.revision);await a.waitForFunction(()=>TMSShowroom.getSyncState().conflict);
@@ -59,10 +69,10 @@ const initial=()=>({version:1,sources:{ct:null,ad:null},cases:{},settings:{sameS
         const next=a.waitForEvent('download');await a.locator('[data-show-inv="export"]').click();const actual=await next;
         await actual.saveAs(process.env.TMS_SHOWROOM_REPORT_OUTPUT);
         const output=require('node:fs').readFileSync(process.env.TMS_SHOWROOM_REPORT_OUTPUT);
-        const verified=await a.evaluate(bytes=>{const wb=XLSX.read(new Uint8Array(bytes),{type:'array'});return {names:wb.SheetNames,rows:XLSX.utils.sheet_to_json(wb.Sheets.Conciliacion).length,physical:XLSX.utils.sheet_to_json(wb.Sheets['Detalle fisico']).length};},[...output]);
-        assert.deepEqual(verified.names,['Conciliacion','Fuentes y metodo','Detalle fisico','Detalle virtual']);
-        assert.equal(verified.rows,3847);assert.equal(verified.physical,1690);
-        console.log('PASS: full real comparison exported with source method, all 3847 articles and 1690 physical detail records.');
+        const verified=await a.evaluate(bytes=>{const wb=XLSX.read(new Uint8Array(bytes),{type:'array'}),sheet=wb.Sheets.Conciliacion;return {names:wb.SheetNames,rows:XLSX.utils.sheet_to_json(sheet).length,columns:XLSX.utils.decode_range(sheet['!ref']).e.c+1};},[...output]);
+        assert.deepEqual(verified.names,['Conciliacion']);
+        assert.equal(verified.rows,3847);assert.equal(verified.columns,6);
+        console.log('PASS: full real comparison exported with all 3847 articles and exactly six requested columns.');
       }
     }
     assert.deepEqual(errors,[]);console.log('PASS: showroom CSV/XLSX imports, weighted DOP valuation, consolidation, duplicate snapshots, empty AD, exports, role access, simultaneous sessions, draft preservation, responsive UI.');

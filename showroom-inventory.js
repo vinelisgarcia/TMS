@@ -166,14 +166,13 @@
   function downloadBackup(){if(!sync)return;const blob=new Blob([JSON.stringify(sync.exportPending(),null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='TMS-showroom-pendiente.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   function exportExcel(){
     if(!can('ver'))return;const result=report();if(!result.ready)throw new Error('Carga ambos reportes antes de exportar.');
-    const rows=filteredRows().map(row=>{const follow=getCase(row.code);return [row.code,row.description,row.unit,row.ctQty,row.adQty,row.difference,row.ad?.totalValueDop??null,row.unitCostDop,row.impactDop,row.signedImpactDop,statuses[row.status],workflow[follow.status],follow.owner,follow.document,follow.note,follow.updatedAt||'',row.issues.join(' '),row.ct?.rowCount||0,row.ad?.rowCount||0];});
-    const book=XLSX.utils.book_new(),sheet=XLSX.utils.aoa_to_sheet([['Material','Descripción','Unidad','Cantidad física','Cantidad virtual','Físico menos virtual','Valor total virtual DOP','Costo ponderado virtual DOP','Impacto absoluto DOP','Impacto neto DOP','Resultado','Seguimiento','Responsable','Soporte','Notas','Actualizado','Revisión necesaria','Filas físicas','Filas virtuales'],...rows]);
-    sheet['!cols']=[{wch:18},{wch:45},{wch:14},...Array.from({length:7},()=>({wch:23})),...Array.from({length:9},()=>({wch:28}))];
-    Object.entries(sheet).forEach(([key,cell])=>{if(key[0]!=='!'&&cell.t==='n')cell.z=/^H/.test(key)?'#,##0.000000':/^[G-J]/.test(key)?'#,##0.00':'#,##0.###';});
+    const rows=filteredRows().map(row=>[row.code,row.description,row.adQty,row.ad?.totalValueDop??null,row.ctQty,row.difference]);
+    const book=XLSX.utils.book_new(),sheet=XLSX.utils.aoa_to_sheet([['Referencia','Descripción','Inventario','Valor económico Virtual','Conteo físico','Diferencia'],...rows]);
+    sheet['!cols']=[{wch:18},{wch:55},{wch:16},{wch:26},{wch:18},{wch:16}];
+    sheet['!autofilter']={ref:sheet['!ref']};
+    Object.entries(sheet).forEach(([key,cell])=>{if(key[0]!=='!'&&cell.t==='n')cell.z=/^D/.test(key)?'"RD$" #,##0.00':Number.isInteger(cell.v)?'#,##0':'#,##0.###';});
     XLSX.utils.book_append_sheet(book,sheet,'Conciliacion');
-    const sources=[['Fuente','Archivo','Fecha corte','Filas','Materiales','Cantidad','Valor total DOP','Huella de contenido','Tipos incluidos','Filas excluidas'],...['ct','ad'].map(key=>{const source=data.sources[key];return [(key==='ct'?'Físico':'Virtual'),source.fileName,source.asOf,source.acceptedRowCount,source.materials.length,source.totals.quantity,source.totals.totalValueDop,source.semanticHash,(source.stockTypes||[]).join(', '),source.filteredRows||0];}),[],['Método','Costo ponderado = valor total virtual consolidado / cantidad virtual consolidada. Impacto absoluto = abs(Físico - Virtual) × costo ponderado.'],['Sin valoración','Una celda vacía de costo/impacto indica que no se puede valorar con el stock virtual; no representa costo cero.'],['Alcance','Inventario del showroom.'],['Fechas',result.issues.join(' ')||'Fechas de corte iguales.']];
-    XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(sources),'Fuentes y metodo');
-    for(const key of ['ct','ad']){const details=[['Material','Fila','Cantidad','Unidad','Ubicación','Sector','Responsable','Nota original','Valor DOP'],...data.sources[key].materials.flatMap(row=>row.details.map(detail=>[row.code,detail.row,detail.quantity,detail.unit,detail.location||'',detail.area||'',detail.responsible||'',detail.sourceNote||'',detail.totalValueDop]))];XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(details),key==='ct'?'Detalle fisico':'Detalle virtual');}XLSX.writeFile(book,'TMS_Conciliacion_Showroom_'+data.sources.ct.asOf+'.xlsx');
+    XLSX.writeFile(book,'TMS_Conciliacion_Showroom_'+data.sources.ct.asOf+'.xlsx');
   }
   document.addEventListener('change',event=>{
     const target=event.target;
