@@ -42,7 +42,11 @@ sin registro virtual queda sin valoración; puede añadirse al guiado y, una vez
 contado y procesado, exportarse como propuesta de alta virtual. El TMS no ajusta
 SAP ni inventa costos para completar el informe.
 
-La exportación de conciliación respeta los filtros y contiene una única hoja con
+La exportación de conciliación incluye siempre todas las referencias distintas
+presentes en cualquiera de los dos reportes cargados: coincidencias, diferencias,
+solo físico y solo virtual/sin conteo. Los filtros de pantalla, las búsquedas, el
+seguimiento y la paginación no recortan el Excel. La tabla del módulo también
+inicia en «Todos». El informe contiene una única hoja con
 seis columnas: Referencia, Descripción, Inventario (cantidad virtual), Valor
 económico Virtual (valor total consolidado en DOP), Conteo físico y Diferencia
 (físico menos virtual). Un conteo ausente o una valoración desconocida se
@@ -50,8 +54,8 @@ exportan como celdas vacías. Los conteos conservan las hojas
 Resumen, Detalle, Correcciones, Guiado, Ciclo y Altas virtuales. Un nuevo ciclo
 archiva el anterior y conserva las referencias con las que se inició.
 
-«Exportar Excel» genera el informe ejecutivo: título y cortes de ambas fuentes,
-alcance de los filtros, referencias incluidas, valor virtual total o conocido y
+«Exportar Excel completo» genera el informe ejecutivo: título y cortes de ambas fuentes,
+cobertura completa, referencias incluidas, valor virtual total o conocido y
 referencias con diferencias. El resumen usa exactamente los materiales
 exportados. El detalle conserva las seis columnas, con encabezado azul, filas
 alternadas, diferencias positivas verdes y negativas rojas mediante formato
