@@ -27,6 +27,16 @@ repetidas se suman conservando sus posiciones. Una cantidad negativa, vacía o n
 válida en el conteo bloquea la confirmación completa. Reimportar contenido
 equivalente no duplica cantidades; cambios de responsable o notas se detectan.
 
+Los códigos numéricos con decimales, negativos o fuera del rango entero exacto
+requieren revisión. La vista previa señala hoja, fila y celda, y permite escribir
+la referencia exacta como texto sin editar cantidades. No confirma una carga
+parcial mientras haya errores. Si Excel ya redondeó una referencia larga, el
+operador debe verificarla en el origen; el TMS no deduce los dígitos perdidos.
+Las correcciones guardan celda, valor leído y código confirmado en la fuente
+compartida. El formato numérico de ceros iniciales se conserva solo en la columna
+de referencia y únicamente cuando el valor base es un entero seguro. Los
+encabezados y las filas se mantienen en sus coordenadas reales de Excel.
+
 ## Diferencias y valoración
 
 `Diferencia = cantidad física contada − cantidad virtual`.
@@ -88,6 +98,7 @@ migración ni publican el sitio.
 
 ```sh
 node tests/showroom-domain.test.cjs
+node tests/showroom-import-code-ui.cjs
 TMS_PGLITE_RUNTIME=/workspace/.tms-runtime node tests/showroom-db.cjs
 TMS_PLAYWRIGHT=/workspace/.tms-runtime/playwright.cjs node tests/showroom-ui-smoke.cjs
 TMS_PLAYWRIGHT=/workspace/.tms-runtime/playwright.cjs node tests/showroom-counts-ui.cjs

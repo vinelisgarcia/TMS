@@ -2,6 +2,21 @@
   'use strict';
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
   const labels=value=>String(value).replace(/\bAD\b/g,'virtual').replace(/\bCT\b/g,'físico');
+  function prepareCodes(matrix,{codeColumn,headerRow=0,formats={},corrections={}}){
+    const edited=matrix.slice(),reviewed=[],errors=[];let formattedCount=0;
+    if(codeColumn===undefined)return {matrix:edited,corrections:reviewed,formattedCount};
+    for(let index=headerRow+1;index<matrix.length;index++){
+      const original=matrix[index][codeColumn],key=index+':'+codeColumn,manual=String(corrections[key]??'').trim(),formatted=formats[key];
+      let code;
+      if(manual){
+        if(['total','totales','grandtotal','sumatotal'].includes(norm(manual))){errors.push({row:index+1,column:codeColumn+1,field:'code',code:String(original??''),message:'Escribe la referencia del material, no una etiqueta de total.'});continue;}
+        code=D.normalizeCode(manual);reviewed.push({row:index+1,column:codeColumn+1,readValue:String(original??''),readType:typeof original,code});
+      }else if(typeof original==='number'&&Number.isSafeInteger(original)&&original>=0&&/^\d+$/.test(formatted||'')&&Number(formatted)===original){code=formatted;if(code!==String(original))formattedCount++;}
+      if(code!==undefined){edited[index]=matrix[index].slice();edited[index][codeColumn]=code;}
+    }
+    if(errors.length){const error=new Error('Revisa las referencias indicadas.');error.invalidRows=errors;throw error;}
+    return {matrix:edited,corrections:reviewed,formattedCount};
+  }
   function detectLayout(matrix,source){
     // Add the count sheet's aliases locally; CT/AD imports retain their mapping.
     const mapped=source==='ct'?matrix.map(row=>row.map(value=>({id:'Código',cantidadcontada:'Cantidad',ubicacionshowroom:'Ubicación'})[norm(value)]||value)):matrix;
@@ -43,5 +58,5 @@
     if(result.summary.notCounted)result.issues.push(`${result.summary.notCounted} artículos del stock virtual no tienen conteo físico. No se consideran faltantes hasta registrar un conteo, incluido cero cuando corresponda.`);
     return result;
   }
-  return {...D,detectLayout,consolidate,compare};
+  return {...D,detectLayout,consolidate,compare,prepareCodes};
 });

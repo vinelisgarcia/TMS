@@ -2,6 +2,15 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const D=require('../showroom-domain.js'),C=require('../showroom-counts-domain.js');
 const physical=rows=>D.consolidate([['Responsable','ID ','Ubicacion Showroom','','Cantidad Contada','DIFERENCIAS'],...rows],{source:'ct',asOf:'2026-10-09'});
 const virtual=rows=>D.consolidate([['ID de producto','Cantidad','Valor calculado','Valor calculado (Moneda)','Cantidad (Unidad)'],...rows],{source:'ad',asOf:'2026-11-08'});
+test('code review preserves formatted zero padding and applies only explicit text corrections',()=>{
+ const matrix=[['Responsable','ID','Ubicación','','Cantidad Contada'],['O',7,'A01','',2],['O',12.5,'A02','',3],['O',Number.MAX_SAFE_INTEGER+1,'A03','',4]],before=structuredClone(matrix);
+ const prepared=D.prepareCodes(matrix,{codeColumn:1,formats:{'1:1':'000007','2:1':'000012'},corrections:{'2:1':'0012.50','3:1':'9007199254740993'}});
+ assert.deepEqual(matrix,before);assert.equal(prepared.formattedCount,1);assert.equal(prepared.matrix[1][1],'000007');assert.equal(prepared.matrix[2][1],'0012.50');assert.equal(prepared.matrix[3][1],'9007199254740993');
+ assert.deepEqual(prepared.corrections.map(row=>[row.row,row.column,row.readValue,row.code]),[[3,2,'12.5','0012.50'],[4,2,String(Number.MAX_SAFE_INTEGER+1),'9007199254740993']]);
+ const source=D.consolidate(prepared.matrix,{source:'ct'});assert.equal(source.valid,true);assert.equal(source.totals.quantity,9);assert.equal(source.materials.length,3);
+ const noGuess=D.prepareCodes(matrix,{codeColumn:1,formats:{'2:1':'000012','3:1':'9007199254740993'}});assert.equal(noGuess.matrix[2][1],12.5);assert.equal(typeof noGuess.matrix[3][1],'number');
+ assert.throws(()=>D.prepareCodes(matrix,{codeColumn:1,corrections:{'2:1':'TOTAL'}}),error=>error.invalidRows[0].row===3);
+});
 test('Conteo mapping sums repeated IDs and preserves locations, operator and source notes',()=>{
  const s=physical([['Operador','0001','CUBO','BUFFET',2,'Revisar'],['Operador','0001','PARED','',3,'']]);
  assert.equal(s.valid,true);assert.equal(s.materials[0].code,'0001');assert.equal(s.materials[0].quantity,5);

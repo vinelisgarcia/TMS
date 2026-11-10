@@ -113,11 +113,18 @@
       let decoded;try{decoded=new TextDecoder('utf-8',{fatal:true}).decode(buffer);}catch(_){decoded=new TextDecoder('windows-1252').decode(buffer);}
       sheets=[{name:'Reporte',matrix:D.parseCsv(decoded)}];
     }else if(/\.(xlsx|xls)$/i.test(file.name)){
-      const book=XLSX.read(buffer,{type:'array',cellDates:false});
-      sheets=book.SheetNames.map(name=>({name,matrix:XLSX.utils.sheet_to_json(book.Sheets[name],{header:1,defval:null,raw:true})}));
+      const book=XLSX.read(buffer,{type:'array',cellDates:false,cellNF:true});
+      sheets=book.SheetNames.map(name=>{
+        const sheet=book.Sheets[name],formats={};if(!sheet['!ref'])return {name,matrix:[],formats};
+        const range={s:{r:0,c:0},e:XLSX.utils.decode_range(sheet['!ref']).e};
+        for(const [address,cell]of Object.entries(sheet))if(address[0]!=='!'&&cell.t==='n'&&/^0+$/.test(cell.z||'')&&/^\d+$/.test(cell.w||'')){
+          const pos=XLSX.utils.decode_cell(address);formats[pos.r+':'+pos.c]=cell.w;
+        }
+        return {name,matrix:XLSX.utils.sheet_to_json(sheet,{header:1,defval:null,raw:true,range}),formats};
+      });
     }else throw new Error('Formato no compatible. Usa XLSX, XLS o CSV.');
     if(!sheets.length||sheets.every(sheet=>sheet.matrix.length===0))throw new Error('El archivo no contiene hojas con datos.');
-    pending={source,fileName:file.name,fileHash,sheets,sheetIndex:source==='ct'?Math.max(0,sheets.findIndex(sheet=>sheet.name.trim().toLowerCase()==='conteo')):0,preview:null};
+    pending={source,fileName:file.name,fileHash,sheets,sheetIndex:source==='ct'?Math.max(0,sheets.findIndex(sheet=>sheet.name.trim().toLowerCase()==='conteo')):0,preview:null,codeCorrections:{}};
     renderImportDialog();
   }
   function modal(id,html){document.getElementById(id)?.remove();const node=document.createElement('div');node.id=id;node.className='inv-modal';node.innerHTML=`<section class="inv-dialog" role="dialog" aria-modal="true">${html}</section>`;document.body.appendChild(node);return node;}
@@ -134,15 +141,28 @@
   }
   function previewImport(){
     if(!pending)return;
+    pending.preview=null;document.getElementById('showroomConfirmImport').disabled=true;
     try{
-      const source=D.consolidate(pending.sheets[pending.sheetIndex].matrix,importOptions());pending.preview=source;
-      document.getElementById('showroomImportPreview').innerHTML=`<strong>${number(source.acceptedRowCount)} filas → ${number(source.materials.length)} materiales consolidados</strong><br>Cantidad total: ${number(source.totals.quantity)} · ${escape(Object.keys(source.totals.byUnit).join(', '))}<br>${number(source.repeatedMaterials)} materiales con filas repetidas · ${number(source.filteredRows)} filas excluidas por alcance${source.stockTypes?.length?' · '+escape(source.stockTypes.join(', ')):''}${source.source==='ad'?`<br>Valor total AD: ${money(source.totals.totalValueDop)}`:''}${source.warnings.map(value=>`<div>${escape(value)}</div>`).join('')}${source.invalidRows.length?`<div class="inv-notice inv-error">${source.invalidRows.length} filas no válidas. Corrige el archivo o el mapeo. ${source.invalidRows.slice(0,6).map(row=>`Fila ${row.row}: ${escape(row.message)}`).join(' · ')}</div>`:''}<details><summary>Primeros materiales consolidados</summary><table class="inv-table"><thead><tr><th>Código</th><th>Cantidad</th><th>Filas sumadas</th><th>Valor virtual</th></tr></thead><tbody>${source.materials.slice(0,8).map(row=>`<tr><td>${escape(row.code)}</td><td>${number(row.quantity)}</td><td>${row.rowCount}</td><td>${source.source==='ad'?money(row.totalValueDop):'No se valora desde el conteo físico'}</td></tr>`).join('')}</tbody></table></details>`;
+      const options=importOptions(),sheet=pending.sheets[pending.sheetIndex],prepared=D.prepareCodes(sheet.matrix,{codeColumn:options.mapping.code,headerRow:options.headerRow,formats:sheet.formats,corrections:pending.codeCorrections[pending.sheetIndex]});
+      const source=D.consolidate(prepared.matrix,options);pending.preview=source;
+      if(prepared.corrections.length)source.codeCorrections=prepared.corrections;
+      if(prepared.formattedCount)source.warnings.push('Se '+(prepared.formattedCount===1?'conservó 1 referencia':'conservaron '+prepared.formattedCount+' referencias')+' con ceros iniciales según su formato de Excel.');
+      document.getElementById('showroomImportPreview').innerHTML=`<strong>${number(source.acceptedRowCount)} filas → ${number(source.materials.length)} materiales consolidados</strong><br>Cantidad total: ${number(source.totals.quantity)} · ${escape(Object.keys(source.totals.byUnit).join(', '))}<br>${number(source.repeatedMaterials)} materiales con filas repetidas · ${number(source.filteredRows)} filas excluidas por alcance${source.stockTypes?.length?' · '+escape(source.stockTypes.join(', ')):''}${source.source==='ad'?`<br>Valor total AD: ${money(source.totals.totalValueDop)}`:''}${source.warnings.map(value=>`<div>${escape(value)}</div>`).join('')}${importProblems(source.invalidRows,prepared.corrections)}<details><summary>Primeros materiales consolidados</summary><table class="inv-table"><thead><tr><th>Código</th><th>Cantidad</th><th>Filas sumadas</th><th>Valor virtual</th></tr></thead><tbody>${source.materials.slice(0,8).map(row=>`<tr><td>${escape(row.code)}</td><td>${number(row.quantity)}</td><td>${row.rowCount}</td><td>${source.source==='ad'?money(row.totalValueDop):'No se valora desde el conteo físico'}</td></tr>`).join('')}</tbody></table></details>`;
       document.getElementById('showroomConfirmImport').disabled=!source.valid;
-    }catch(error){pending.preview=null;document.getElementById('showroomImportPreview').textContent=error.message;document.getElementById('showroomConfirmImport').disabled=true;}
+      return source.valid?source:null;
+    }catch(error){pending.preview=null;document.getElementById('showroomImportPreview').innerHTML=`<div class="inv-notice inv-error" role="alert">${escape(error.message)}</div>${importProblems(error.invalidRows||[])}`;return null;}
+  }
+  function importProblems(errors,corrections=[]){
+    const review=new Map();for(const row of [...corrections,...errors.filter(row=>row.field==='code')])review.set(row.row+':'+row.column,row);
+    const problems=errors.length?`<div class="inv-notice inv-error" role="alert">${number(errors.length)} ${errors.length===1?'fila pendiente':'filas pendientes'} de corregir. La carga completa está bloqueada; no se omiten estas filas.<ul>${errors.map(row=>`<li>Fila ${row.row}${row.column?', celda '+XLSX.utils.encode_cell({r:row.row-1,c:row.column-1}):''}: ${escape(row.message)}</li>`).join('')}</ul></div>`:'';
+    if(!review.size)return problems;
+    return problems+`<section class="inv-notice"><strong>Revisar referencias · hoja ${escape(pending.sheets[pending.sheetIndex].name)}</strong><p>Escribe el código exacto como texto y pulsa «Calcular vista previa». Si Excel redondeó un código largo, confirma la referencia en el origen.</p><div class="showroom-code-list">${[...review.values()].map(row=>{const key=(row.row-1)+':'+(row.column-1),value=pending.codeCorrections[pending.sheetIndex]?.[key]||'';return `<div class="showroom-code-row"><div><strong>Celda ${XLSX.utils.encode_cell({r:row.row-1,c:row.column-1})}</strong><small>Valor leído: ${escape(pending.sheets[pending.sheetIndex].matrix[row.row-1]?.[row.column-1]??'Vacío')}</small></div><label>Referencia exacta<input type="text" aria-label="Referencia exacta fila ${row.row}" data-show-code-row="${row.row}" data-show-code-column="${row.column}" value="${escape(value)}" placeholder="Escribe la referencia exacta"></label></div>`;}).join('')}</div></section>`;
   }
   async function confirmImport(){
-    previewImport();if(!pending?.preview?.valid)throw new Error('Completa una vista previa válida.');
-    const snapshot=pending.preview;snapshot.semanticHash=await sha(snapshot.semanticKey);delete snapshot.semanticKey;
+    const snapshot=previewImport();if(!snapshot)return;
+    const draft=pending,account=user?.id,hash=await sha(snapshot.semanticKey);
+    if(pending!==draft||pending.preview!==snapshot||!account||user?.id!==account||!can('importar')&&!can('editar'))throw new Error('La carga o la sesión cambió. Recalcula la vista previa antes de confirmar.');
+    snapshot.semanticHash=hash;delete snapshot.semanticKey;
     snapshot.worksheet=pending.sheets[pending.sheetIndex].name;snapshot.importedBy=user?.email||'';
     const previous=data.sources[snapshot.source];
     if(previous?.semanticHash===snapshot.semanticHash){cancelImport();notify('Este reporte ya está cargado. Se reconoció por su contenido; no se sumó de nuevo.');return;}
@@ -185,7 +205,15 @@
     if(target.closest('#showroomImportDialog')&&target.id!=='showroomSheet'){pending.preview=null;document.getElementById('showroomConfirmImport').disabled=true;}
     if(['showroomStatus','showroomFollowup'].includes(target.id)){filters[target.id==='showroomStatus'?'status':'followup']=target.value;filters.page=0;renderTable();}
   });
-  document.addEventListener('input',event=>{if(event.target.id==='showroomSearch'){filters.search=event.target.value;filters.page=0;renderTable();}if(event.target.closest('#showroomCaseDialog'))sync?.markDirty();});
+  document.addEventListener('input',event=>{
+    const target=event.target;
+    if(target.id==='showroomSearch'){filters.search=target.value;filters.page=0;renderTable();}
+    if(target.closest('#showroomImportDialog')&&pending){
+      if(target.dataset.showCodeRow){const overrides=pending.codeCorrections[pending.sheetIndex]||(pending.codeCorrections[pending.sheetIndex]={});overrides[(Number(target.dataset.showCodeRow)-1)+':'+(Number(target.dataset.showCodeColumn)-1)]=target.value;}
+      pending.preview=null;document.getElementById('showroomConfirmImport').disabled=true;
+    }
+    if(target.closest('#showroomCaseDialog'))sync?.markDirty();
+  });
   document.addEventListener('click',event=>{
     const button=event.target.closest('[data-show-inv]');if(!button||button.disabled)return;
     const actions={preview:previewImport,confirm:confirmImport,'cancel-import':cancelImport,'case':()=>openCase(button.dataset.code),'save-case':saveCase,'close-case':()=>{editor=null;document.getElementById('showroomCaseDialog')?.remove();sync?.markDirty();sync?.refresh().catch(()=>{});},export:exportExcel,backup:downloadBackup,prev:()=>{filters.page--;renderTable();},next:()=>{filters.page++;renderTable();},reload:async()=>{if(syncState.conflict&&!confirm('¿Cargar la versión compartida? Puedes descargar tu copia antes de continuar.'))return;pending=null;editor=null;document.getElementById('showroomImportDialog')?.remove();document.getElementById('showroomCaseDialog')?.remove();if(sync?.getState().revision===null)await start();else if(syncState.conflict){await sync.discardAndReload();window.ShowroomCounts?.discardDraft();window.ShowroomCounts?.mount();}else if(sync?.getState().dirty)await save();else await sync?.refresh();notify('Versión compartida del inventario actualizada.');}};

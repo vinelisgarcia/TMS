@@ -117,6 +117,15 @@ test('invalid numeric rows mark source invalid and must block comparison of inco
   assert.equal(D.compare(source,accounting([A('A',2,20)])).ready,false);
 });
 
+test('unsafe numeric material IDs identify every affected row and cannot become partial inventory',()=>{
+  const source=physical([C('VALID',2),C(12.5,3),C(Number.MAX_SAFE_INTEGER+1,4),C(-12,5)]);
+  assert.equal(source.valid,false);assert.equal(source.acceptedRowCount,1);
+  assert.deepEqual(source.invalidRows.map(row=>[row.row,row.column,row.field]),[[3,1,'code'],[4,1,'code'],[5,1,'code']]);
+  assert.equal(source.invalidRows[0].code,'12.5');assert.equal(D.compare(source,accounting([A('VALID',2,20)])).ready,false);
+  assert.throws(()=>physical([C(12.5,3),C(-12,4)]),error=>error.invalidRows.length===2&&error.invalidRows.every(row=>row.field==='code'));
+  assert.throws(()=>D.normalizeCode(12.5),/no seguro/);assert.equal(D.normalizeCode('0012.50'),'0012.50');
+});
+
 test('named total rows are not added again and selected warehouse scope is honored',()=>{
   const matrix=[['Código','Descripción','Stock','Valor total','Almacén'],['A','Material A',10,100,'CT'],['A','Material A',20,200,'CENTRAL'],['TOTAL','',30,300,'']];
   const source=D.consolidate(matrix,{source:'ad',warehouses:['CT']});
