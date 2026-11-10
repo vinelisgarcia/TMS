@@ -10,7 +10,7 @@
   const unitMoney=value=>value===null||value===undefined?'Sin valoración':new Intl.NumberFormat('es-DO',{style:'currency',currency:'DOP',minimumFractionDigits:2,maximumFractionDigits:6}).format(value);
   const can=action=>!!(window.TMSAuditCore&&window.TMSAuditCore.hasPermission('showroom',action));
   const client=()=>typeof SB!=='undefined'?SB:window.SB;
-  let data=empty(),sync=null,user=null,starting=null,pending=null,editor=null,message='',schemaMissing=false,syncState={phase:'disconnected'};
+  let data=empty(),sync=null,user=null,starting=null,pending=null,editor=null,message='',schemaMissing=false,exporting=false,syncState={phase:'disconnected'};
   const filters={search:'',status:'differences',followup:'',page:0};
   const statuses={equal:'Coincide',difference:'Diferencia',only_ct:'Solo físico',only_ad:'Solo virtual',not_counted:'Sin conteo físico',unit_conflict:'Unidades incompatibles'};
   const workflow={pendiente:'Pendiente',en_revision:'En revisión',rectificado:'Rectificación registrada',justificado:'Diferencia justificada'};
@@ -164,15 +164,19 @@
     data.cases[caseKey(editor)]={...fields,updatedAt:new Date().toISOString(),updatedBy:user?.email||''};editor=null;document.getElementById('showroomCaseDialog')?.remove();renderTable();await save();
   }
   function downloadBackup(){if(!sync)return;const blob=new Blob([JSON.stringify(sync.exportPending(),null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='TMS-showroom-pendiente.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-  function exportExcel(){
-    if(!can('ver'))return;const result=report();if(!result.ready)throw new Error('Carga ambos reportes antes de exportar.');
-    const rows=filteredRows().map(row=>[row.code,row.description,row.adQty,row.ad?.totalValueDop??null,row.ctQty,row.difference]);
-    const book=XLSX.utils.book_new(),sheet=XLSX.utils.aoa_to_sheet([['Referencia','Descripción','Inventario','Valor económico Virtual','Conteo físico','Diferencia'],...rows]);
-    sheet['!cols']=[{wch:18},{wch:55},{wch:16},{wch:26},{wch:18},{wch:16}];
-    sheet['!autofilter']={ref:sheet['!ref']};
-    Object.entries(sheet).forEach(([key,cell])=>{if(key[0]!=='!'&&cell.t==='n')cell.z=/^D/.test(key)?'"RD$" #,##0.00':Number.isInteger(cell.v)?'#,##0':'#,##0.###';});
-    XLSX.utils.book_append_sheet(book,sheet,'Conciliacion');
-    XLSX.writeFile(book,'TMS_Conciliacion_Showroom_'+data.sources.ct.asOf+'.xlsx');
+  async function exportExcel(){
+    if(!can('ver')||exporting)return;
+    const account=user?.id,guard=()=>{if(!can('ver')||!account||user?.id!==account)throw new Error('La sesión o el acceso cambió. Abre nuevamente el showroom para exportar.');};
+    const button=document.querySelector('[data-show-inv="export"]');exporting=true;if(button){button.disabled=true;button.textContent='Preparando informe…';}
+    try{
+      await window.ShowroomExecutiveExcel.load();guard();const result=report();if(!result.ready)throw new Error('Carga ambos reportes antes de exportar.');
+      const labels={all:'Todos los materiales',differences:'Con diferencias',...statuses,unvalued:'Sin valoración'};
+      const context={rows:filteredRows(),totalRows:result.rows.length,physicalAsOf:data.sources.ct.asOf,virtualAsOf:data.sources.ad.asOf,scope:(labels[filters.status]||filters.status)+(filters.followup?' · '+workflow[filters.followup]:''),search:filters.search.trim(),at:new Date().toISOString()};
+      const book=window.ShowroomExecutiveExcel.createWorkbook(window.ExcelJS,context),bytes=await book.xlsx.writeBuffer();guard();
+      const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),link=document.createElement('a');
+      link.href=url;link.download='TMS_Conciliacion_Showroom_'+context.physicalAsOf+'.xlsx';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      notify('Informe ejecutivo descargado con los filtros seleccionados.');
+    }finally{exporting=false;const current=document.querySelector('[data-show-inv="export"]');if(current){current.disabled=!can('ver')||!report().ready;current.textContent='Exportar Excel';}}
   }
   document.addEventListener('change',event=>{
     const target=event.target;

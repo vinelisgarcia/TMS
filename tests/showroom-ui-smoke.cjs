@@ -44,17 +44,24 @@ const initial=()=>({version:1,sources:{ct:null,ad:null},cases:{},settings:{sameS
     const ctExcel=await a.evaluate(csv=>{const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(ShowroomDomain.parseCsv(csv)),'Stock CT');return Array.from(new Uint8Array(XLSX.write(book,{type:'array',bookType:'xlsx'})));},ct.toString());
     const beforeExcel=db.revision;await upload(a,'ct',{name:'CT.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(ctExcel)});assert.equal(db.revision,beforeExcel,'CT Excel and CSV represent the same showroom, not additional stock');
     const rev=db.revision;await upload(a,'ct',{name:'CT-copia.csv',mimeType:'text/csv',buffer:ct});assert.equal(db.revision,rev);assert.match(await a.locator('#showroomMessage').innerText(),/ya está cargado/);
+    await a.route('**/vendor/exceljs-4.4.0.min.js',route=>route.abort());await a.locator('[data-show-inv="export"]').click();
+    await a.waitForFunction(()=>document.getElementById('showroomMessage').textContent.includes('No se pudo cargar el generador'));
+    assert.equal(await a.locator('[data-show-inv="export"]').isEnabled(),true);await a.unroute('**/vendor/exceljs-4.4.0.min.js');
     const exportRows=async()=>{
       const download=a.waitForEvent('download');await a.locator('[data-show-inv="export"]').click();const file=await download;assert.match(file.suggestedFilename(),/\.xlsx$/);
+      if(process.env.TMS_SHOWROOM_REPORT_OUTPUT)await file.saveAs(process.env.TMS_SHOWROOM_REPORT_OUTPUT);
       const bytes=require('node:fs').readFileSync(await file.path());
-      return a.evaluate(bytes=>{const book=XLSX.read(new Uint8Array(bytes),{type:'array',cellNF:true}),sheet=book.Sheets.Conciliacion;return {names:book.SheetNames,range:sheet['!ref'],rows:XLSX.utils.sheet_to_json(sheet,{header:1,defval:null}),cells:Object.fromEntries(Object.entries(sheet).filter(([key])=>!key.startsWith('!')))};},[...bytes]);
+      return a.evaluate(async bytes=>{const book=XLSX.read(new Uint8Array(bytes),{type:'array',cellNF:true}),sheet=book.Sheets.Conciliacion,native=await new ExcelJS.Workbook().xlsx.load(new Uint8Array(bytes)),ws=native.getWorksheet('Conciliacion');return {names:book.SheetNames,range:sheet['!ref'],rows:XLSX.utils.sheet_to_json(sheet,{header:1,range:11,defval:null}),cells:Object.fromEntries(Object.entries(sheet).filter(([key])=>!key.startsWith('!')&&XLSX.utils.decode_cell(key).r>=12)),summary:[ws.getCell('A8').value,ws.getCell('C8').value,ws.getCell('E8').value],scope:ws.getCell('A5').value,notes:ws.getCell('A10').value,headerFill:ws.getCell('A12').fill.fgColor.argb,headerFont:ws.getCell('A12').font.color.argb,bandFill:ws.getCell('A13').fill.fgColor.argb,views:ws.views,filter:ws.autoFilter,printTitles:ws.pageSetup.printTitlesRow};},[...bytes]);
     };
-    const exported=await exportRows();assert.deepEqual(exported.names,['Conciliacion']);assert.equal(exported.range,'A1:F4');
+    const exported=await exportRows();assert.deepEqual(exported.names,['Conciliacion']);assert.equal(exported.range,'A1:F15');
+    assert.deepEqual(exported.summary,[3,1500,3]);assert.match(exported.scope,/Con diferencias · 3 de 4 referencias/);assert.match(exported.notes,/solo las referencias con valor virtual conocido/);
+    assert.equal(exported.headerFill,'FF183F66');assert.equal(exported.headerFont,'FFFFFFFF');assert.equal(exported.bandFill,'FFF6F8FB');assert.equal(exported.views[0].ySplit,12);assert.equal(exported.views[0].showGridLines,false);assert.equal(exported.filter,'A12:F15');assert.equal(exported.printTitles,'12:12');
     assert.deepEqual(exported.rows[0],['Referencia','Descripción','Inventario','Valor económico Virtual','Conteo físico','Diferencia']);
     const exportedByCode=Object.fromEntries(exported.rows.slice(1).map(row=>[row[0],row]));
     assert.deepEqual(exportedByCode.A,['A','Articulo A',30,500,20,-10]);assert.deepEqual(exportedByCode.B,['B','Articulo B',1,1000,5,4]);assert.deepEqual(exportedByCode.C,['C','Articulo C',0,null,2,2]);
-    for(const [key,cell]of Object.entries(exported.cells)){if(/^[C-F][2-9]/.test(key)&&cell.v!==undefined)assert.equal(cell.t,'n');if(/^D[2-9]/.test(key)&&cell.t==='n')assert.match(cell.z,/RD\$/);}
-    await a.locator('#showroomStatus').selectOption('all');const allExported=await exportRows();assert.equal(allExported.range,'A1:F5');assert.deepEqual(allExported.rows.find(row=>row[0]==='D'),['D','Articulo D',3,300,null,null]);await a.locator('#showroomStatus').selectOption('differences');
+    for(const [key,cell]of Object.entries(exported.cells)){if(/^[C-F]/.test(key)&&cell.v!==undefined)assert.equal(cell.t,'n');if(/^D/.test(key)&&cell.t==='n')assert.match(cell.z,/RD\$/);}
+    await a.locator('#showroomStatus').selectOption('only_ct');const unvaluedExport=await exportRows();assert.deepEqual(unvaluedExport.summary,[1,'Sin valoración',1]);
+    await a.locator('#showroomStatus').selectOption('all');const allExported=await exportRows();assert.equal(allExported.range,'A1:F16');assert.deepEqual(allExported.summary,[4,1800,3]);assert.deepEqual(allExported.rows.find(row=>row[0]==='D'),['D','Articulo D',3,300,null,null]);await a.locator('#showroomStatus').selectOption('differences');assert.equal(db.revision,rev,'Exporting does not save or change inventory');
     const b=await pageFor();await a.locator('[data-show-inv="case"][data-code="B"]').click();await a.locator('#showroomCase_owner').fill('Alice pendiente');
     await b.locator('[data-show-inv="case"][data-code="A"]').click();await b.locator('#showroomCase_owner').fill('Bob guardado');await b.locator('#showroomCase_status').selectOption('en_revision');await b.locator('[data-show-inv="save-case"]').click();await b.waitForFunction(()=>TMSShowroom.getSyncState().phase==='synced');
     await a.evaluate(revision=>window.__showroomChange({new:{revision}}),db.revision);await a.waitForFunction(()=>TMSShowroom.getSyncState().conflict);
@@ -69,7 +76,7 @@ const initial=()=>({version:1,sources:{ct:null,ad:null},cases:{},settings:{sameS
         const next=a.waitForEvent('download');await a.locator('[data-show-inv="export"]').click();const actual=await next;
         await actual.saveAs(process.env.TMS_SHOWROOM_REPORT_OUTPUT);
         const output=require('node:fs').readFileSync(process.env.TMS_SHOWROOM_REPORT_OUTPUT);
-        const verified=await a.evaluate(bytes=>{const wb=XLSX.read(new Uint8Array(bytes),{type:'array'}),sheet=wb.Sheets.Conciliacion;return {names:wb.SheetNames,rows:XLSX.utils.sheet_to_json(sheet).length,columns:XLSX.utils.decode_range(sheet['!ref']).e.c+1};},[...output]);
+        const verified=await a.evaluate(bytes=>{const wb=XLSX.read(new Uint8Array(bytes),{type:'array'}),sheet=wb.Sheets.Conciliacion;return {names:wb.SheetNames,rows:XLSX.utils.sheet_to_json(sheet,{range:11}).length,columns:XLSX.utils.decode_range(sheet['!ref']).e.c+1};},[...output]);
         assert.deepEqual(verified.names,['Conciliacion']);
         assert.equal(verified.rows,3847);assert.equal(verified.columns,6);
         console.log('PASS: full real comparison exported with all 3847 articles and exactly six requested columns.');

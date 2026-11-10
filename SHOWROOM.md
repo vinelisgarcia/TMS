@@ -50,6 +50,16 @@ exportan como celdas vacías. Los conteos conservan las hojas
 Resumen, Detalle, Correcciones, Guiado, Ciclo y Altas virtuales. Un nuevo ciclo
 archiva el anterior y conserva las referencias con las que se inició.
 
+«Exportar Excel» genera el informe ejecutivo: título y cortes de ambas fuentes,
+alcance de los filtros, referencias incluidas, valor virtual total o conocido y
+referencias con diferencias. El resumen usa exactamente los materiales
+exportados. El detalle conserva las seis columnas, con encabezado azul, filas
+alternadas, diferencias positivas verdes y negativas rojas mediante formato
+condicional, filtros, encabezados fijos y configuración de impresión horizontal.
+Las referencias permanecen como texto; cantidades e importes siguen siendo
+numéricos. Los valores desconocidos y los conteos ausentes se distinguen de cero.
+El generador ExcelJS existente se carga desde el propio TMS al exportar.
+
 ## Activación y permisos
 
 Antes de publicar el frontend, aplicar administrativamente
@@ -66,7 +76,7 @@ conteos. «Comprobar activación» vuelve a intentar la lectura; al aplicar la
 migración se habilita el flujo normal. Los demás módulos siguen operativos.
 
 Publicar juntos index.html, tms-v2.js, tms-responsive.js, tms-inventory.css,
-inventory-counts-domain.js y los cuatro archivos showroom-*.js. Recargar las
+inventory-counts-domain.js y los archivos showroom-*.js. Recargar las
 sesiones abiertas. La preparación del código y las pruebas no aplican la
 migración ni publican el sitio.
 
