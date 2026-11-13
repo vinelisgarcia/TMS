@@ -46,17 +46,17 @@
   function catalog(data){
     const s=state(data),map=new Map();
     for(const source of ['ct','ad'])for(const row of data.sources?.[source]?.materials||[]){
-      if(!map.has(row.code))map.set(row.code,{code:row.code,description:row.description||'',unit:row.unit||'UND',stockCT:null,stockAD:null,adRegistered:false,costAD:null,barcodes:[],supplier:'',subfamily:'',locations:[]});
-      const item=map.get(row.code);item.unitConflict=!!(item.unitConflict||row.unitConflict||(item.unit&&row.unit&&item.unit!==row.unit));if(source==='ct')item.stockCT=row.quantity;
+      if(!map.has(row.code))map.set(row.code,{code:row.code,description:row.description||'',unit:row.unit||'UND',stockCT:null,stockAD:null,availabilityCT:null,adRegistered:false,costAD:null,barcodes:[],supplier:'',subfamily:'',locations:[]});
+      const item=map.get(row.code);item.unitConflict=!!(item.unitConflict||row.unitConflict||(item.unit&&row.unit&&item.unit!==row.unit));if(source==='ct'){item.stockCT=row.quantity;item.availabilityCT=row.availability??null;}
       else {item.stockAD=row.quantity;item.adRegistered=true;item.costAD=row.quantity>0&&row.totalValueDop!==null?row.totalValueDop/row.quantity:null;if(row.description)item.description=row.description;}
       const bins=[...(row.locations||[]).map(bin=>typeof bin==='string'?bin:bin.location),...(row.details||[]).map(detail=>detail.location)].filter(Boolean).map(location);
       if(source==='ct'||!item.locations.length)item.locations=[...new Set([...item.locations.map(bin=>bin.location),...bins])].map(bin=>({location:bin,stock:null}));
     }
     for(const [code,master] of Object.entries(s.catalog)){
-      if(!map.has(code))map.set(code,{code,stockCT:null,stockAD:null,adRegistered:false,costAD:null,locations:[],barcodes:[]});
+      if(!map.has(code))map.set(code,{code,stockCT:null,stockAD:null,availabilityCT:null,adRegistered:false,costAD:null,locations:[],barcodes:[]});
       const item=map.get(code);Object.assign(item,{description:master.description||item.description||'',unit:master.unit||item.unit||'UND',barcodes:master.barcodes||[],supplier:master.supplier||'',subfamily:master.subfamily||'',masterStock:master.stock??null,masterCost:master.cost??null});
     }
-    for(const code of Object.keys(s.positions))if(!map.has(code))map.set(code,{code,description:'',unit:'UND',stockCT:null,stockAD:null,adRegistered:false,costAD:null,locations:[],barcodes:[]});
+    for(const code of Object.keys(s.positions))if(!map.has(code))map.set(code,{code,description:'',unit:'UND',stockCT:null,stockAD:null,availabilityCT:null,adRegistered:false,costAD:null,locations:[],barcodes:[]});
     for(const item of map.values()){
       if(Object.prototype.hasOwnProperty.call(s.positions,item.code))item.locations=copy(s.positions[item.code]);
       item.locations=[...new Map(item.locations.filter(bin=>location(bin.location)).map(bin=>[location(bin.location),{location:location(bin.location),stock:bin.stock??null}])).values()].sort((a,b)=>a.location.localeCompare(b.location));

@@ -110,6 +110,18 @@ menú de tres puntos conserva Mover, Completar y Nota; en escritorio las accione
 siguen visibles. Los controles de lote aparecen al seleccionar despachos y se
 omite la cola vacía en móvil. En tablet se distribuyen los días en dos columnas.
 
+## Disponibilidad CT en Inventory Data
+
+La tabla del maestro muestra `Disponibilidad CT` y la fecha del corte CT vigente.
+Lee `sources.ct.materials[].availability`, ya consolidado por referencia durante
+la importación. Conserva cero como cantidad conocida y muestra `—` cuando CT no
+informa una disponibilidad completa o la referencia no existe en esa fuente.
+Al cargar otro corte se recalcula con la sincronización existente. Las referencias
+congeladas de los ciclos de conteo se conservan. No requiere migración.
+
+Validación: `tests/inventory-counts.test.cjs` y `tests/inventory-counts-ui.cjs`
+comprueban partidas repetidas, datos ausentes, actualización remota y vista móvil.
+
 ## Alertas de tránsito y saldo pendiente
 
 Materiales en tránsito admite tres etapas por factura: En tránsito, Recibido y

@@ -4,6 +4,16 @@ const ct=rows=>D.consolidate([['Material','Description','Quantity','Unit of meas
 const ad=rows=>D.consolidate([['Codigo','Descripcion','Stock','Valor total DOP','Unidad'],...rows],{source:'ad'});
 function fixture(){const data={sources:{ct:ct([['A','A',5,'Piece','A01'],['A','A',5,'Piece','A02'],['B','B',2,'Piece','B01'],['C','C',4,'Piece','C01']]),ad:ad([['A','A',5,50,'UND'],['B','B',3,60,'UND']])},cases:{},settings:{}};data.sources.ct.semanticHash='CT1';data.sources.ad.semanticHash='AD1';return data;}
 const report=data=>D.compare(data.sources.ct,data.sources.ad);
+test('Inventory Data uses consolidated availability from the current CT cut, preserving zero and unknown values',()=>{
+ const source=D.consolidate([['Material','Quantity','Availability','Unit of measurement'],['A',10,7,'Piece'],['A',5,2,'Piece'],['ZERO',4,0,'Piece'],['PARTIAL',2,1,'Piece'],['PARTIAL',3,'','Piece'],['MIXED',2,2,'Piece'],['MIXED',1,1,'Box']],{source:'ct'});
+ const data={sources:{ct:source,ad:ad([['AD_ONLY','Solo AD',3,30,'UND']])}};
+ C.importMaster(data,[['CODE','STOCK'],['MASTER_ONLY',99]],{code:0,stock:1},'articles');C.importMaster(data,[['CODE','LOCATION'],['POSITION_ONLY','A01']],{code:0,location:1},'positions');
+ const items=new Map(C.catalog(data).map(row=>[row.code,row]));assert.equal(items.get('A').stockCT,15);assert.equal(items.get('A').availabilityCT,9);assert.equal(items.get('ZERO').availabilityCT,0);
+ for(const code of ['PARTIAL','MIXED','AD_ONLY','MASTER_ONLY','POSITION_ONLY'])assert.equal(items.get(code).availabilityCT,null,code);
+ C.createCycle(data,{ready:false});C.addItem(data,'A');data.sources.ct=D.consolidate([['Material','Quantity','Availability'],['A',8,3]],{source:'ct'});
+ assert.equal(C.catalog(data).find(row=>row.code==='A').availabilityCT,3);assert.equal(C.active(data).items.A.stockCT,15);
+ delete data.sources.ct;assert.ok(C.catalog(data).every(row=>row.availabilityCT===null));
+});
 const record=(data,code,bin,quantity,extra={})=>C.recordCount(data,{code,expectedLocation:bin,actualLocation:bin,quantity,confirmed:true,...extra});
 
 test('top positive 10 and negative 20 select signed financial impact, never absolute cross-sign rank',()=>{

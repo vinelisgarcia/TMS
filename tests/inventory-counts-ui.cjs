@@ -6,7 +6,8 @@ const ctRows=[],adRows=[];
 for(let i=1;i<=12;i++){const code='P'+String(i).padStart(2,'0');ctRows.push([code,'Sobrante '+code,10,'Piece','1015']);adRows.push([code,'Sobrante '+code,20,200+i*2,'UND']);}
 for(let i=1;i<=22;i++){const code='N'+String(i).padStart(2,'0');ctRows.push([code,'Faltante '+code,20,'Piece','1015']);adRows.push([code,'Faltante '+code,10,100+i,'UND']);}
 ctRows.push(['CT_ONLY','Solo CT',7,'Piece','1015']);
-const ct=D.consolidate([['Material','Description','Quantity','Unit of measurement','Warehouse'],...ctRows],{source:'ct',asOf:'2026-10-31'}),ad=D.consolidate([['Código','Descripción','Stock','Valor total DOP','Unidad'],...adRows],{source:'ad',asOf:'2026-10-31'});
+adRows.push(['AD_ONLY','Solo AD',0,0,'UND']);
+const ct=D.consolidate([['Material','Description','Quantity','Unit of measurement','Warehouse','Availability'],...ctRows.map(row=>[...row,row[0]==='CT_ONLY'?0:row[0]==='N01'?'':row[0]==='P12'?6:7])],{source:'ct',asOf:'2026-10-31'}),ad=D.consolidate([['Código','Descripción','Stock','Valor total DOP','Unidad'],...adRows],{source:'ad',asOf:'2026-10-31'});
 ct.semanticHash='SYNTHETIC_CT';ad.semanticHash='SYNTHETIC_AD';delete ct.semanticKey;delete ad.semanticKey;
 (async()=>{
  const browser=await chromium.launch({headless:true}),errors=[],db={revision:0,payload:{version:1,sources:{ct,ad},cases:{},settings:{sameScope:true}}};
@@ -36,6 +37,16 @@ ct.semanticHash='SYNTHETIC_CT';ad.semanticHash='SYNTHETIC_AD';delete ct.semantic
   assert.equal(await a.locator('.inv-top-shortage .inv-priority-bar i').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(217, 72, 72)');
   await a.screenshot({path:'/tmp/tms-priority-bars.png',fullPage:true});
   await tab(a,'data');
+  const catalogRow=(page,code)=>page.locator('#countBody .inv-table tbody tr').filter({has:page.locator('td:first-child strong',{hasText:new RegExp('^'+code+'$')})});
+  assert.match(await a.locator('#countBody th').nth(4).innerText(),/Disponibilidad CT\s*2026-10-31/);
+  assert.equal(await catalogRow(a,'P12').locator('td').nth(3).innerText(),'10 / 20');assert.equal(await catalogRow(a,'P12').locator('td').nth(4).innerText(),'6');
+  assert.equal(await catalogRow(a,'CT_ONLY').locator('td').nth(4).innerText(),'0');for(const code of ['N01','AD_ONLY'])assert.equal(await catalogRow(a,code).locator('td').nth(4).innerText(),'—');
+  const observer=await createPage();await tab(observer,'data');
+  await a.evaluate(()=>TMSInventory.edit(state=>{state.sources.ct.materials.find(row=>row.code==='P12').availability=4;state.sources.ct.asOf='2026-11-13';state.sources.ct.semanticHash='NEW_CT_CUT';}));await settled(a);
+  await observer.evaluate(revision=>window.__countRemote({new:{revision}}),db.revision);await observer.waitForFunction(()=>TMSInventory.getState().sources.ct.asOf==='2026-11-13');
+  assert.equal(await catalogRow(observer,'P12').locator('td').nth(4).innerText(),'4');assert.match(await observer.locator('#countBody th').nth(4).innerText(),/2026-11-13/);
+  for(const width of [320,390,768]){await observer.setViewportSize({width,height:900});assert.equal(await observer.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);}
+  await observer.setViewportSize({width:1440,height:1000});await observer.locator('#countCatalogSearch').fill('P12');await observer.screenshot({path:'/tmp/tms-inventory-data-availability.png',fullPage:true});await observer.close();
   const workbook=await a.evaluate(()=>{const b=XLSX.utils.book_new();XLSX.utils.book_append_sheet(b,XLSX.utils.aoa_to_sheet([['CODIGO','DESCRIPCION','CODIGO BARRAS','CENTRAL','COSTO PROMEDIO'],['P12','Sobrante P12','750000000012',20,11.2]]),'Articulos');XLSX.utils.book_append_sheet(b,XLSX.utils.aoa_to_sheet([['CODIGO','UBICACION','STOCK UBICACION'],['P12','A01',10],['P12','A02',10]]),'Ubicaciones');return Array.from(new Uint8Array(XLSX.write(b,{type:'array',bookType:'xlsx'})));});
   const file={name:'Maestro_ubicaciones.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(workbook)};
   await a.locator('#countMasterFile').setInputFiles(file);await a.locator('[data-count="commit-master"]').click();await settled(a);
@@ -66,6 +77,6 @@ ct.semanticHash='SYNTHETIC_CT';ad.semanticHash='SYNTHETIC_AD';delete ct.semantic
   await b.reload({waitUntil:'networkidle'});await boot(b);await b.waitForFunction(()=>!!document.getElementById('countFollowupNotes'));assert.equal(await b.locator('#countFollowupNotes').inputValue(),'BORRADOR APUNTE SIN GUARDAR');assert.equal(await b.locator('#countFollowupReason').inputValue(),'ct_move');
   const read=await createPage('Solo lectura');await tab(read,'data');assert.equal(await read.locator('#countMasterFile').count(),0);await tab(read,'guided');assert.equal(await read.locator('#countSaveRecord').isEnabled(),false);await tab(read,'results');await read.locator('[data-count="followup"][data-code="CT_ONLY"]').click();assert.equal(await read.locator('[data-count="save-followup"]').count(),0);assert.match(await read.locator('#countFollowupDialog').innerText(),/En revisión de CT/);require('../inventory-counts-domain.js').addDifferenceNote(db.payload,'CT_ONLY',{responsible:'CT',reason:'breakage',notes:'NUEVO APUNTE REMOTO'},{user:'otro@example.invalid'});db.revision++;await read.evaluate(revision=>window.__countRemote({new:{revision}}),db.revision);await read.waitForFunction(()=>document.getElementById('countFollowupDialog').textContent.includes('NUEVO APUNTE REMOTO'));assert.equal(await read.locator('[data-count="save-followup"]').count(),0);await read.locator('[data-count="cancel-followup"]').click();
   await b.setViewportSize({width:390,height:844});await b.screenshot({path:'/tmp/tms-counts-mobile.png'});assert.equal(await b.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await b.setViewportSize({width:1440,height:1000});await b.screenshot({path:'/tmp/tms-counts-desktop.png'});
-  assert.deepEqual(errors,[]);console.log('PASS: top 10/20, original master and location imports, mandatory guided queue, location confirmation/correction, free barcode and boxes, AD-registration export, audit, read-only access and concurrent draft preservation.');
+  assert.deepEqual(errors,[]);console.log('PASS: current CT availability versus total stock, zero/unknown, remote cut refresh and mobile, top 10/20, master and location imports, mandatory guided queue, location correction, barcode and boxes, AD-registration export, audit, read-only and concurrent draft preservation.');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});
