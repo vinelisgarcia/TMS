@@ -112,6 +112,24 @@ omite la cola vacía en móvil. En tablet se distribuyen los días en dos column
 
 ## Alertas de tránsito y saldo pendiente
 
+Materiales en tránsito admite tres etapas por factura: En tránsito, Recibido y
+Contabilizado. Recibido confirma la entrada física; Contabilizado registra la
+confirmación manual de que la factura ya fue contabilizada en SAP en un proceso
+posterior. Solo se permite contabilizar una factura cuando todas sus líneas
+están recibidas. No ejecuta una contabilización ni modifica SAP.
+
+Se conservan `receivedAt/receivedBy` y `accountedAt/accountedBy` por separado,
+con un historial de cambios. Quitar la marca contable deja la mercancía recibida;
+para volver a tránsito hay que retirar primero esa marca. Recibido y Contabilizado
+se excluyen de alertas y cobertura futura del calendario. La reimportación de la
+misma identidad conserva ambas confirmaciones. El Excel incluye estado, fechas
+y responsables. Los campos viajan en `app_state.transitMaterials` mediante la
+sincronización existente; no requiere migración ni activación adicional.
+
+Validar con `node tests/transit-accounted-ui.cjs`,
+`node --test tests/audit-regression.cjs tests/transit-entry-import.test.cjs` y la
+prueba PostgreSQL `tests/session-sync-db.cjs`. Todas usan datos ficticios.
+
 El cruce requiere una falta sin stock de la línea del pedido. El saldo explícito
 pendiente de servir limita esa falta; cero la elimina. La cantidad ya facturada
 contra el pedido original también limita el faltante. Un artículo disponible

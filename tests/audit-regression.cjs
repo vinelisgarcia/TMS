@@ -43,6 +43,23 @@ test('invoice receipt does not conflate different punctuation in invoice identif
   const received=D.receiveInvoice([{factura:'F-1'},{factura:'F1'}],'F-1',true,'user','now');
   assert.equal(received[0].receivedAt,'now');assert.equal(received[1].receivedAt,undefined);
 });
+test('SAP accounting is a later invoice step that preserves the physical receipt and all material quantities',()=>{
+  const original=[{factura:'F-1',codigoMaterial:'0007',cantidad:4},{factura:' f-1 ',codigoMaterial:'B',cantidad:2},{factura:'F1',codigoMaterial:'OTHER',cantidad:9}];
+  assert.throws(()=>D.accountInvoice(original,'F-1',true,'contabilidad','2026-11-13T14:00:00Z'),/recepción/);
+  const received=D.receiveInvoice(original,'F-1',true,'almacen','2026-11-12T14:00:00Z');
+  const posted=D.accountInvoice(received,'F-1',true,'contabilidad','2026-11-13T14:00:00Z');
+  assert.deepEqual(original.map(row=>row.cantidad),[4,2,9]);assert.equal(original[0].estado,undefined);
+  for(const row of posted.slice(0,2)){assert.equal(D.transitState(row),'accounted');assert.equal(row.receivedAt,'2026-11-12T14:00:00Z');assert.equal(row.receivedBy,'almacen');assert.equal(row.accountedAt,'2026-11-13T14:00:00Z');assert.equal(row.accountedBy,'contabilidad');assert.equal(row.statusHistory.length,2);assert.equal(D.activeTransit(row),false);}
+  assert.equal(posted[2],original[2]);assert.deepEqual(D.accountInvoice(posted,'F-1',true,'retry','later'),posted);
+  assert.deepEqual(D.receiveInvoice(posted,'F-1',true,'retry','later'),posted);assert.throws(()=>D.receiveInvoice(posted,'F-1',false,'user','later'),/contabilización/);
+  const reverted=D.accountInvoice(posted,'F-1',false,'contabilidad','2026-11-13T15:00:00Z');assert.equal(D.transitState(reverted[0]),'received');assert.equal(reverted[0].receivedAt,received[0].receivedAt);assert.equal(reverted[0].accountedAt,'');assert.equal(reverted[0].statusHistory.length,3);assert.equal(D.activeTransit(reverted[0]),false);
+});
+test('accounted legacy flags never generate transit alerts and a mixed-receipt invoice cannot be posted partially',()=>{
+  for(const row of [{estado:'contabilizada'},{estado:'contabilizado'},{accountedAt:'2026-11-13'}])assert.equal(D.activeTransit(row),false);
+  const partial=[{factura:'F',receivedAt:'2026-11-12'},{factura:'F'}];assert.throws(()=>D.accountInvoice(partial,'F',true,'user','now'),/todas las líneas/);assert.equal(partial[0].accountedAt,undefined);
+  assert.throws(()=>D.accountInvoice(partial,'',true,'user','now'));assert.throws(()=>D.accountInvoice(partial,'MISSING',true,'user','now'));
+  const line={articulo:'A',cantidadPendienteSinStock:2,cantidadPendienteServir:2};assert.equal(D.transitForLine(line,[{factura:'F',codigoMaterial:'A',cantidad:4,estado:'contabilizada'}]).rows.length,0);
+});
 test('legacy split residues are archived without hiding legitimate zero-value pending rows',()=>{
   const residue=line('1','PP',{cantidadFacturada:4,cantidadPendiente:0,montoPlanificado:0});
   const pending=line('1','PP',{fechaPlanificada:'26/10/2026',cantidadPendiente:6,montoPlanificado:0});

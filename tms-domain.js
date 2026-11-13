@@ -22,7 +22,15 @@
     return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
   };
   function invoiceKey(row) { return String(row.factura || '').trim().toUpperCase(); }
-  function activeTransit(row) { return !row.receivedAt && row.estado !== 'recibida'; }
+  function transitState(row) {
+    if (row.accountedAt || ['contabilizada','contabilizado'].includes(row.estado)) return 'accounted';
+    if (row.receivedAt || ['recibida','recibido'].includes(row.estado)) return 'received';
+    return 'active';
+  }
+  function activeTransit(row) { return transitState(row) === 'active'; }
+  function transitChange(row, estado, fields, actor, timestamp) {
+    return {...row,...fields,estado,updatedAt:timestamp,statusHistory:[...(row.statusHistory || []),{estado,at:timestamp,by:actor}]};
+  }
   function transitNeed(line) {
     if (!line || line.archivedAt) return 0;
     const number = value => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
@@ -87,9 +95,19 @@
   function receiveInvoice(materials, invoice, received, actor, timestamp) {
     const id = invoiceKey({ factura: invoice });
     if (!id) throw new Error('La factura debe estar identificada.');
-    return materials.map(row => invoiceKey(row) !== id ? row : {
-      ...row, estado: received ? 'recibida' : 'en_transito',
-      receivedAt: received ? timestamp : '', receivedBy: received ? actor : '', updatedAt: timestamp
+    if (!received && materials.some(row => invoiceKey(row) === id && transitState(row) === 'accounted')) throw new Error('Primero quita la marca de contabilización antes de volver la factura a tránsito.');
+    return materials.map(row => {
+      if (invoiceKey(row) !== id || (received ? !activeTransit(row) : activeTransit(row))) return row;
+      return transitChange(row,received ? 'recibida' : 'en_transito',{receivedAt:received ? timestamp : '',receivedBy:received ? actor : ''},actor,timestamp);
+    });
+  }
+  function accountInvoice(materials, invoice, accounted, actor, timestamp) {
+    const id=invoiceKey({factura:invoice}),rows=materials.filter(row=>invoiceKey(row)===id);
+    if(!id || !rows.length)throw new Error('La factura debe estar identificada y tener materiales registrados.');
+    if(accounted && rows.some(activeTransit))throw new Error('Confirma la recepción de todas las líneas de la factura antes de marcarla contabilizada en SAP.');
+    return materials.map(row=>{
+      if(invoiceKey(row)!==id || (accounted ? transitState(row)==='accounted' : transitState(row)!=='accounted'))return row;
+      return transitChange(row,accounted?'contabilizada':'recibida',{accountedAt:accounted?timestamp:'',accountedBy:accounted?actor:''},actor,timestamp);
     });
   }
   function orderKey(line) { return [line.clienteId || line.codigo, line.pedidoCliente, line.lineaPedidoCliente, line.articulo].map(key).join('|'); }
@@ -196,5 +214,5 @@
       { id: 'audit-20261023-facturado', titulo: 'Adjuntar reporte SAP de lo realmente facturado', notas: 'Cargar importes efectivos por cliente, pedido, referencia y fecha para comparar facturación con costo de transporte.' }
     ].map(row => ({ ...row, fecha: '2026-10-23', estado: 'pendiente', createdAt: '2026-10-22T12:00:00Z', updatedAt: '2026-10-22T12:00:00Z' }));
   }
-  return { key, rates, extras, isoDate, invoiceKey, activeTransit, transitNeed, transitForLine, calendarDispatchSummary, receiveInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
+  return { key, rates, extras, isoDate, invoiceKey, transitState, activeTransit, transitNeed, transitForLine, calendarDispatchSummary, receiveInvoice, accountInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
 });

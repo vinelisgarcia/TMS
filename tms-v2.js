@@ -7237,7 +7237,7 @@
     const name = (file.name || '').toLowerCase();
     if (/\.(xlsx|xls|xml|csv)$/.test(name)) {
       const buffer = await readArrayBufferFile(file);
-      const wb = XLSX.read(buffer, { type: 'array', cellDates: false, cellNF: true });
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: false, cellNF: true, raw: true });
       const templates=[];
       for(const name of wb.SheetNames){
         const sheet=wb.Sheets[name], matrix=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:true,range:0}), header=transitEntryHeader(matrix);
@@ -7342,7 +7342,7 @@
   window.exportarMaterialesTransitoExcel = function exportarMaterialesTransitoExcel() {
     ensureTransitMaterials();
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.transitMaterials.map(item => ({ Factura: item.factura, ETA: item.eta, Material: item.codigoMaterial, Descripcion: item.descripcion, Cantidad: item.cantidad, Cliente: item.cliente }))), 'Materiales transito');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.transitMaterials.map(item => ({ Factura: item.factura, ETA: item.eta, Material: item.codigoMaterial, Descripcion: item.descripcion, Cantidad: item.cantidad, Cliente: item.cliente, Estado:({active:'En tránsito',received:'Recibido',accounted:'Contabilizado'})[TMSDomain.transitState(item)], 'Fecha recepción':item.receivedAt || '', 'Recibido por':item.receivedBy || '', 'Fecha contabilización SAP':item.accountedAt || '', 'Contabilizado por':item.accountedBy || '' }))), 'Materiales transito');
     XLSX.writeFile(wb, 'TMS_Materiales_Transito.xlsx');
   };
 
