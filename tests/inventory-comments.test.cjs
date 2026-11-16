@@ -1,0 +1,19 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),D=require('../inventory-domain.js'),C=require('../inventory-counts-domain.js'),T=require('../inventory-trace-domain.js'),Notes=require('../inventory-comments-domain.js');
+function fixture(){const ct=D.consolidate([['Material','Quantity'],['A',5],['0007',2]],{source:'ct'}),ad=D.consolidate([['Codigo','Stock','Valor total DOP'],['A',10,100]],{source:'ad'});ct.semanticHash='CT';ad.semanticHash='AD';return {sources:{ct,ad},cases:{},settings:{}};}
+function sheet(name,matrix){return {name,matrix,...Notes.layout(matrix),enabled:true};}
+test('detects offset comment columns and imports both CT and AD without reading stock columns as notes',()=>{
+ const sheets=[sheet('CT',[['Análisis de materiales'],[],['Referencia','Comentarios CT','Cantidad'],['0007','Verificar lote',9999],['A','Contar primero',20],['A','Contar primero',20]]),sheet('AD',[['Material','Observaciones AD'],['A','Revertir pedido interno'],['UNLOADED','Verificar código']])],rows=Notes.parse(sheets),data=fixture(),original=structuredClone(data);
+ assert.equal(sheets[0].headerRow,2);assert.equal(rows.length,5);assert.ok(rows.every(row=>!row.text.includes('9999')));assert.equal(rows[0].code,'0007');assert.equal(rows[0].owner,'CT');assert.equal(rows[3].owner,'AD');
+ const result=Notes.append(data,rows,{user:'analyst@example.invalid',fileName:'analisis.xlsx',now:'2026-11-16T12:00:00Z'});assert.equal(result.added,4);assert.equal(result.duplicates,1);assert.deepEqual(result.unmatched,['UNLOADED']);assert.deepEqual(data.sources,original.sources);assert.deepEqual(data.cases,original.cases);assert.equal(C.catalog(data).some(item=>item.code==='UNLOADED'),false);
+ const prior=JSON.stringify(data);assert.equal(Notes.append(data,rows,{fileName:'renombrado.xlsx'}).added,0);assert.equal(JSON.stringify(data),prior);assert.equal(data.articleComments.byCode['0007'][0].by,'analyst@example.invalid');
+});
+test('the article card combines existing followups and count notes with imported analysis, preserving original history across cuts',()=>{
+ const data=fixture();T.recordCase(data,'A',{status:'en_revision',owner:'AD',note:'Primera revisión'},{user:'one@example.invalid',now:'2026-11-15T12:00:00Z'});T.recordCase(data,'A',{status:'rectificado',owner:'AD',note:'Rectificación registrada'},{user:'two@example.invalid',now:'2026-11-16T12:00:00Z'});
+ C.createCycle(data,{ready:false});C.addItem(data,'A');C.recordCount(data,{code:'A',expectedLocation:'',actualLocation:'',quantity:5,confirmed:true,note:'Rotura observada',responsible:'CT',differenceReason:'breakage'},{user:'counter@example.invalid'});
+ Notes.append(data,[{code:'A',owner:'CT',text:'Validar salida en CT',field:'Comentarios CT',sheet:'Análisis',row:2}]);let rows=Notes.index(data).A;assert.equal(rows.length,4);assert.equal(rows.filter(row=>row.text==='Rotura observada').length,1);assert.ok(rows.some(row=>row.text==='Primera revisión'));data.sources.ct.semanticHash='NEW_CT';assert.equal(Notes.index(data).A.length,4);
+});
+test('invalid references fail the whole import and unknown references retain their comments for a later stock load',()=>{
+ const data=fixture(),before=JSON.stringify(data);assert.throws(()=>Notes.parse([sheet('CT',[['Material','Observaciones'],['A','Válido'],[1e20,'Inválido']])]),/referencias/);assert.equal(JSON.stringify(data),before);
+ assert.throws(()=>Notes.append(data,[{code:'A',text:'Válido'},{code:'',text:'Inválido'}]));assert.equal(JSON.stringify(data),before);
+ Notes.append(data,[{code:'FUTURE',text:'Validar la existencia',owner:'CT'}]);assert.equal(Notes.index(data).FUTURE.length,1);data.sources.ct.materials.push({code:'FUTURE',quantity:1,unit:'UND',description:'Nuevo artículo'});assert.ok(C.catalog(data).some(row=>row.code==='FUTURE'));assert.equal(Notes.index(data).FUTURE[0].text,'Validar la existencia');
+});

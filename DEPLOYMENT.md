@@ -128,6 +128,26 @@ congeladas de los ciclos de conteo se conservan. No requiere migración.
 Validación: `tests/inventory-counts.test.cjs` y `tests/inventory-counts-ui.cjs`
 comprueban partidas repetidas, datos ausentes, actualización remota y vista móvil.
 
+## Comentarios por artículo en Inventory Data
+
+Los artículos con observaciones muestran «Con comentarios» y una ficha con su
+historial. Incluye seguimientos CT/AD, apuntes y notas de conteos, y columnas de
+comentarios importadas desde XLSX, XLS o CSV. «Solo con comentarios» filtra el
+catálogo. Las fichas abiertas se actualizan al sincronizar otra sesión.
+
+«Importar comentarios» detecta hojas, encabezados y columnas de referencia y
+observaciones. La vista previa permite revisar varias hojas/columnas, identifica
+CT/AD y conserva la procedencia, fila, usuario y fecha de incorporación. Repetir
+el mismo texto por referencia y origen no lo duplica. Las referencias aún no
+cargadas conservan sus comentarios y pueden consultarse por separado; se vinculan
+cuando el artículo aparece en el inventario. Los reportes de stock permanecen
+independientes y los comentarios sobreviven a un nuevo corte.
+
+El archivo debe subirse desde el dispositivo. Los enlaces privados de SharePoint
+requieren una sesión Microsoft y no se consultan automáticamente desde el TMS.
+Se utiliza el JSONB privado y la revisión del inventario existente, sin migración.
+Validar con `tests/inventory-comments.test.cjs` y `tests/inventory-comments-ui.cjs`.
+
 ## Conteo diario por plantilla y formulario
 
 CT/AD y showroom ofrecen «Plantilla de conteo ciego», «Subir conteo diario» y
