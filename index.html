@@ -1000,6 +1000,7 @@ html { -webkit-text-size-adjust: 100%; }
 <link rel="stylesheet" href="./calendar-reports.css?v=20261103-warehouse">
 <link rel="stylesheet" href="./tms-access.css?v=20261102-users-roles">
 <link rel="stylesheet" href="./packing-miami.css?v=20261103-ocr">
+<link rel="stylesheet" href="./activity-audit.css?v=20261116-activity">
 </head>
 <body>
 
@@ -1053,6 +1054,7 @@ html { -webkit-text-size-adjust: 100%; }
         <option value="importaciones">Importaciones</option>
         <option value="auditoriaJamaica" hidden>Auditoría Jamaica</option>
         <option value="packingMiami" hidden>Packing list Miami</option>
+        <option value="auditoriaSistema" hidden>Actividad del sistema</option>
         <option value="materialesTransito">Materiales en tránsito</option>
         <option value="prioridades">Prioridades</option>
         <option value="incidenciasDespacho">Incidencias Despacho</option>
@@ -1086,6 +1088,7 @@ html { -webkit-text-size-adjust: 100%; }
       <span class="nav-icon">↗</span><span class="nav-label">Importaciones</span>
     </button>
     <button class="nav-btn" id="nav-auditoriaJamaica" style="display:none" onclick="abrirAuditoriaJamaica()"><span class="nav-icon">📋</span><span class="nav-label">Auditoría Jamaica</span></button>
+    <button class="nav-btn" id="nav-auditoriaSistema" style="display:none" onclick="cambiarVista('auditoriaSistema',this)"><span class="nav-icon">◷</span><span class="nav-label">Actividad del sistema</span></button>
     <button class="nav-btn" id="nav-packingMiami" style="display:none" onclick="cambiarVista('packingMiami',this)"><span class="nav-icon">▤</span><span class="nav-label">Packing list Miami</span></button>
     <button class="nav-btn" id="nav-materialesTransito" onclick="cambiarVista('materialesTransito',this)">
       <span class="nav-icon">⇥</span><span class="nav-label">Materiales en tránsito</span>
@@ -1112,6 +1115,7 @@ html { -webkit-text-size-adjust: 100%; }
     <div id="showroom" class="view"><div id="showroomNavMount"></div><div id="showroomMount"></div><div id="showroomCountMount" hidden></div></div>
     <div id="inventario" class="view"><div id="inventoryNavMount"></div><div id="inventoryMount"></div><div id="inventoryCountMount" hidden></div></div>
     <div id="packingMiami" class="view"></div>
+    <div id="auditoriaSistema" class="view"></div>
 
     <!-- ========== VISTA 1: IMPORTAR SAP ========== -->
     <div id="importar" class="view active">
@@ -4654,5 +4658,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 <script src="./packing-pdf-reader.js?v=20261103-ocr"></script>
 <script src="./packing-pdf-ui.js?v=20261103-ocr"></script>
 <script src="./packing-miami.js?v=20261103-ocr"></script>
+<script src="./activity-audit.js?v=20261116-activity"></script>
 </body>
 </html>

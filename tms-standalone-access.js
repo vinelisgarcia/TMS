@@ -1,7 +1,8 @@
 (function(){
  'use strict';
  const state=window.TMSStandaloneAccess={allowed:false,userId:null,ready:null};
- let client,checking=false,generation=0;
+ let client,checking=false,generation=0,lastAudit=0,auditUser=null;
+ state.record=async action=>{if(!state.allowed||!client?.rpc)return;try{await client.rpc('tms_audit_action',{p_module:'auditoriaJamaica',p_action:action,p_device:innerWidth<600?'mobile':innerWidth<1024?'tablet':'desktop'});}catch(error){console.warn('Actividad pendiente:',error.message);}};
  function display(allowed,message){
   const changed=state.allowed!==allowed;state.allowed=allowed;document.documentElement.dataset.moduleAccess=allowed?'allowed':'denied';
   const label=document.getElementById('moduleAccessMessage');if(label)label.textContent=message;
@@ -16,13 +17,13 @@
    if(profile.error||!profile.data||profile.data.activo!==true){display(false,'La cuenta no tiene un perfil activo en el TMS.');return false;}
    let allowed=profile.data.rol==='Admin';
    if(!allowed){const settings=await client.from('tms_settings').select('valor').eq('clave','role_permissions').maybeSingle();if(settings.error)throw settings.error;allowed=settings.data?.valor?.[profile.data.rol]?.auditoriaJamaica?.ver===true;}
-   if(epoch!==generation)return false;display(allowed,allowed?'':'Tu rol no tiene acceso a Auditoría Jamaica.');return allowed;
+   if(epoch!==generation)return false;display(allowed,allowed?'':'Tu rol no tiene acceso a Auditoría Jamaica.');if(allowed&&!document.hidden){if(auditUser!==state.userId){auditUser=state.userId;state.record('ver_modulo');}if(Date.now()-lastAudit>60000){lastAudit=Date.now();state.record('visita');}}return allowed;
   }catch(error){display(false,'No se pudo verificar el acceso. Revisa la conexión y vuelve a intentarlo.');return false;}finally{checking=false;}
  }
  state.ready=new Promise(resolve=>document.addEventListener('DOMContentLoaded',async()=>{
   if(!window.supabase){display(false,'No se pudo cargar el servicio de acceso. Vuelve a cargar esta página.');resolve(false);return;}
   client=window.supabase.createClient(window.TMSStandaloneConfig.url,window.TMSStandaloneConfig.key);
-  client.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'){generation++;display(false,'La sesión terminó. Inicia sesión en el TMS.');}else setTimeout(check,0);});
+  client.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'){generation++;auditUser=null;display(false,'La sesión terminó. Inicia sesión en el TMS.');}else setTimeout(check,0);});
   document.getElementById('moduleAccessRetry').onclick=check;
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
   window.addEventListener('focus',check);setInterval(check,15000);resolve(await check());

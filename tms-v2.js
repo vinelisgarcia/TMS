@@ -1116,6 +1116,7 @@
       const mobileOption = document.querySelector(`#mobileModuleSelect option[value=\"${viewId}\"]`);
       if (mobileOption) mobileOption.hidden = !allowed;
     });
+    window.TMSActivity?.refreshUI();
     syncMobileModuleSelect();
     updateImportExcelTableStatus();
     const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
@@ -5558,7 +5559,7 @@
   function trackUnsubmittedDraft(event) {
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
-    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog, #transitEtaDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami')) return;
+    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog, #transitEtaDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami, #auditoriaSistema, #eur1')) return;
     if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^prio(Date|PeriodFrom|PeriodTo)$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
