@@ -124,6 +124,12 @@ comprueban partidas repetidas, datos ausentes, actualización remota y vista mó
 
 ## Alertas de tránsito y saldo pendiente
 
+Cada factura activa ofrece «Editar ETA», con selector de fecha y aplicación a
+todas sus líneas. Conserva cantidades, estados y fechas de recepción/contabilidad,
+y añade `etaHistory` con fecha anterior, nueva fecha, autor y momento del cambio.
+El calendario y sus detalles abiertos se recalculan al sincronizar. El editor
+participa en la recuperación de formularios y el control de cambios simultáneos.
+
 Materiales en tránsito admite tres etapas por factura: En tránsito, Recibido y
 Contabilizado. Recibido confirma la entrada física; Contabilizado registra la
 confirmación manual de que la factura ya fue contabilizada en SAP en un proceso

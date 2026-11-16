@@ -43,6 +43,15 @@ test('invoice receipt does not conflate different punctuation in invoice identif
   const received=D.receiveInvoice([{factura:'F-1'},{factura:'F1'}],'F-1',true,'user','now');
   assert.equal(received[0].receivedAt,'now');assert.equal(received[1].receivedAt,undefined);
 });
+test('invoice ETA updates all matching materials with history and exact invoice identity, without changing quantities or lifecycle',()=>{
+ const rows=[{id:'A',factura:'F-1',cantidad:2,eta:'2026-11-20'},{id:'B',factura:' f-1 ',cantidad:3,eta:'2026-11-21',receivedAt:'2026-11-16',receivedBy:'almacen',accountedAt:'2026-11-16',estado:'contabilizada'},{factura:'F1',eta:'2026-11-20'}];
+ const next=D.updateInvoiceEta(rows,'F-1','2026-11-25','user','now');assert.equal(rows[0].eta,'2026-11-20');assert.equal(next[2],rows[2]);
+ next.slice(0,2).forEach((row,i)=>{assert.equal(row.eta,'2026-11-25');assert.equal(row.cantidad,rows[i].cantidad);assert.equal(row.estado,rows[i].estado);assert.equal(row.receivedAt,rows[i].receivedAt);assert.equal(row.accountedAt,rows[i].accountedAt);assert.deepEqual(row.etaHistory,[{from:rows[i].eta,to:'2026-11-25',at:'now',by:'user'}]);});
+ assert.deepEqual(D.updateInvoiceEta(next,'F-1','2026-11-25','retry','later'),next);
+ for(const date of ['','2026-02-29','2026-11-31','2026-13-01','16/11/2026','0000-01-01'])assert.throws(()=>D.updateInvoiceEta(rows,'F-1',date,'user','now'),/ETA válida/);
+ assert.throws(()=>D.updateInvoiceEta(rows,'MISSING','2026-11-25','user','now'));assert.throws(()=>D.updateInvoiceEta(rows,'','2026-11-25','user','now'));
+ assert.equal(D.updateInvoiceEta(rows,'F-1','2028-02-29','user','now')[0].eta,'2028-02-29');
+});
 test('SAP accounting is a later invoice step that preserves the physical receipt and all material quantities',()=>{
   const original=[{factura:'F-1',codigoMaterial:'0007',cantidad:4},{factura:' f-1 ',codigoMaterial:'B',cantidad:2},{factura:'F1',codigoMaterial:'OTHER',cantidad:9}];
   assert.throws(()=>D.accountInvoice(original,'F-1',true,'contabilidad','2026-11-13T14:00:00Z'),/recepción/);

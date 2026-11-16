@@ -22,6 +22,13 @@
     return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
   };
   function invoiceKey(row) { return String(row.factura || '').trim().toUpperCase(); }
+  function updateInvoiceEta(materials, invoice, eta, actor, timestamp) {
+    const id=invoiceKey({factura:invoice});
+    if(!id || !materials.some(row=>invoiceKey(row)===id))throw new Error('La factura debe estar identificada y tener materiales registrados.');
+    const date=typeof eta==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(eta)&&!eta.startsWith('0000-')?new Date(eta+'T00:00:00Z'):null;
+    if(!date || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10)!==eta)throw new Error('Selecciona una fecha ETA válida.');
+    return materials.map(row=>invoiceKey(row)!==id || row.eta===eta?row:{...row,eta,updatedAt:timestamp,etaHistory:[...(Array.isArray(row.etaHistory)?row.etaHistory:[]),{from:row.eta||'',to:eta,at:timestamp,by:actor}]});
+  }
   function transitState(row) {
     if (row.accountedAt || ['contabilizada','contabilizado'].includes(row.estado)) return 'accounted';
     if (row.receivedAt || ['recibida','recibido'].includes(row.estado)) return 'received';
@@ -214,5 +221,5 @@
       { id: 'audit-20261023-facturado', titulo: 'Adjuntar reporte SAP de lo realmente facturado', notas: 'Cargar importes efectivos por cliente, pedido, referencia y fecha para comparar facturación con costo de transporte.' }
     ].map(row => ({ ...row, fecha: '2026-10-23', estado: 'pendiente', createdAt: '2026-10-22T12:00:00Z', updatedAt: '2026-10-22T12:00:00Z' }));
   }
-  return { key, rates, extras, isoDate, invoiceKey, transitState, activeTransit, transitNeed, transitForLine, calendarDispatchSummary, receiveInvoice, accountInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
+  return { key, rates, extras, isoDate, invoiceKey, updateInvoiceEta, transitState, activeTransit, transitNeed, transitForLine, calendarDispatchSummary, receiveInvoice, accountInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
 });

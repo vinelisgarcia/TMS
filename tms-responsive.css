@@ -194,6 +194,7 @@
 /* Compact calendar cards: controls stay available from each client's menu. */
 .calendar-load-compact{display:none!important}
 .audit-invoice-actions{display:flex;flex-wrap:wrap;gap:8px;max-width:100%}.audit-invoice-actions .btn{white-space:normal;min-width:0}
+.audit-eta-dialog{width:min(480px,calc(100% - 32px))}.audit-eta-dialog label{display:grid;gap:8px;margin:16px 0}.audit-eta-dialog input{min-width:0;max-width:100%}.audit-eta-dialog .modal-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.audit-eta-dialog [role=alert]{color:var(--danger,#b42318)}
 @media screen and (max-width:600px){#materialesTransito .audit-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));min-width:0}#materialesTransito .audit-tabs button{min-width:0;padding:8px 4px;overflow-wrap:anywhere}.audit-invoice-actions{width:100%}}
 .calendar-card-tools,.calendar-card-tools>.cal-card-actions{display:contents}
 .calendar-card-tools>summary{display:none}

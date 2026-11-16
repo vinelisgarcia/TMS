@@ -5558,7 +5558,7 @@
   function trackUnsubmittedDraft(event) {
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
-    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami')) return;
+    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog, #transitEtaDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami')) return;
     if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
@@ -5573,12 +5573,14 @@
     return [...unsubmittedDrafts].filter(control => control.isConnected && control.type !== 'password').map(control => ({
       field:control.id,label:control.name || control.className || control.type,
       value:control.type === 'file' ? [...control.files].map(file=>file.name) : control.value,
-      checked:control.type === 'checkbox' || control.type === 'radio' ? control.checked : undefined
+      checked:control.type === 'checkbox' || control.type === 'radio' ? control.checked : undefined,
+      ...(control.closest?.('#transitEtaDialog')?{transitInvoice:control.closest('#transitEtaDialog').dataset.invoice}:{})
     }));
   }
 
   function restoreFormDrafts(drafts) {
     (drafts || []).forEach(draft => {
+      if(draft.field==='transitInvoiceEta'&&draft.transitInvoice)window.TMSTransitEtaEditor?.open(draft.transitInvoice,draft.value);
       const control = draft.field && document.getElementById(draft.field);
       if (!control || control.type === 'file' || control.type === 'password') return;
       control.value = draft.value;
