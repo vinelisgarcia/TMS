@@ -1,5 +1,11 @@
 # Sincronización de sesiones
 
+Prioridades abre el día actual de Santo Domingo. Las tareas pendientes y en
+proceso de fechas anteriores siguen visibles hasta completarse, conservando su
+fecha original. La fecha se actualiza al volver a la ventana, cambiar de día o
+pulsar «Hoy»; la navegación histórica sigue disponible. Validar el cambio de día
+con `tests/ui-smoke.cjs`.
+
 El nuevo módulo independiente de showroom requiere aplicar la migración aditiva
 `0010_showroom_inventory.sql` antes de publicar su frontend. Ver
 [SHOWROOM.md](SHOWROOM.md) para el alcance, los permisos y las pruebas. Preparar

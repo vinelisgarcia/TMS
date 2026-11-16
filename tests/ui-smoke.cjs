@@ -110,6 +110,17 @@ const url = process.env.TMS_TEST_URL || 'http://127.0.0.1:8765';
     await page.locator('#nav-prioridades').click();
     const reminders=await page.evaluate(()=>APP.dailyPriorities.filter(row=>row.id.startsWith('audit-20261023')));
     assert.equal(reminders.length,2);
+    await page.clock.setFixedTime(new Date('2026-11-16T03:59:00Z')); // 23:59 in Santo Domingo.
+    await page.evaluate(()=>{APP.dailyPriorities.push({id:'roll-pending',fecha:'2026-11-14',titulo:'ROLLOVER PENDIENTE',estado:'pendiente'},{id:'roll-progress',fecha:'2026-11-15',titulo:'ROLLOVER EN PROCESO',estado:'proceso'},{id:'roll-done',fecha:'2026-11-14',titulo:'ROLLOVER COMPLETADA',estado:'completada',completedDate:'2026-11-14'},{id:'roll-future',fecha:'2026-11-17',titulo:'ROLLOVER FUTURA',estado:'pendiente'});renderPrioridades();});
+    assert.equal(await page.locator('#prioDate').inputValue(),'2026-11-15');
+    await page.clock.setFixedTime(new Date('2026-11-16T04:01:00Z'));await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    await page.waitForFunction(()=>document.getElementById('prioDate').value==='2026-11-16');
+    assert.equal(await page.locator('.priority-card').filter({hasText:'ROLLOVER PENDIENTE'}).count(),1);assert.equal(await page.locator('.priority-card').filter({hasText:'ROLLOVER EN PROCESO'}).count(),1);assert.equal(await page.locator('.priority-card').filter({hasText:/ROLLOVER (COMPLETADA|FUTURA)/}).count(),0);
+    await page.evaluate(()=>moverPrioridad('roll-pending','completada'));assert.equal(await page.locator('.priority-column.status-pendiente .priority-card').filter({hasText:'ROLLOVER PENDIENTE'}).count(),0);
+    await page.clock.setFixedTime(new Date('2026-11-17T05:00:00Z'));await page.evaluate(()=>window.dispatchEvent(new Event('focus')));assert.equal(await page.locator('#prioDate').inputValue(),'2026-11-17');assert.equal(await page.locator('.priority-card').filter({hasText:'ROLLOVER PENDIENTE'}).count(),0);assert.equal(await page.locator('.priority-card').filter({hasText:'ROLLOVER FUTURA'}).count(),1);
+    assert.equal(await page.evaluate(()=>APP.dailyPriorities.find(row=>row.id==='roll-progress').fecha),'2026-11-15');
+    await page.locator('#prioDate').fill('2026-11-15');await page.locator('#prioDate').dispatchEvent('change');await page.locator('button[onclick="verPrioridadesHoy()"]').click();assert.equal(await page.locator('#prioDate').inputValue(),'2026-11-17');
+    await page.clock.setFixedTime(new Date());await page.evaluate(()=>renderPrioridades());
     await page.locator('#nav-configClientes').click();
     await page.locator('#auditClientCode').fill('C3');await page.locator('#auditClientName').fill('Cliente desde cero');
     await page.locator('[data-audit="create-client"]').click();

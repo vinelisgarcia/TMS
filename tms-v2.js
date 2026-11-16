@@ -5559,7 +5559,7 @@
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
     if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog, #transitEtaDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami')) return;
-    if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
+    if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^prio(Date|PeriodFrom|PeriodTo)$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
     unsubmittedDrafts.add(control);
@@ -8100,9 +8100,24 @@
   ];
 
   function todayIsoDate() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santo_Domingo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   }
+
+  let prioritySessionDay='';
+  function syncPriorityDay() {
+    const today=todayIsoDate();if(prioritySessionDay===today)return false;
+    prioritySessionDay=today;APP.prioritiesDate=today;
+    const input=document.getElementById('prioDate');if(input)input.value=today;
+    return true;
+  }
+  function refreshPriorityDay() {
+    if(!syncPriorityDay())return;
+    if(document.querySelector('.view.active')?.id==='prioridades'&&!hasUnsubmittedDraft())window.renderPrioridades();
+  }
+  window.addEventListener('focus',refreshPriorityDay);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshPriorityDay();});
+  setInterval(refreshPriorityDay,60000);
+  window.verPrioridadesHoy=function(){APP.prioritiesDate=todayIsoDate();const input=document.getElementById('prioDate');if(input)input.value=APP.prioritiesDate;window.renderPrioridades();};
 
   function priorityStatusLabel(status) {
     return (PRIORITY_STATUSES.find(item => item.key === status) || PRIORITY_STATUSES[0]).label;
@@ -8367,6 +8382,7 @@
     }
     ensureDailyPriorities();
     ensurePrioritySpainTopics();
+    syncPriorityDay();
     APP.prioritiesDate = APP.prioritiesDate || todayIsoDate();
     const rows = getPrioritiesForSelectedDate();
     const selectedDate = APP.prioritiesDate;
@@ -8377,7 +8393,7 @@
       <section class="priority-hero">
         <div><h2>Prioridades del día</h2><p>Las tareas pendientes o en proceso se arrastran automáticamente hasta que se marquen como completadas. El histórico muestra las completadas por día.</p></div>
         <div class="priority-top-actions">
-          <label class="priority-period-field">Día<input id="prioDate" class="form-control" type="date" value="${APP.prioritiesDate}" onchange="APP.prioritiesDate=this.value;renderPrioridades()"></label>
+          <label class="priority-period-field">Día<input id="prioDate" class="form-control" type="date" value="${APP.prioritiesDate}" onchange="APP.prioritiesDate=this.value;renderPrioridades()"></label><button class="btn btn-outline btn-sm" onclick="verPrioridadesHoy()">Hoy</button>
           <label class="priority-period-field">Desde<input id="prioPeriodFrom" class="form-control" type="date" value="${APP.priorityReportFrom || (APP.prioritiesDate || todayIsoDate()).slice(0, 8) + '01'}"></label>
           <label class="priority-period-field">Hasta<input id="prioPeriodTo" class="form-control" type="date" value="${APP.priorityReportTo || APP.prioritiesDate}"></label>
           <button class="btn btn-primary btn-sm" onclick="exportarPrioridadesPdf()">Reporte PDF</button>
