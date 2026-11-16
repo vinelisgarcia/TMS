@@ -128,6 +128,36 @@ congeladas de los ciclos de conteo se conservan. No requiere migración.
 Validación: `tests/inventory-counts.test.cjs` y `tests/inventory-counts-ui.cjs`
 comprueban partidas repetidas, datos ausentes, actualización remota y vista móvil.
 
+## Conteo diario por plantilla y formulario
+
+CT/AD y showroom ofrecen «Plantilla de conteo ciego», «Subir conteo diario» y
+«Conteos por día». El Excel permite contar todas las referencias del catálogo
+completo o solo las obligatorias. Conserva referencias de texto, ubicaciones,
+fecha y operador; no contiene cantidades teóricas ni valores, tampoco en sus
+metadatos. Los campos editables aparecen en amarillo, las cabeceras se congelan
+y el archivo tiene filtros, validación numérica y configuración de impresión.
+
+Descargar prepara un ciclo abierto con sus referencias congeladas. La plantilla
+debe devolverse antes de cerrar o archivar ese ciclo. La carga valida todas las
+filas y presenta una vista previa antes de confirmar. Una celda vacía sigue sin
+contar; cero genera un conteo. La fecha física (`countedOn`) y el responsable
+(`countedBy`) se conservan aparte del momento y usuario de registro en el TMS.
+Los formularios guiado/libre también permiten elegir la fecha.
+
+Una fila ya importada se reconoce por plantilla, fila y día. Repetir la misma
+carga no suma cantidades. Cambiar un registro ya cargado requiere una corrección
+en Resultados y bitácora. Un reconteo de otro día sustituye el total de esa
+ubicación para el resultado vigente; los días anteriores permanecen en el historial.
+Las cantidades de cajas de un mismo día siguen sumándose con confirmación.
+El guiado y los Excel del ciclo incluyen la fecha real del conteo.
+
+Los datos usan el JSONB existente de cada inventario, sus permisos y su control
+de revisiones. No se requiere activación ni migración SQL. La vista previa se
+recupera por cuenta tras un conflicto o recarga y no sobrescribe otra sesión.
+Validar con `node --test tests/inventory-daily.test.cjs` y
+`node tests/inventory-daily-ui.cjs`; también ejecutar este último con
+`TMS_TEST_ENGINE=webkit`, además de las pruebas existentes de ambos conteos.
+
 ## Alertas de tránsito y saldo pendiente
 
 Cada factura activa ofrece «Editar ETA», con selector de fecha y aplicación a
