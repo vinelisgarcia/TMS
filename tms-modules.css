@@ -54,3 +54,59 @@ body.module-home #mainLayout{overflow:auto}
  #sapModuleDialog .sap-import-tile>header{margin-bottom:12px}
  #sapModuleDialog .sap-file-status{min-height:0;margin-bottom:12px}
 }
+
+/* Keep the three upload actions on a common baseline. */
+#sapModuleDialog .sap-import-tile>header{height:48px;min-height:48px;margin-bottom:18px}
+#sapModuleDialog .sap-file-status{height:74px;min-height:74px;overflow:auto}
+#sapModuleDialog .sap-import-tile>.btn,#sapModuleDialog .sap-warehouse-actions>.btn{height:42px;min-height:42px}
+#sapModuleDialog .sap-saved-files{margin-top:15px;padding:15px 16px;border:1px solid #dce6ef;border-radius:12px;background:rgba(255,255,255,.7);color:#637d90}
+#sapModuleDialog .sap-saved-files summary{display:flex;justify-content:space-between;gap:12px;color:#345b9d;font-size:13px;font-weight:700;cursor:pointer;list-style:none}
+#sapModuleDialog .sap-saved-files summary::-webkit-details-marker{display:none}
+#sapModuleDialog .sap-saved-files summary::before{content:'⚙';margin-right:4px}
+#sapModuleDialog .sap-saved-files summary span{margin-left:auto;color:#8295a4;font-size:11px;font-weight:500}
+#sapModuleDialog .sap-saved-files p{margin:10px 0 12px;font-size:12px;line-height:1.5}
+#sapModuleDialog .sap-saved-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#sapModuleDialog .sap-saved-grid button{display:flex;justify-content:space-between;align-items:center;gap:12px;min-width:0;padding:10px 12px;border:1px solid #e3eaf0;border-radius:9px;text-align:left;background:#fff;color:#34536b;cursor:pointer}
+#sapModuleDialog .sap-saved-grid button:disabled{opacity:.5;cursor:not-allowed}
+#sapModuleDialog .sap-saved-grid button>span:first-child{display:grid;gap:3px;min-width:0}
+#sapModuleDialog .sap-saved-grid strong{font-size:12px}
+#sapModuleDialog .sap-saved-grid small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8192a1;font-size:11px}
+#sapModuleDialog .sap-config-action{color:#446cb3;font-size:11px;font-weight:700}
+#sapModuleDialog .sap-saved-message{margin:10px 0 0;color:#55768a;font-size:12px}
+#sapModuleDialog .sap-saved-message:empty{display:none}
+#sapModuleDialog .sap-saved-message.is-error{color:#a43d32}
+@media(max-width:760px){
+ #sapModuleDialog .sap-import-tile>header{height:auto;min-height:40px;margin-bottom:12px}
+ #sapModuleDialog .sap-file-status{height:auto;min-height:0}
+ #sapModuleDialog .sap-saved-grid{grid-template-columns:1fr}
+}
+
+/* Show all five module choices together on a phone. */
+@media (max-width:600px){
+ body.module-home #mainLayout{min-height:0!important}
+ body.module-home #moduleHome{min-height:calc(100dvh - 64px);padding:24px 16px 18px}
+ .module-home-heading h1{font-size:27px;line-height:1.1;margin:9px 0 6px}
+ .module-home-heading>span{font-size:9px}
+ .module-home-heading p{margin:0 0 19px;font-size:13px;line-height:1.4}
+ .module-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .module-card{min-height:116px;padding:14px;border-radius:16px}
+ .module-card:last-child{grid-column:1 / -1;min-height:88px}
+ .module-icon{width:34px;height:34px;border-radius:11px;font-size:19px}
+ .module-arrow{right:15px;top:14px;font-size:16px}
+ .module-card-body{margin-top:10px}
+ .module-card-body strong{font-size:14px;line-height:1.2}
+ .module-card-body small,.module-card-footer{display:none}
+ .module-card:last-child .module-card-body{margin-top:7px}
+}
+@media (max-width:600px) and (max-height:680px){
+ body.module-home #moduleHome{padding-top:14px}
+ .module-home-heading h1{font-size:23px}
+ .module-home-heading p{margin-bottom:12px}
+ .module-card{min-height:100px;padding:11px}
+ .module-card:last-child{min-height:76px}
+ .module-card-body{margin-top:7px}
+}
+@media (max-width:600px) and (max-height:680px){
+ .module-home-heading p{display:none}
+ .module-home-heading h1{margin-bottom:13px}
+}
