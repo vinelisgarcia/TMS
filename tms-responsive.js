@@ -23,7 +23,7 @@
   function modules() {
     return [...(document.getElementById('mobileModuleSelect')?.options || [])].filter(option => {
       const nav = document.getElementById('nav-'+option.value);
-      return !option.hidden && !option.disabled && (!nav || nav.style.display !== 'none');
+      return !option.hidden && !option.disabled && (!nav || nav.style.display !== 'none') && (!window.TMSModuleContains || window.TMSModuleContains(option.value));
     }).map(option => ({id:option.value,label:labels[option.value] || option.textContent.trim()}));
   }
   function updateNavigation() {
@@ -71,6 +71,7 @@
     if(!modules().some(row=>row.id===id))return;
     document.getElementById('mobileModulesDialog')?.close();
     if(id==='auditoriaJamaica'){window.abrirAuditoriaJamaica();return;}
+    if(id==='importar'){document.getElementById('nav-importar')?.click();return;}
     window.cambiarVista(id,document.getElementById('nav-'+id));updateNavigation();
   }
   function updateCalendar() {
