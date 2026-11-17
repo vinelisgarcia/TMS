@@ -6,3 +6,51 @@ body.module-home #mainLayout{overflow:auto}
 #sidebar .module-outside{display:none!important}#moduleBack{display:grid;gap:8px;color:#b9cbd3;text-decoration:none;padding:12px 14px 18px;font-size:12px;border-bottom:1px solid #344552;margin-bottom:10px}#moduleBack span{color:white;font-weight:700;font-size:14px}#mobileHomeLink{display:none}
 #sapModuleDialog{width:min(960px,calc(100% - 32px));max-height:min(90vh,950px);border:1px solid rgba(255,255,255,.85);border-radius:24px;padding:0;background:rgba(246,250,252,.94);color:#1e3747;box-shadow:0 30px 100px rgba(6,22,35,.35);backdrop-filter:blur(22px)}#sapModuleDialog::backdrop{background:rgba(12,26,38,.55);backdrop-filter:blur(7px)}#sapModuleDialog>header{display:flex;justify-content:space-between;gap:20px;padding:28px 30px 20px;background:linear-gradient(120deg,rgba(255,255,255,.75),rgba(220,238,242,.55));border-bottom:1px solid rgba(119,155,169,.18)}#sapModuleDialog>header span{font-size:10px;font-weight:800;letter-spacing:.14em;color:#58808c}#sapModuleDialog h2{margin:8px 0;font-size:25px}#sapModuleDialog header p{margin:0;color:#69808a;line-height:1.45}#sapModuleDialog header button{align-self:flex-start;border:0;border-radius:50%;width:36px;height:36px;background:rgba(255,255,255,.75);font-size:24px;cursor:pointer}#sapModuleDialog .sap-dialog-content{padding:24px 30px}#sapModuleDialog #importar>.view-title{display:none}
 @media(max-width:900px){body.module-home #mainLayout{padding-bottom:0!important}#moduleHome{min-height:calc(100vh - 65px);padding:32px 20px}.module-card{min-height:190px}#mobileHomeLink{display:block;padding:10px 16px;color:#315b68;font-weight:700;text-decoration:none;background:#eef5f6}body.module-home #mobileHomeLink{display:none}#sapModuleDialog>header,#sapModuleDialog .sap-dialog-content{padding:20px}}
+
+/* SAP update dialog: a compact workspace with its own layout. */
+#sapModuleDialog[open]{position:fixed;inset:0;margin:auto;width:min(1020px,calc(100% - 40px));max-width:none;max-height:min(90dvh,900px);overflow:auto;overscroll-behavior:contain;border:1px solid rgba(255,255,255,.9);border-radius:24px;background:#f4f7fb;color:#172d42;box-shadow:0 30px 100px rgba(8,22,42,.35)}
+#sapModuleDialog::backdrop{background:rgba(13,25,40,.55);backdrop-filter:blur(8px)}
+#sapModuleDialog>.sap-dialog-header{position:sticky;top:0;z-index:2;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:26px 30px;background:linear-gradient(115deg,rgba(255,255,255,.98),rgba(240,246,252,.96));border-bottom:1px solid #e2eaf2;backdrop-filter:blur(20px)}
+#sapModuleDialog .sap-dialog-heading{display:flex;align-items:center;gap:16px;min-width:0}
+#sapModuleDialog .sap-dialog-mark{display:grid;place-items:center;flex:0 0 50px;width:50px;height:50px;border-radius:16px;color:#315cae;background:linear-gradient(145deg,#e4eeff,#d9e9f6);box-shadow:inset 0 1px 0 #fff}
+#sapModuleDialog .sap-dialog-mark svg{width:25px;height:25px}
+#sapModuleDialog .sap-dialog-eyebrow{display:block;color:#638097;font-size:10px;font-weight:800;letter-spacing:.13em}
+#sapModuleDialog #sapDialogTitle{margin:5px 0 4px;color:#18334b;font-size:25px;line-height:1.2;letter-spacing:-.035em}
+#sapModuleDialog .sap-dialog-heading p{margin:0;color:#718498;font-size:13px;line-height:1.5}
+#sapModuleDialog .sap-dialog-close{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border:1px solid #dce5ee;border-radius:12px;background:rgba(255,255,255,.8);color:#62778b;font-size:23px;line-height:1;cursor:pointer;transition:background .15s,color .15s}
+#sapModuleDialog .sap-dialog-close:hover{background:#e8eef6;color:#18334b}
+#sapModuleDialog .sap-dialog-content{padding:24px 30px 28px}
+#sapModuleDialog #importar{min-height:0!important;max-width:none!important;width:100%;padding:0!important;margin:0!important}
+#sapModuleDialog #importar>.app-view-footer{display:none}
+#sapModuleDialog .sap-import-intro{margin:0 0 18px;color:#667d90;font-size:13px;line-height:1.4}
+#sapModuleDialog .sap-import-intro span{padding:6px 10px;border:1px solid #dbe6ee;border-radius:8px;background:#fff;color:#6c8293;font-size:10px;font-weight:700;letter-spacing:.03em}
+#sapModuleDialog .sap-import-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch}
+#sapModuleDialog .sap-import-tile{display:flex;flex-direction:column;min-width:0;padding:20px;border:1px solid #e0e8f0;border-radius:17px;background:rgba(255,255,255,.88);box-shadow:0 8px 24px rgba(38,68,96,.045)}
+#sapModuleDialog .sap-import-tile>header{display:flex;align-items:center;gap:11px;margin:0 0 18px}
+#sapModuleDialog .sap-tile-icon{flex:0 0 38px;width:38px;height:38px;border-radius:12px;background:#edf3fc;color:#476bb0;font-size:11px;font-weight:800}
+#sapModuleDialog .sap-import-tile h2{margin:0 0 4px;color:#203b53;font-size:16px;line-height:1.25;letter-spacing:-.02em}
+#sapModuleDialog .sap-import-tile header p{margin:0;color:#8091a0;font-size:12px;line-height:1.35}
+#sapModuleDialog .sap-file-status{min-height:74px;margin:0 0 16px;padding:12px;border:1px solid #edf1f5;border-radius:11px;background:#f7f9fc;color:#74869a;font-size:12px;line-height:1.45}
+#sapModuleDialog .sap-file-status .sap-file-name{color:#344e64}
+#sapModuleDialog .sap-import-tile>.btn,#sapModuleDialog .sap-warehouse-actions>.btn{min-height:42px;border-radius:10px;font-size:12px;font-weight:700;box-shadow:none}
+#sapModuleDialog .sap-import-tile>.btn-primary,#sapModuleDialog .sap-warehouse-actions>.btn-primary{background:#365eb2;border-color:#365eb2;color:white}
+#sapModuleDialog .sap-import-tile>.btn-success{background:#365eb2;border-color:#365eb2;color:white}
+#sapModuleDialog .sap-import-tile button:disabled{opacity:.48}
+#sapModuleDialog .sap-warehouse-actions{gap:7px}
+#sapModuleDialog .warehouse-report-trigger{margin-top:7px}
+#sapModuleDialog .sap-import-help{margin-top:20px;padding-top:16px;border-top:1px solid #e1e9f0;color:#6c8092;font-size:12px}
+#sapModuleDialog .sap-import-help summary{color:#4267a4;font-weight:700;cursor:pointer}
+@media(max-width:760px){
+ #sapModuleDialog[open]{width:calc(100% - 24px);max-height:calc(100dvh - 24px);border-radius:20px}
+ #sapModuleDialog>.sap-dialog-header{padding:20px 18px;gap:10px}
+ #sapModuleDialog .sap-dialog-heading{gap:11px;align-items:flex-start}
+ #sapModuleDialog .sap-dialog-mark{flex-basis:40px;width:40px;height:40px;border-radius:12px}
+ #sapModuleDialog .sap-dialog-mark svg{width:21px;height:21px}
+ #sapModuleDialog #sapDialogTitle{font-size:20px}
+ #sapModuleDialog .sap-dialog-heading p{font-size:12px}
+ #sapModuleDialog .sap-dialog-content{padding:18px}
+ #sapModuleDialog .sap-import-grid{grid-template-columns:1fr;gap:10px}
+ #sapModuleDialog .sap-import-tile{padding:16px}
+ #sapModuleDialog .sap-import-tile>header{margin-bottom:12px}
+ #sapModuleDialog .sap-file-status{min-height:0;margin-bottom:12px}
+}

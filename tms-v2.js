@@ -5774,7 +5774,7 @@
     tableCard.id = 'importExcelTableCard';
     tableCard.className = 'sap-import-workspace';
     tableCard.innerHTML = `
-      <p class="sap-import-intro">Elige el documento que vas a cargar. <span>Excel / XML</span></p>
+      <p class="sap-import-intro">Selecciona el documento que deseas actualizar. <span>Excel / XML</span></p>
       <div class="sap-import-grid">
         <section class="sap-import-tile" data-sap-kind="plan">
           <header><span class="sap-tile-icon" aria-hidden="true">01</span><div><h2>Programación</h2><p>Pedidos y calendario</p></div></header>
