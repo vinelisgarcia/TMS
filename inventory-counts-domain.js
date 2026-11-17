@@ -6,6 +6,10 @@
   const location=value=>clean(value).toUpperCase();
   const key=(...parts)=>JSON.stringify(parts);
   const stamp=options=>options?.now||new Date().toISOString();
+  const dayFormatter=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santo_Domingo',year:'numeric',month:'2-digit',day:'2-digit'});
+  const countDay=value=>{if(typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value))return value;const date=new Date(value||Date.now());return Number.isFinite(date.getTime())?dayFormatter.format(date):'';};
+  function validateCountDay(value){const date=/^\d{4}-\d{2}-\d{2}$/.test(value||'')&&!value.startsWith('0000-')?new Date(value+'T00:00:00Z'):null;if(!date||!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==value)throw new Error('Indica una fecha de conteo válida.');return value;}
+  const recordDay=record=>record.countedOn||countDay(record.at);
   const uid=()=>typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
   const state=data=>data.counting||{version:1,catalog:{},positions:{},cycles:[],activeCycleId:null};
   function ensure(data){if(!data.counting)data.counting=state(data);const s=data.counting;s.catalog=s.catalog||{};s.positions=s.positions||{};s.cycles=s.cycles||[];return s;}
@@ -46,17 +50,17 @@
   function catalog(data){
     const s=state(data),map=new Map();
     for(const source of ['ct','ad'])for(const row of data.sources?.[source]?.materials||[]){
-      if(!map.has(row.code))map.set(row.code,{code:row.code,description:row.description||'',unit:row.unit||'UND',stockCT:null,stockAD:null,adRegistered:false,costAD:null,barcodes:[],supplier:'',subfamily:'',locations:[]});
-      const item=map.get(row.code);item.unitConflict=!!(item.unitConflict||row.unitConflict||(item.unit&&row.unit&&item.unit!==row.unit));if(source==='ct')item.stockCT=row.quantity;
+      if(!map.has(row.code))map.set(row.code,{code:row.code,description:row.description||'',unit:row.unit||'UND',stockCT:null,stockAD:null,availabilityCT:null,adRegistered:false,costAD:null,barcodes:[],supplier:'',subfamily:'',locations:[]});
+      const item=map.get(row.code);item.unitConflict=!!(item.unitConflict||row.unitConflict||(item.unit&&row.unit&&item.unit!==row.unit));if(source==='ct'){item.stockCT=row.quantity;item.availabilityCT=row.availability??null;}
       else {item.stockAD=row.quantity;item.adRegistered=true;item.costAD=row.quantity>0&&row.totalValueDop!==null?row.totalValueDop/row.quantity:null;if(row.description)item.description=row.description;}
       const bins=[...(row.locations||[]).map(bin=>typeof bin==='string'?bin:bin.location),...(row.details||[]).map(detail=>detail.location)].filter(Boolean).map(location);
       if(source==='ct'||!item.locations.length)item.locations=[...new Set([...item.locations.map(bin=>bin.location),...bins])].map(bin=>({location:bin,stock:null}));
     }
     for(const [code,master] of Object.entries(s.catalog)){
-      if(!map.has(code))map.set(code,{code,stockCT:null,stockAD:null,adRegistered:false,costAD:null,locations:[],barcodes:[]});
+      if(!map.has(code))map.set(code,{code,stockCT:null,stockAD:null,availabilityCT:null,adRegistered:false,costAD:null,locations:[],barcodes:[]});
       const item=map.get(code);Object.assign(item,{description:master.description||item.description||'',unit:master.unit||item.unit||'UND',barcodes:master.barcodes||[],supplier:master.supplier||'',subfamily:master.subfamily||'',masterStock:master.stock??null,masterCost:master.cost??null});
     }
-    for(const code of Object.keys(s.positions))if(!map.has(code))map.set(code,{code,description:'',unit:'UND',stockCT:null,stockAD:null,adRegistered:false,costAD:null,locations:[],barcodes:[]});
+    for(const code of Object.keys(s.positions))if(!map.has(code))map.set(code,{code,description:'',unit:'UND',stockCT:null,stockAD:null,availabilityCT:null,adRegistered:false,costAD:null,locations:[],barcodes:[]});
     for(const item of map.values()){
       if(Object.prototype.hasOwnProperty.call(s.positions,item.code))item.locations=copy(s.positions[item.code]);
       item.locations=[...new Map(item.locations.filter(bin=>location(bin.location)).map(bin=>[location(bin.location),{location:location(bin.location),stock:bin.stock??null}])).values()].sort((a,b)=>a.location.localeCompare(b.location));
@@ -68,9 +72,10 @@
   function snapshot(item,reason,required){return {code:item.code,description:item.description||'',unit:item.unit||'UND',stockCT:item.stockCT,stockAD:item.stockAD,adRegistered:!!item.adRegistered,costAD:item.costAD,masterStock:item.masterStock??null,expectedLocations:item.locations.length?copy(item.locations):[{location:'',stock:null}],required:!!required,reasons:reason?[reason]:[]};}
   function createCycle(data,report,options={}){
     const s=ensure(data),previous=active(data);
-    if(previous&&previous.status==='open'&&previous.sourcePair===pair(data)&&previous.differenceConvention==='ad_ct')return previous;
+    const convention=options.differenceConvention||'ad_ct';
+    if(previous&&previous.status==='open'&&previous.sourcePair===pair(data)&&previous.differenceConvention===convention)return previous;
     if(previous&&previous.status==='open'){previous.status='archived';previous.archivedAt=stamp(options);}
-    const cycle={id:options.id||uid(),differenceConvention:'ad_ct',sourcePair:pair(data),sourceDates:{ct:data.sources?.ct?.asOf||null,ad:data.sources?.ad?.asOf||null},createdAt:stamp(options),createdBy:options.user||'',status:'open',items:{},records:[],audit:[],processed:{}};
+    const cycle={id:options.id||uid(),differenceConvention:convention,sourcePair:pair(data),sourceDates:{ct:data.sources?.ct?.asOf||null,ad:data.sources?.ad?.asOf||null},createdAt:stamp(options),createdBy:options.user||'',status:'open',items:{},records:[],audit:[],processed:{}};
     const lookup=new Map(catalog(data).map(item=>[item.code,item]));
     for(const row of priorities(report).mandatory){const item=lookup.get(row.code);if(item)cycle.items[row.code]=snapshot(item,row.reason,true);}
     s.cycles.push(cycle);s.activeCycleId=cycle.id;return cycle;
@@ -78,11 +83,15 @@
   function addItem(data,code,options={}){
     const cycle=active(data);if(!cycle||cycle.status!=='open')throw new Error('Inicia un ciclo de conteo abierto.');
     if(!cycle.items[code]&&cycle.sourcePair!==pair(data))throw new Error('El ciclo pertenece a otro corte. Inicia un nuevo ciclo antes de añadir artículos nuevos.');
-    if(!cycle.items[code]){const item=catalog(data).find(row=>row.code===code);if(!item)throw new Error('Artículo no encontrado en Inventory Data.');if(item.unitConflict)throw new Error('El artículo tiene unidades incompatibles. Corrige la fuente antes de contarlo.');cycle.items[code]=snapshot(item,options.reason||'Conteo libre',!!options.required);}
+    if(!cycle.items[code]){const item=options.catalogItem?.code===code?options.catalogItem:catalog(data).find(row=>row.code===code);if(!item)throw new Error('Artículo no encontrado en Inventory Data.');if(item.unitConflict)throw new Error('El artículo tiene unidades incompatibles. Corrige la fuente antes de contarlo.');cycle.items[code]=snapshot(item,options.reason||'Conteo libre',!!options.required);}
     else if(options.required){cycle.items[code].required=true;if(options.reason&&!cycle.items[code].reasons.includes(options.reason))cycle.items[code].reasons.push(options.reason);}
     return cycle.items[code];
   }
-  function recordsFor(cycle,code){return cycle.records.filter(record=>record.code===code&&!record.voided);}
+  function recordsFor(cycle,code){
+    const rows=cycle.records.filter(record=>record.code===code&&!record.voided),latest=new Map();
+    for(const row of rows){const day=recordDay(row),bin=row.expectedLocation||'';if(!latest.has(bin)||day>latest.get(bin))latest.set(bin,day);}
+    return rows.filter(row=>recordDay(row)===latest.get(row.expectedLocation||''));
+  }
   function itemReport(cycle,code){
     const item=cycle.items[code],records=recordsFor(cycle,code);
     const missing=item.expectedLocations.filter(bin=>!records.some(record=>record.expectedLocation===bin.location)).map(bin=>bin.location||'Artículo sin contar');
@@ -95,12 +104,15 @@
     const referenceDifference=complete&&referenceStock!==null?round(quantity-referenceStock):null;
     const ctDifference=complete&&item.stockCT!==null?round(quantity-item.stockCT):null;
     const adDifference=complete&&item.stockAD!==null?round(quantity-item.stockAD):null;
-    return {...copy(item),records:copy(records),missing,complete,quantity,referenceStock,referenceSource,referenceDifference,ctDifference,adDifference,followups,latestFollowup,followupCurrent,processed:!!cycle.processed[code],readyForAD:complete&&quantity>0&&!item.adRegistered&&!!cycle.processed[code]};
+    return {...copy(item),records:copy(records),countDates:[...new Set(records.map(recordDay))].filter(Boolean).sort(),missing,complete,quantity,referenceStock,referenceSource,referenceDifference,ctDifference,adDifference,followups,latestFollowup,followupCurrent,processed:!!cycle.processed[code],readyForAD:complete&&quantity>0&&!item.adRegistered&&!!cycle.processed[code]};
   }
   function cycleReport(cycle){return cycle?Object.keys(cycle.items).map(code=>itemReport(cycle,code)):[];}
   function tasks(cycle){
     if(!cycle)return [];
-    return Object.values(cycle.items).flatMap(item=>item.expectedLocations.map(bin=>({code:item.code,description:item.description,expectedLocation:bin.location,required:item.required,reasons:item.reasons,complete:recordsFor(cycle,item.code).some(record=>record.expectedLocation===bin.location)}))).sort((a,b)=>Number(b.required)-Number(a.required)||a.code.localeCompare(b.code,undefined,{numeric:true})||(a.expectedLocation||'\uffff').localeCompare(b.expectedLocation||'\uffff'));
+    return Object.values(cycle.items).flatMap(item=>{
+      const records=recordsFor(cycle,item.code);
+      return item.expectedLocations.map(bin=>{const counted=records.filter(record=>record.expectedLocation===bin.location);return {code:item.code,description:item.description,expectedLocation:bin.location,required:item.required,reasons:item.reasons,complete:counted.length>0,countedOn:counted.map(recordDay).sort().at(-1)||''};});
+    }).sort((a,b)=>Number(b.required)-Number(a.required)||a.code.localeCompare(b.code,undefined,{numeric:true})||(a.expectedLocation||'\uffff').localeCompare(b.expectedLocation||'\uffff'));
   }
   function recordCount(data,input,options={}){
     const cycle=active(data);if(!cycle||cycle.status!=='open')throw new Error('El ciclo no está abierto.');
@@ -111,8 +123,9 @@
     if(!input.confirmed)throw new Error('Confirma que contaste el artículo y la cantidad indicada.');
     const classification=input.responsible||input.differenceReason?validateDifferenceNote({responsible:input.responsible,reason:input.differenceReason,notes:input.note}):null;
     const actualLocation=location(input.actualLocation);if(expectedLocation&&!actualLocation&&!input.unconfirmed)throw new Error('Confirma la ubicación informada o selecciona Sin ubicación confirmada.');
-    if(recordsFor(cycle,input.code).some(row=>row.actualLocation===actualLocation)&&!input.additional)throw new Error('Ya hay un conteo de este artículo. Confirma que se trata de otra caja o corrige el registro existente.');
-    const record={id:options.id||uid(),code:input.code,expectedLocation,actualLocation,countConfirmed:true,locationConfirmed:!!actualLocation,ctLocationConfirmed:false,locationStatus:actualLocation?'observada':'sin_confirmar',locationCorrected:!!expectedLocation&&!!actualLocation&&expectedLocation!==actualLocation,quantity:input.quantity,note:clean(input.note),at:stamp(options),by:options.user||'',voided:false};
+    const at=stamp(options),countedOn=validateCountDay(input.countedOn===undefined?(countDay(at)||countDay()):input.countedOn);
+    if(cycle.records.some(row=>row.code===input.code&&!row.voided&&recordDay(row)===countedOn&&row.actualLocation===actualLocation)&&!input.additional)throw new Error('Ya hay un conteo de este artículo en esa fecha. Confirma que se trata de otra caja o corrige el registro existente.');
+    const record={id:options.id||uid(),code:input.code,expectedLocation,actualLocation,countConfirmed:true,locationConfirmed:!!actualLocation,ctLocationConfirmed:false,locationStatus:actualLocation?'observada':'sin_confirmar',locationCorrected:!!expectedLocation&&!!actualLocation&&expectedLocation!==actualLocation,quantity:input.quantity,note:clean(input.note),countedOn,countedBy:clean(input.countedBy)||options.user||'',at,by:options.user||'',voided:false};
     cycle.records.push(record);delete cycle.processed[input.code];
     if(classification)record.differenceNoteId=addDifferenceNote(data,input.code,classification,options).id;
     if(record.locationCorrected){
@@ -159,5 +172,5 @@
     const s=ensure(data);Object.assign(s.catalog,updates);Object.assign(s.positions,positions);
     return {rows,articles:Object.keys(kind==='positions'?positions:updates).length,locations:seen.size};
   }
-  return {state,ensure,pair,priorities,catalog,resolve,active,createCycle,addItem,itemReport,cycleReport,tasks,recordCount,correctRecord,processItem,closeCycle,importMaster,location,differenceReasons,responsibleLabels,differenceReasonLabel,addDifferenceNote};
+  return {state,ensure,pair,priorities,catalog,resolve,active,createCycle,addItem,itemReport,cycleReport,tasks,recordCount,correctRecord,processItem,closeCycle,importMaster,location,countDay,validateCountDay,recordDay,differenceReasons,responsibleLabels,differenceReasonLabel,addDifferenceNote};
 });

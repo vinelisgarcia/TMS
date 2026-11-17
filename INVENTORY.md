@@ -1,5 +1,8 @@
 # Inventario CT / AD
 
+El comparativo independiente del showroom se documenta en [SHOWROOM.md](SHOWROOM.md).
+Sus archivos, conteos, permisos y sincronización se mantienen separados de CT/AD.
+
 El módulo compara mercancía de Álvarez Dominicana depositada en Caribetrans.
 Se abre en **Inventario CT / AD**. Admin tiene acceso; los demás roles necesitan
 permisos explícitos `inventario.ver`, `inventario.editar` o `inventario.importar`

@@ -24,9 +24,10 @@
     const mount = document.getElementById('materialesTransitoMount');
     if (!mount) return;
     const query = String(APP.auditTransitSearch || '').toLowerCase();
-    const received = APP.auditTransitTab === 'received';
+    const tab = ['active','received','accounted'].includes(APP.auditTransitTab) ? APP.auditTransitTab : 'active';
+    const received = tab === 'received', accounted = tab === 'accounted';
     const all = APP.transitMaterials || [];
-    const filtered = all.filter(row => D.activeTransit(row) !== received && (!query || [row.factura, row.codigoMaterial, row.descripcion, row.cliente].some(value => String(value || '').toLowerCase().includes(query))));
+    const filtered = all.filter(row => D.transitState(row) === tab && (!query || [row.factura, row.codigoMaterial, row.descripcion, row.cliente].some(value => String(value || '').toLowerCase().includes(query))));
     const invoices = new Map();
     filtered.forEach(row => {
       const id = row.factura ? D.invoiceKey(row) : `unidentified-${row.id}`;
@@ -40,16 +41,43 @@
       <label>Cliente asignado, si aplica<input id="transitCliente" placeholder="Código o nombre exacto" class="form-control"></label>
       <label>Factura o planilla de entrada<input id="transitFile" type="file" accept=".xlsx,.xls,.xml,.csv,.txt,.pdf" class="form-control"></label></div>
       <p class="audit-caption">La planilla lee sus facturas del Excel. Indica aquí la ETA si el archivo no la incluye.</p><div class="audit-actions"><button class="btn btn-primary" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" role="status"></span></div></section>` : ''}
-      <div class="audit-stat-grid"><article><span>Facturas activas</span><strong>${new Set(all.filter(D.activeTransit).map(D.invoiceKey).filter(Boolean)).size}</strong></article><article><span>Referencias en tránsito</span><strong>${new Set(all.filter(D.activeTransit).map(row=>D.key(row.codigoMaterial))).size}</strong></article><article><span>Facturas recibidas</span><strong>${new Set(all.filter(row=>!D.activeTransit(row)).map(D.invoiceKey).filter(Boolean)).size}</strong></article></div>
-      <div class="audit-toolbar"><div class="audit-tabs"><button data-audit="transit-tab" data-value="active" aria-pressed="${!received}">En tránsito</button><button data-audit="transit-tab" data-value="received" aria-pressed="${received}">Recibidas</button></div><label class="audit-search">Buscar<input id="auditTransitSearch" type="search" value="${escape(query)}" placeholder="Factura, referencia o cliente"></label></div>
+      <div class="audit-stat-grid"><article><span>Facturas en tránsito</span><strong>${new Set(all.filter(D.activeTransit).map(D.invoiceKey).filter(Boolean)).size}</strong></article><article><span>Referencias en tránsito</span><strong>${new Set(all.filter(D.activeTransit).map(row=>D.key(row.codigoMaterial))).size}</strong></article><article><span>Recibidas · pendientes de contabilizar</span><strong>${new Set(all.filter(row=>D.transitState(row)==='received').map(D.invoiceKey).filter(Boolean)).size}</strong></article><article><span>Facturas contabilizadas</span><strong>${new Set(all.filter(row=>D.transitState(row)==='accounted').map(D.invoiceKey).filter(Boolean)).size}</strong></article></div>
+      <div class="audit-toolbar"><div class="audit-tabs"><button data-audit="transit-tab" data-value="active" aria-pressed="${tab==='active'}">En tránsito</button><button data-audit="transit-tab" data-value="received" aria-pressed="${received}">Recibido</button><button data-audit="transit-tab" data-value="accounted" aria-pressed="${accounted}">Contabilizado</button></div><label class="audit-search">Buscar<input id="auditTransitSearch" type="search" value="${escape(query)}" placeholder="Factura, referencia o cliente"></label></div>
       <div class="audit-invoices">${[...invoices.entries()].map(([id, group]) => {
         const dates = [...new Set(group.rows.map(row=>row.eta).filter(Boolean))].sort();
         const receipt = group.rows.find(row=>row.receivedAt);
-        return `<article class="card audit-invoice"><header><div><span class="audit-eyebrow">${received ? 'Historial' : 'Factura de importación'}</span><h3>${escape(group.invoice || 'Factura sin identificar')}</h3><p>${group.rows.length} líneas · ${received ? `Recibida ${escape((receipt && receipt.receivedAt || '').slice(0,10))}` : `ETA ${escape(dates.join(' / ') || 'por confirmar')}`}</p></div>${can('materialesTransito') && group.invoice ? `<button class="btn ${received ? 'btn-outline' : 'btn-primary'}" data-audit="receive-invoice" data-invoice="${escape(group.invoice)}" data-value="${received ? 'reopen' : 'receive'}">${received ? 'Volver a tránsito' : 'Marcar factura recibida'}</button>` : ''}</header>
-          <details><summary>Ver materiales</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Cliente</th><th>ETA</th></tr></thead><tbody>${group.rows.map(row=>`<tr><td>${escape(row.codigoMaterial)}</td><td>${escape(row.descripcion)}</td><td>${Number(row.cantidad).toLocaleString('es-DO')}</td><td>${escape(row.cliente || 'Sin asignación exclusiva')}</td><td>${escape(row.eta || 'Pendiente')}</td></tr>`).join('')}</tbody></table></div></details>${received && receipt ? `<small>Confirmada por ${escape(receipt.receivedBy || 'usuario autorizado')}. La recepción no confirma una reserva de SAP.</small>` : ''}</article>`;
-      }).join('') || `<div class="audit-empty">${received ? 'Todavía no hay facturas recibidas.' : 'No hay facturas activas para esta búsqueda.'}</div>`}</div>`;
+        const accounting = group.rows.find(row=>row.accountedAt);
+        return `<article class="card audit-invoice"><header><div><span class="audit-eyebrow">${accounted ? 'Contabilizado en SAP' : received ? 'Recibido · pendiente de contabilizar' : 'Factura de importación'}</span><h3>${escape(group.invoice || 'Factura sin identificar')}</h3><p>${group.rows.length} líneas · ${accounted ? `Contabilización SAP: ${escape((accounting?.accountedAt || '').slice(0,10) || 'fecha no registrada')}` : received ? `Recepción: ${escape((receipt?.receivedAt || '').slice(0,10) || 'fecha no registrada')}` : `ETA ${escape(dates.join(' / ') || 'por confirmar')}`}</p></div>${can('materialesTransito') && group.invoice ? `<div class="audit-invoice-actions">${!received&&!accounted?`<button class="btn btn-outline" data-audit="edit-invoice-eta" data-invoice="${escape(group.invoice)}">Editar ETA</button>`:''}${accounted ? `<button class="btn btn-outline" data-audit="account-invoice" data-invoice="${escape(group.invoice)}" data-value="revert">Quitar marca de contabilización</button>` : `${received ? `<button class="btn btn-primary" data-audit="account-invoice" data-invoice="${escape(group.invoice)}" data-value="account">Marcar contabilizada en SAP</button>` : ''}<button class="btn ${received ? 'btn-outline' : 'btn-primary'}" data-audit="receive-invoice" data-invoice="${escape(group.invoice)}" data-value="${received ? 'reopen' : 'receive'}">${received ? 'Volver a tránsito' : 'Marcar factura recibida'}</button>`}</div>` : ''}</header>
+          <details><summary>Ver materiales</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Cliente</th><th>ETA</th></tr></thead><tbody>${group.rows.map(row=>`<tr><td>${escape(row.codigoMaterial)}</td><td>${escape(row.descripcion)}</td><td>${Number(row.cantidad).toLocaleString('es-DO')}</td><td>${escape(row.cliente || 'Sin asignación exclusiva')}</td><td>${escape(row.eta || 'Pendiente')}</td></tr>`).join('')}</tbody></table></div></details>${receipt ? `<small>Recepción: ${escape(receipt.receivedAt.slice(0,10))} · ${escape(receipt.receivedBy || 'usuario autorizado')}</small>` : ''}${accounted ? `<small>Contabilización de la factura en SAP: ${escape((accounting?.accountedAt || '').slice(0,10) || 'fecha no registrada')} · ${escape(accounting?.accountedBy || 'usuario autorizado')}</small>` : ''}</article>`;
+      }).join('') || `<div class="audit-empty">${accounted ? 'Todavía no hay facturas contabilizadas.' : received ? 'Todavía no hay facturas recibidas pendientes de contabilizar.' : 'No hay facturas activas para esta búsqueda.'}</div>`}</div>`;
   }
   window.renderMaterialesTransito = transitView;
+
+  function openInvoiceEtaEditor(invoice, restoredValue) {
+    if(!can('materialesTransito'))return toast('Tu perfil no puede editar la ETA.');
+    const rows=()=>APP.transitMaterials.filter(row=>D.invoiceKey(row)===D.invoiceKey({factura:invoice}));
+    const materials=rows();
+    if(!materials.length || !materials.some(D.activeTransit))return toast('Selecciona una factura en tránsito.');
+    document.getElementById('transitEtaDialog')?.remove();
+    const modal=document.createElement('dialog');modal.id='transitEtaDialog';modal.className='calendar-dispatch-dialog audit-eta-dialog';modal.dataset.invoice=invoice;modal.setAttribute('aria-labelledby','transitEtaTitle');
+    const original=JSON.stringify(materials.map(row=>[row.id,row.eta||''])),dates=[...new Set(materials.map(row=>row.eta||''))];
+    modal.innerHTML=`<form id="transitEtaForm"><h2 id="transitEtaTitle">Editar ETA</h2><p>Factura <strong>${escape(invoice)}</strong> · ${materials.length} líneas</p><label for="transitInvoiceEta">Nueva llegada estimada<input id="transitInvoiceEta" class="form-control" type="date" required></label><p>La fecha se aplicará a todos los materiales de esta factura.</p><p id="transitEtaError" role="alert" hidden></p><div class="modal-actions"><button type="button" class="btn btn-outline" data-eta-cancel>Cancelar</button><button type="submit" class="btn btn-primary">Guardar ETA</button></div></form>`;
+    document.body.appendChild(modal);const input=modal.querySelector('#transitInvoiceEta');input.value=restoredValue??(dates.length===1?dates[0]:'');
+    modal.addEventListener('close',()=>modal.remove());
+    modal.querySelector('[data-eta-cancel]').onclick=()=>{modal.close();modal.remove();window.scheduleAutoSave();};
+    modal.querySelector('form').onsubmit=event=>{
+      event.preventDefault();
+      try{
+        if(!can('materialesTransito'))throw new Error('Tu perfil no puede editar la ETA.');
+        if(JSON.stringify(rows().map(row=>[row.id,row.eta||'']))!==original)throw new Error('La factura cambió en otra sesión. Cierra y vuelve a abrir el editor para revisar la ETA actual.');
+        const next=D.updateInvoiceEta(APP.transitMaterials,invoice,input.value,(APP.currentUserProfile||{}).email||'Administrador',new Date().toISOString());
+        if(next.some((row,index)=>row!==APP.transitMaterials[index])){core().pushUndoState('editar ETA de factura');APP.transitMaterials=next;}
+        modal.close();modal.remove();refresh();save('ETA actualizada para todos los materiales de la factura.');
+      }catch(error){const message=modal.querySelector('#transitEtaError');message.textContent=error.message;message.hidden=false;}
+    };
+    modal.showModal();input.focus();
+  }
+  window.TMSTransitEtaEditor={open:openInvoiceEtaEditor};
 
   function billForTrip(trip) {
     const rows = (settings().actualInvoices || []).filter(row=>row.tripKey===trip.id && (trip.orderRefs || []).includes(D.key(row.customer)+'|'+D.key(row.order)));
@@ -216,14 +244,27 @@
   document.addEventListener('click',event=>{
     const button=event.target.closest('[data-audit]');if(!button)return;
     const action=button.dataset.audit;
-    if(action==='transit-tab'){APP.auditTransitTab=button.dataset.value==='received'?'received':'active';transitView();}
+    if(action==='edit-invoice-eta')openInvoiceEtaEditor(button.dataset.invoice);
+    if(action==='transit-tab'){APP.auditTransitTab=['received','accounted'].includes(button.dataset.value)?button.dataset.value:'active';transitView();}
     if(action==='receive-invoice'){
       if(!can('materialesTransito'))return toast('Tu perfil no puede confirmar recepciones.');
       const received=button.dataset.value==='receive';
       if(!confirm(`${received?'Confirmar recepción de todas las líneas de':'Volver a tránsito todas las líneas de'} la factura ${button.dataset.invoice}?`))return;
-      core().pushUndoState('actualizar recepción de factura');
-      APP.transitMaterials=D.receiveInvoice(APP.transitMaterials,button.dataset.invoice,received,(APP.currentUserProfile || {}).email || 'Administrador',new Date().toISOString());
-      refresh();save(received?'Factura recibida. Sus avisos activos se retiraron.':'Factura devuelta a tránsito.');
+      try{
+        const next=D.receiveInvoice(APP.transitMaterials,button.dataset.invoice,received,(APP.currentUserProfile || {}).email || 'Administrador',new Date().toISOString());
+        core().pushUndoState('actualizar recepción de factura');APP.transitMaterials=next;
+        refresh();save(received?'Factura recibida. Sus avisos activos se retiraron.':'Factura devuelta a tránsito.');
+      }catch(error){toast(error.message);}
+    }
+    if(action==='account-invoice'){
+      if(!can('materialesTransito'))return toast('Tu perfil no puede actualizar la contabilización de facturas.');
+      const accounted=button.dataset.value==='account';
+      if(!confirm(accounted?`¿Confirmar que la factura ${button.dataset.invoice} ya fue contabilizada en SAP?`:`¿Quitar la marca de contabilización de la factura ${button.dataset.invoice}? La recepción de la mercancía se conserva.`))return;
+      try{
+        const next=D.accountInvoice(APP.transitMaterials,button.dataset.invoice,accounted,(APP.currentUserProfile || {}).email || 'Administrador',new Date().toISOString());
+        core().pushUndoState('actualizar contabilización de factura');APP.transitMaterials=next;
+        refresh();save(accounted?'Factura marcada como contabilizada en SAP.':'Marca de contabilización retirada. La factura sigue recibida.');
+      }catch(error){toast(error.message);}
     }
     if(action==='create-client'){
       if(!can('configuracion'))return;

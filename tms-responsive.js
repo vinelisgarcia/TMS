@@ -6,6 +6,7 @@
     dashboard:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
     calendario:'M4 5h16v16H4zM4 10h16M8 3v4m8-4v4M8 14h2m4 0h2m-8 3h2',
     inventario:'m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4m-9 4v10M7 5l10 5',
+    showroom:'M3 4h18v17H3zM3 10h18M3 16h18M8 4v17M16 4v17',
     comercial:'M4 4h16v16H4zM8 8h8M8 12h8M8 16h5',
     materialesTransito:'M3 6h11v12H3zM14 10h4l3 4v4h-7M7 18v2m10-2v2',
     prioridades:'m5 7 2 2 4-4m2 2h7M5 15l2 2 4-4m2 2h7',
@@ -17,7 +18,7 @@
     logout:'M10 3H4v18h6m4-14 5 5-5 5m-6-5h13'
   };
   const icon = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name] || paths.comercial}"/></svg>`;
-  const labels = {importar:'Importar SAP',dashboard:'Dashboard',calendario:'Calendario',inventario:'Inventario',comercial:'Comercial',materialesTransito:'En tránsito',prioridades:'Prioridades',incidenciasDespacho:'Incidencias',configClientes:'Configuración',solicitudesAlmacen:'Solicitudes',auditoriaJamaica:'Auditoría Jamaica',packingMiami:'Packing list Miami'};
+  const labels = {importar:'Importar SAP',dashboard:'Dashboard',calendario:'Calendario',inventario:'Inventario',showroom:'Showroom',comercial:'Comercial',materialesTransito:'En tránsito',prioridades:'Prioridades',incidenciasDespacho:'Incidencias',configClientes:'Configuración',solicitudesAlmacen:'Solicitudes',auditoriaJamaica:'Auditoría Jamaica',packingMiami:'Packing list Miami'};
   let onlyDeliveries = true, frame = 0, calendarToolsMobile = null;
   const activeId = () => document.querySelector('.view.active')?.id || '';
   function modules() {

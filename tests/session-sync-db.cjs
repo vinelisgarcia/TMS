@@ -111,6 +111,10 @@ const ROUTE = '44444444-4444-4444-8444-444444444444';
     assert.deepEqual(after.tables.tms_route_cost_history, before.tables.tms_route_cost_history);
     check('selective route change preserves foreign keys of unchanged orders and history');
 
+    const transitMaterials=[{id:'T1',factura:'F-1',codigoMaterial:'0007',cantidad:2,estado:'contabilizada',receivedAt:'2026-11-12T14:00:00Z',receivedBy:'almacen',accountedAt:'2026-11-13T14:00:00Z',accountedBy:'contabilidad',statusHistory:[{estado:'recibida',at:'2026-11-12T14:00:00Z',by:'almacen'},{estado:'contabilizada',at:'2026-11-13T14:00:00Z',by:'contabilidad'}]}];
+    await save(after.revision,{tms_settings:[{clave:'app_state',valor:{transitMaterials}}]});after=await snapshot();assert.deepEqual(after.tables.tms_settings.find(row=>row.clave==='app_state').valor.transitMaterials,transitMaterials);
+    check('invoice receipt and SAP accounting metadata survive the existing shared JSONB RPC without a schema change');
+
     const staleRevision = after.revision;
     const payloadA = {tms_settings:[{clave:'app_state',valor:{session:'A'}}]};
     const payloadB = {tms_settings:[{clave:'app_state',valor:{session:'B'}}]};

@@ -130,9 +130,11 @@
     for(let index=headerRow+1;index<matrix.length;index++) {
       const row=matrix[index];
       if(!row.some(value=>text(value)!=='')){blankRowCount++;continue;}
-      const code=normalizeCode(row[mapping.code]);
+      let code;
+      try{code=normalizeCode(row[mapping.code]);}
+      catch(error){invalidRows.push({row:index+1,column:mapping.code+1,field:'code',code:text(row[mapping.code]),message:error.message});continue;}
       if(!code||/^(total|totales|grandtotal|sumatotal)$/i.test(norm(code))){
-        if(!code && row.some(value=>text(value)!==''))invalidRows.push({row:index+1,message:'Falta el código de material.'});
+        if(!code && row.some(value=>text(value)!==''))invalidRows.push({row:index+1,column:mapping.code+1,field:'code',code:'',message:'Falta el código de material.'});
         continue;
       }
       const warehouse=mapping.warehouse===undefined?'':text(row[mapping.warehouse]);
@@ -166,7 +168,7 @@
         acceptedRowCount++;
       } catch(error){invalidRows.push({row:index+1,code,message:error.message});}
     }
-    if(!acceptedRowCount)throw new Error('No se encontraron filas de inventario válidas. Revisa los encabezados y las columnas.');
+    if(!acceptedRowCount){const error=new Error('No se encontraron filas de inventario válidas. Revisa los encabezados y las columnas.');error.invalidRows=invalidRows;throw error;}
     const materials=[...map.values()].sort((a,b)=>a.code.localeCompare(b.code)).map(material=>{
       const units=Object.keys(material.quantitiesByUnit),unitConflict=units.length!==1;
       return {code:material.code,description:material.description,unit:unitConflict?units.join(' / '):units[0],unitConflict,quantitiesByUnit:material.quantitiesByUnit,quantity:unitConflict?null:material.quantitiesByUnit[units[0]],totalValueDop:source==='ad'&&material.missingValueRows===0?material.valueSum:null,knownValueDop:source==='ad'?material.valueSum:null,missingValueRows:material.missingValueRows,availability:!unitConflict&&material.availabilityRows===material.rowCount?material.availabilitySum:null,rowCount:material.rowCount,warehouses:[...material.warehouses].sort(),batches:[...material.batches].sort(),details:material.details};

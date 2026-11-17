@@ -139,7 +139,9 @@
     almacen: 'Almacén',
     inventario: 'Inventario CT / AD',
     auditoriaJamaica: 'Auditoría Jamaica',
-    packingMiami: 'Packing list Miami'
+    packingMiami: 'Packing list Miami',
+    eur1: 'Verificador EUR.1',
+    showroom: 'Inventario showroom'
   };
 
   function syncThemeButtons() {
@@ -503,7 +505,8 @@
       configuracion: { ver: true, editar: true, importar: true },
       solicitudesAlmacen: { ver: true, editar: true },
       almacen: { ver: true, editar: true },
-      inventario: { ver: true, editar: true, importar: true }
+      inventario: { ver: true, editar: true, importar: true },
+      showroom: { ver: true, editar: true, importar: true }
     };
   }
 
@@ -1025,7 +1028,9 @@
       almacen: 'almacen',
       inventario: 'inventario',
       packingMiami: 'packingMiami',
+      eur1: 'eur1',
       auditoriaJamaica: 'auditoriaJamaica',
+      showroom: 'showroom',
       reportes: 'reportes'
     }[viewId] || viewId;
   }
@@ -1065,7 +1070,7 @@
   }
 
   function getFirstAllowedView() {
-    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'inventario', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'configClientes'];
+    const order = ['importar', 'dashboard', 'calendario', 'comercial', 'inventario', 'showroom', 'materialesTransito', 'prioridades', 'incidenciasDespacho', 'solicitudesAlmacen', 'configClientes'];
     return order.find(viewId => hasPermission(moduleFromViewId(viewId), 'ver')) || '';
   }
 
@@ -1103,7 +1108,9 @@
       almacen: 'almacen',
       inventario: 'inventario',
       packingMiami: 'packingMiami',
-      auditoriaJamaica: 'auditoriaJamaica'
+      eur1: 'eur1',
+      auditoriaJamaica: 'auditoriaJamaica',
+      showroom: 'showroom'
     };
     Object.entries(navMap).forEach(([viewId, moduleName]) => {
       const allowed = hasPermission(moduleName, 'ver');
@@ -1112,12 +1119,14 @@
       const mobileOption = document.querySelector(`#mobileModuleSelect option[value=\"${viewId}\"]`);
       if (mobileOption) mobileOption.hidden = !allowed;
     });
+    window.TMSActivity?.refreshUI();
+    window.TMSEUR1?.refreshAccess();
     syncMobileModuleSelect();
     updateImportExcelTableStatus();
     const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
     document.body.classList.toggle('role-readonly', !hasPermission(activeModule, 'editar'));
     const undoBtn = document.getElementById('undoStateBtn');
-    if (activeModule === 'inventario') { if (undoBtn) undoBtn.disabled = true; }
+    if (['inventario', 'showroom'].includes(activeModule)) { if (undoBtn) undoBtn.disabled = true; }
     else updateUndoButton();
     const saveBtn = document.getElementById('saveStateBtn');
     if (saveBtn) saveBtn.title = isAdminUser() ? 'Guardar cambios globales' : 'Guardar cambios operativos; usuarios y roles solo Admin';
@@ -1150,6 +1159,7 @@
       originalCambiarVista(id, btn);
       syncMobileModuleSelect();
       if (id === 'inventario' && window.TMSInventory) window.TMSInventory.open();
+      if (id === 'showroom' && window.TMSShowroom) window.TMSShowroom.open();
       if (id === 'rutas') renderRouteCatalog();
       if (id === 'importaciones') renderImportaciones();
       if (id === 'materialesTransito') renderMaterialesTransito();
@@ -4443,7 +4453,7 @@
     const perms = getPermissionsForRole(role);
     return Object.entries(MODULE_LABELS).map(([module, label]) => {
       const actions = perms[module] || {};
-      const canImport = module === 'importar' || module === 'configuracion' || module === 'packingMiami';
+      const canImport = module === 'importar' || module === 'configuracion' || module === 'packingMiami' || module === 'eur1';
       return `<tr>
         <th scope="row">${escapeHtml(label)}</th>
         <td><label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Ver ${escapeHtml(label)}" data-module="${module}" data-action="ver" ${actions.ver ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label></td>
@@ -4602,7 +4612,9 @@
       almacen: { ver: true, editar: true },
       inventario: { ver: true, editar: true, importar: true },
       auditoriaJamaica: { ver: true, editar: false, importar: false },
-      packingMiami: { ver: true, editar: true, importar: true }
+      packingMiami: { ver: true, editar: true, importar: true },
+      eur1: { ver: true, editar: true, importar: true },
+      showroom: { ver: true, editar: true, importar: true }
     };
     if (role === 'Admin' || scope === 'full') return all;
     if (scope === 'read_only') {
@@ -5552,8 +5564,8 @@
   function trackUnsubmittedDraft(event) {
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
-    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog')) || control.closest('#inventario') || control.closest('#packingMiami')) return;
-    if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
+    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog, #transitEtaDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami, #auditoriaSistema, #eur1')) return;
+    if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^prio(Date|PeriodFrom|PeriodTo)$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
     unsubmittedDrafts.add(control);
@@ -5567,12 +5579,14 @@
     return [...unsubmittedDrafts].filter(control => control.isConnected && control.type !== 'password').map(control => ({
       field:control.id,label:control.name || control.className || control.type,
       value:control.type === 'file' ? [...control.files].map(file=>file.name) : control.value,
-      checked:control.type === 'checkbox' || control.type === 'radio' ? control.checked : undefined
+      checked:control.type === 'checkbox' || control.type === 'radio' ? control.checked : undefined,
+      ...(control.closest?.('#transitEtaDialog')?{transitInvoice:control.closest('#transitEtaDialog').dataset.invoice}:{})
     }));
   }
 
   function restoreFormDrafts(drafts) {
     (drafts || []).forEach(draft => {
+      if(draft.field==='transitInvoiceEta'&&draft.transitInvoice)window.TMSTransitEtaEditor?.open(draft.transitInvoice,draft.value);
       const control = draft.field && document.getElementById(draft.field);
       if (!control || control.type === 'file' || control.type === 'password') return;
       control.value = draft.value;
@@ -7231,7 +7245,7 @@
     const name = (file.name || '').toLowerCase();
     if (/\.(xlsx|xls|xml|csv)$/.test(name)) {
       const buffer = await readArrayBufferFile(file);
-      const wb = XLSX.read(buffer, { type: 'array', cellDates: false, cellNF: true });
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: false, cellNF: true, raw: true });
       const templates=[];
       for(const name of wb.SheetNames){
         const sheet=wb.Sheets[name], matrix=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:true,range:0}), header=transitEntryHeader(matrix);
@@ -7336,7 +7350,7 @@
   window.exportarMaterialesTransitoExcel = function exportarMaterialesTransitoExcel() {
     ensureTransitMaterials();
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.transitMaterials.map(item => ({ Factura: item.factura, ETA: item.eta, Material: item.codigoMaterial, Descripcion: item.descripcion, Cantidad: item.cantidad, Cliente: item.cliente }))), 'Materiales transito');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.transitMaterials.map(item => ({ Factura: item.factura, ETA: item.eta, Material: item.codigoMaterial, Descripcion: item.descripcion, Cantidad: item.cantidad, Cliente: item.cliente, Estado:({active:'En tránsito',received:'Recibido',accounted:'Contabilizado'})[TMSDomain.transitState(item)], 'Fecha recepción':item.receivedAt || '', 'Recibido por':item.receivedBy || '', 'Fecha contabilización SAP':item.accountedAt || '', 'Contabilizado por':item.accountedBy || '' }))), 'Materiales transito');
     XLSX.writeFile(wb, 'TMS_Materiales_Transito.xlsx');
   };
 
@@ -8092,9 +8106,24 @@
   ];
 
   function todayIsoDate() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Santo_Domingo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   }
+
+  let prioritySessionDay='';
+  function syncPriorityDay() {
+    const today=todayIsoDate();if(prioritySessionDay===today)return false;
+    prioritySessionDay=today;APP.prioritiesDate=today;
+    const input=document.getElementById('prioDate');if(input)input.value=today;
+    return true;
+  }
+  function refreshPriorityDay() {
+    if(!syncPriorityDay())return;
+    if(document.querySelector('.view.active')?.id==='prioridades'&&!hasUnsubmittedDraft())window.renderPrioridades();
+  }
+  window.addEventListener('focus',refreshPriorityDay);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshPriorityDay();});
+  setInterval(refreshPriorityDay,60000);
+  window.verPrioridadesHoy=function(){APP.prioritiesDate=todayIsoDate();const input=document.getElementById('prioDate');if(input)input.value=APP.prioritiesDate;window.renderPrioridades();};
 
   function priorityStatusLabel(status) {
     return (PRIORITY_STATUSES.find(item => item.key === status) || PRIORITY_STATUSES[0]).label;
@@ -8359,6 +8388,7 @@
     }
     ensureDailyPriorities();
     ensurePrioritySpainTopics();
+    syncPriorityDay();
     APP.prioritiesDate = APP.prioritiesDate || todayIsoDate();
     const rows = getPrioritiesForSelectedDate();
     const selectedDate = APP.prioritiesDate;
@@ -8369,7 +8399,7 @@
       <section class="priority-hero">
         <div><h2>Prioridades del día</h2><p>Las tareas pendientes o en proceso se arrastran automáticamente hasta que se marquen como completadas. El histórico muestra las completadas por día.</p></div>
         <div class="priority-top-actions">
-          <label class="priority-period-field">Día<input id="prioDate" class="form-control" type="date" value="${APP.prioritiesDate}" onchange="APP.prioritiesDate=this.value;renderPrioridades()"></label>
+          <label class="priority-period-field">Día<input id="prioDate" class="form-control" type="date" value="${APP.prioritiesDate}" onchange="APP.prioritiesDate=this.value;renderPrioridades()"></label><button class="btn btn-outline btn-sm" onclick="verPrioridadesHoy()">Hoy</button>
           <label class="priority-period-field">Desde<input id="prioPeriodFrom" class="form-control" type="date" value="${APP.priorityReportFrom || (APP.prioritiesDate || todayIsoDate()).slice(0, 8) + '01'}"></label>
           <label class="priority-period-field">Hasta<input id="prioPeriodTo" class="form-control" type="date" value="${APP.priorityReportTo || APP.prioritiesDate}"></label>
           <button class="btn btn-primary btn-sm" onclick="exportarPrioridadesPdf()">Reporte PDF</button>

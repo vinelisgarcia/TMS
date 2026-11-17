@@ -1,0 +1,115 @@
+# Inventario del showroom
+
+Módulo independiente de Inventario CT/AD. Incluye conciliación, resumen económico,
+top 10 sobrantes/top 20 faltantes, seguimiento por artículo, Inventory Data,
+ubicaciones, conteo guiado y libre, ciclos, correcciones, bitácora y exportaciones.
+Comparte los motores de cálculo y conteo, pero mantiene sus propios controles,
+permisos, respaldos locales, estado, revisión y sincronización.
+
+## Fuentes
+
+- **Virtual Álvarez:** reporte «Resumen de stock valorado» del showroom. Usa ID de
+  producto, descripción, cantidad/unidad, valor calculado total y moneda DOP.
+  La propuesta de alcance incluye el tipo «Almacén». Verifica que corresponde
+  al showroom antes de confirmar.
+- **Físico:** del archivo de inventario del showroom se selecciona automáticamente
+  la hoja **Conteo**. Reconoce `ID`, `Cantidad Contada` y `Ubicacion Showroom`.
+  Conserva responsable, sector de la columna contigua sin título y la nota
+  original de DIFERENCIAS como trazabilidad. Esa nota no se usa para calcular
+  diferencias. Las hojas «Inventario SR SAP» y «Sheet3» no se cargan junto con
+  Conteo. También admite reportes individuales con columnas equivalentes y
+  mapeo revisable.
+
+El corte se propone desde el reporte virtual y desde el nombre del archivo de
+conteo; puede corregirse antes de cargar. Las fechas diferentes generan un aviso.
+La unidad ausente se propone como UND y se muestra en la vista previa. Las filas
+repetidas se suman conservando sus posiciones. Una cantidad negativa, vacía o no
+válida en el conteo bloquea la confirmación completa. Reimportar contenido
+equivalente no duplica cantidades; cambios de responsable o notas se detectan.
+
+Los códigos numéricos con decimales, negativos o fuera del rango entero exacto
+requieren revisión. La vista previa señala hoja, fila y celda, y permite escribir
+la referencia exacta como texto sin editar cantidades. No confirma una carga
+parcial mientras haya errores. Si Excel ya redondeó una referencia larga, el
+operador debe verificarla en el origen; el TMS no deduce los dígitos perdidos.
+Las correcciones guardan celda, valor leído y código confirmado en la fuente
+compartida. El formato numérico de ceros iniciales se conserva solo en la columna
+de referencia y únicamente cuando el valor base es un entero seguro. Los
+encabezados y las filas se mantienen en sus coordenadas reales de Excel.
+
+## Diferencias y valoración
+
+`Diferencia = cantidad física contada − cantidad virtual`.
+Positivo es sobrante físico, negativo es faltante y cero coincide. Un artículo
+virtual sin registro físico figura **Sin conteo físico**, con cantidad física,
+diferencia e impacto vacíos. No se considera faltante ni se incorpora a los tops.
+Un cero explícitamente contado sí permite calcular la falta. No se interpreta la
+ausencia de un conteo como un cero.
+
+El costo se obtiene del valor total virtual consolidado en DOP dividido entre
+su cantidad consolidada. Se muestran impacto absoluto y neto. Un artículo físico
+sin registro virtual queda sin valoración; puede añadirse al guiado y, una vez
+contado y procesado, exportarse como propuesta de alta virtual. El TMS no ajusta
+SAP ni inventa costos para completar el informe.
+
+La exportación de conciliación incluye siempre todas las referencias distintas
+presentes en cualquiera de los dos reportes cargados: coincidencias, diferencias,
+solo físico y solo virtual/sin conteo. Los filtros de pantalla, las búsquedas, el
+seguimiento y la paginación no recortan el Excel. La tabla del módulo también
+inicia en «Todos». El informe contiene una única hoja con
+seis columnas: Referencia, Descripción, Inventario (cantidad virtual), Valor
+económico Virtual (valor total consolidado en DOP), Conteo físico y Diferencia
+(físico menos virtual). Un conteo ausente o una valoración desconocida se
+exportan como celdas vacías. Los conteos conservan las hojas
+Resumen, Detalle, Correcciones, Guiado, Ciclo y Altas virtuales. Un nuevo ciclo
+archiva el anterior y conserva las referencias con las que se inició.
+
+«Exportar Excel completo» genera el informe ejecutivo: título y cortes de ambas fuentes,
+cobertura completa, referencias incluidas, valor virtual total o conocido y
+referencias con diferencias. El resumen usa exactamente los materiales
+exportados. El detalle conserva las seis columnas, con encabezado azul, filas
+alternadas, diferencias positivas verdes y negativas rojas mediante formato
+condicional, filtros, encabezados fijos y configuración de impresión horizontal.
+Las referencias permanecen como texto; cantidades e importes siguen siendo
+numéricos. Los valores desconocidos y los conteos ausentes se distinguen de cero.
+El generador ExcelJS existente se carga desde el propio TMS al exportar.
+
+## Activación y permisos
+
+Antes de publicar el frontend, aplicar administrativamente
+`supabase/migrations/0010_showroom_inventory.sql`. La migración es aditiva e
+idempotente, crea un estado vacío y sus RPC; no importa los archivos del usuario,
+no altera CT/AD, no toca la revisión operativa ni cambia matrices de roles.
+Admin tiene acceso; los otros roles requieren permisos explícitos del módulo
+`showroom` (`ver`, `editar`, `importar`). Tener permisos de `inventario` no concede
+acceso al showroom. Solo se publica la revisión mediante Realtime, no los datos.
+
+Si se publica la interfaz antes de aplicar la migración, el módulo detecta la
+función ausente, muestra «Activación pendiente» y deshabilita las cargas y
+conteos. «Comprobar activación» vuelve a intentar la lectura; al aplicar la
+migración se habilita el flujo normal. Los demás módulos siguen operativos.
+
+Publicar juntos index.html, tms-v2.js, tms-responsive.js, tms-inventory.css,
+inventory-counts-domain.js y los archivos showroom-*.js. Recargar las
+sesiones abiertas. La preparación del código y las pruebas no aplican la
+migración ni publican el sitio.
+
+## Validación local
+
+```sh
+node tests/showroom-domain.test.cjs
+node tests/showroom-import-code-ui.cjs
+TMS_PGLITE_RUNTIME=/workspace/.tms-runtime node tests/showroom-db.cjs
+TMS_PLAYWRIGHT=/workspace/.tms-runtime/playwright.cjs node tests/showroom-ui-smoke.cjs
+TMS_PLAYWRIGHT=/workspace/.tms-runtime/playwright.cjs node tests/showroom-counts-ui.cjs
+```
+
+El servidor de pruebas sirve el checkout en el puerto 8766; puede cambiarse con
+TMS_TEST_URL. Las pruebas bloquean Supabase y emplean usuarios ficticios. La
+migración se comprueba en PostgreSQL efímero, incluyendo permisos, conflictos,
+persistencia de ciclos y aislamiento de CT/AD.
+
+Para validar archivos privados en la prueba de UI, indicar
+TMS_SHOWROOM_PHYSICAL y TMS_SHOWROOM_VIRTUAL. Los adjuntos y las exportaciones de
+datos privados permanecen fuera del repositorio. Ejecutar también las pruebas
+existentes de inventario, conteos, interfaz y móvil tras cambiar piezas comunes.

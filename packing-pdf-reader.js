@@ -60,7 +60,7 @@
       renderTask=page.render({canvasContext:canvas.getContext('2d'),viewport:view,background:'rgb(255,255,255)'});await withSignal(renderTask.promise,signal);renderTask=null;
       if(isBlank(canvas)){result.method='blank';}
       else{
-       result.preview=preview(canvas);result.method=text.trim()?'mixed':'ocr';const engine=await withSignal(getWorker(),signal);progress('ocr',0);const {data}=await withSignal(engine.recognize(canvas,{}, {text:true,blocks:true}),signal),rows=TMSPackingPDFDomain.ocrRows(data);
+       if(settings.includePreviews!==false)result.preview=preview(canvas);result.method=text.trim()?'mixed':'ocr';const engine=await withSignal(getWorker(),signal);progress('ocr',0);const {data}=await withSignal(engine.recognize(canvas,{}, {text:true,blocks:true}),signal),rows=TMSPackingPDFDomain.ocrRows(data);
        // Native text supplements OCR; never discard a legible header or footer.
        const seen=new Set(rows.map(row=>TMSPackingPDFDomain.normalize(row.text)));const extra=native.filter(row=>!seen.has(TMSPackingPDFDomain.normalize(row.text)));
        result.rows=[...rows,...extra];result.text=result.rows.map(row=>row.text).join('\n');result.method=text.trim()?'mixed':'ocr';result.confidence=Math.round(data.confidence||0);result.reviewRequired=result.confidence<75||!data.text?.trim();

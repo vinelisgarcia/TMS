@@ -2,10 +2,10 @@
   'use strict';
   const modules = {
     rutas: { title: 'Gestión de rutas', icon: '↗', description: 'Planifica entregas y sigue la operación de despacho.', views: ['dashboard','calendario','prioridades','incidenciasDespacho','solicitudesAlmacen','importar'] },
-    inventarios: { title: 'Gestión de inventarios', icon: '▦', description: 'Consulta y concilia el inventario de Caribetrans y Álvarez.', views: ['inventario'] },
-    importaciones: { title: 'Gestión de importaciones', icon: '⇥', description: 'Sigue los materiales y la documentación de importación.', views: ['materialesTransito','packingMiami','auditoriaJamaica'] },
+    inventarios: { title: 'Gestión de inventarios', icon: '▦', description: 'Consulta y concilia los inventarios de Caribetrans y showroom.', views: ['inventario','showroom'] },
+    importaciones: { title: 'Gestión de importaciones', icon: '⇥', description: 'Sigue los materiales y la documentación de importación.', views: ['materialesTransito','packingMiami','auditoriaJamaica','eur1'] },
     comercial: { title: 'Comercial', icon: '◈', description: 'Consulta la actividad comercial y el calendario de entregas.', views: ['comercial','calendario'] },
-    configuracion: { title: 'Configuración', icon: '⚙', description: 'Administra clientes, parámetros y accesos del sistema.', views: ['configClientes'] }
+    configuracion: { title: 'Configuración', icon: '⚙', description: 'Administra clientes, parámetros y accesos del sistema.', views: ['configClientes','auditoriaSistema'] }
   };
   const permission = {configClientes:'configuracion'};
   const canSee = id => !!window.TMSAuditCore?.hasPermission(permission[id] || id, 'ver');

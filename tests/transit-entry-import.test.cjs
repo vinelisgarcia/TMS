@@ -10,6 +10,10 @@ const row=(code='0001',qty=2,invoice='INV-1')=>['PO-1',code,'Material de prueba'
 const matrix=(rows)=>[[],[],['Plantilla entrada mercancía'],[],[],[],[],[],headers,...rows];
 const defaults={factura:'DEFAULT',eta:'2026-11-07',cliente:''},origin={sheet:'Entrada',fileName:'synthetic.xlsx'};
 const parse=(rows,d=defaults)=>{const m=matrix(rows);return context.parseTransitEntryRows(m,context.transitEntryHeader(m),d,origin);};
+test('reimporting an accounted invoice preserves both receipt and accounting metadata',()=>{
+ context.APP.transitMaterials=[{id:'posted',factura:'INV-1',codigoMaterial:'0001',cantidad:2,eta:'2026-11-07',cliente:'',estado:'contabilizada',receivedAt:'2026-11-11',receivedBy:'almacen',accountedAt:'2026-11-12',accountedBy:'contabilidad',statusHistory:[{estado:'contabilizada',at:'2026-11-12',by:'contabilidad'}]}];
+ context.upsertTransitMaterials(parse([row('0001',5)]));const saved=context.APP.transitMaterials[0];assert.equal(saved.estado,'contabilizada');assert.equal(saved.receivedAt,'2026-11-11');assert.equal(saved.accountedAt,'2026-11-12');assert.equal(saved.accountedBy,'contabilidad');assert.equal(saved.cantidad,5);assert.equal(saved.statusHistory.length,1);
+});
 test('detects the real template headers below title/blank rows, never generic invoice or SAP order headers',()=>{
  assert.equal(context.transitEntryHeader(matrix([])).row,8);
  assert.equal(context.transitEntryHeader([['Referencia','Cantidad','Factura']]),null);

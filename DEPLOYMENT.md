@@ -1,5 +1,18 @@
 # Sincronización de sesiones
 
+Prioridades abre el día actual de Santo Domingo. Las tareas pendientes y en
+proceso de fechas anteriores siguen visibles hasta completarse, conservando su
+fecha original. La fecha se actualiza al volver a la ventana, cambiar de día o
+pulsar «Hoy»; la navegación histórica sigue disponible. Validar el cambio de día
+con `tests/ui-smoke.cjs`.
+
+El nuevo módulo independiente de showroom requiere aplicar la migración aditiva
+`0010_showroom_inventory.sql` antes de publicar su frontend. Ver
+[SHOWROOM.md](SHOWROOM.md) para el alcance, los permisos y las pruebas. Preparar
+el cambio en una rama no aplica esa migración ni publica el sitio. Una publicación
+de la interfaz sin esa migración deja el showroom en «Activación pendiente», sin
+cargas ni conteos, hasta que el administrador active su almacenamiento.
+
 La versión `20261031-session-sync` usa `tms_get_snapshot` para leer una copia
 consistente y `tms_save_snapshot` para guardar todas las tablas modificadas en una
 transacción con revisión esperada. Una revisión antigua produce `40001` sin
@@ -103,7 +116,93 @@ menú de tres puntos conserva Mover, Completar y Nota; en escritorio las accione
 siguen visibles. Los controles de lote aparecen al seleccionar despachos y se
 omite la cola vacía en móvil. En tablet se distribuyen los días en dos columnas.
 
+## Disponibilidad CT en Inventory Data
+
+La tabla del maestro muestra `Disponibilidad CT` y la fecha del corte CT vigente.
+Lee `sources.ct.materials[].availability`, ya consolidado por referencia durante
+la importación. Conserva cero como cantidad conocida y muestra `—` cuando CT no
+informa una disponibilidad completa o la referencia no existe en esa fuente.
+Al cargar otro corte se recalcula con la sincronización existente. Las referencias
+congeladas de los ciclos de conteo se conservan. No requiere migración.
+
+Validación: `tests/inventory-counts.test.cjs` y `tests/inventory-counts-ui.cjs`
+comprueban partidas repetidas, datos ausentes, actualización remota y vista móvil.
+
+## Comentarios por artículo en Inventory Data
+
+Los artículos con observaciones muestran «Con comentarios» y una ficha con su
+historial. Incluye seguimientos CT/AD, apuntes y notas de conteos, y columnas de
+comentarios importadas desde XLSX, XLS o CSV. «Solo con comentarios» filtra el
+catálogo. Las fichas abiertas se actualizan al sincronizar otra sesión.
+
+«Importar comentarios» detecta hojas, encabezados y columnas de referencia y
+observaciones. La vista previa permite revisar varias hojas/columnas, identifica
+CT/AD y conserva la procedencia, fila, usuario y fecha de incorporación. Repetir
+el mismo texto por referencia y origen no lo duplica. Las referencias aún no
+cargadas conservan sus comentarios y pueden consultarse por separado; se vinculan
+cuando el artículo aparece en el inventario. Los reportes de stock permanecen
+independientes y los comentarios sobreviven a un nuevo corte.
+
+El archivo debe subirse desde el dispositivo. Los enlaces privados de SharePoint
+requieren una sesión Microsoft y no se consultan automáticamente desde el TMS.
+Se utiliza el JSONB privado y la revisión del inventario existente, sin migración.
+Validar con `tests/inventory-comments.test.cjs` y `tests/inventory-comments-ui.cjs`.
+
+## Conteo diario por plantilla y formulario
+
+CT/AD y showroom ofrecen «Plantilla de conteo ciego», «Subir conteo diario» y
+«Conteos por día». El Excel permite contar todas las referencias del catálogo
+completo o solo las obligatorias. Conserva referencias de texto, ubicaciones,
+fecha y operador; no contiene cantidades teóricas ni valores, tampoco en sus
+metadatos. Los campos editables aparecen en amarillo, las cabeceras se congelan
+y el archivo tiene filtros, validación numérica y configuración de impresión.
+
+Descargar prepara un ciclo abierto con sus referencias congeladas. La plantilla
+debe devolverse antes de cerrar o archivar ese ciclo. La carga valida todas las
+filas y presenta una vista previa antes de confirmar. Una celda vacía sigue sin
+contar; cero genera un conteo. La fecha física (`countedOn`) y el responsable
+(`countedBy`) se conservan aparte del momento y usuario de registro en el TMS.
+Los formularios guiado/libre también permiten elegir la fecha.
+
+Una fila ya importada se reconoce por plantilla, fila y día. Repetir la misma
+carga no suma cantidades. Cambiar un registro ya cargado requiere una corrección
+en Resultados y bitácora. Un reconteo de otro día sustituye el total de esa
+ubicación para el resultado vigente; los días anteriores permanecen en el historial.
+Las cantidades de cajas de un mismo día siguen sumándose con confirmación.
+El guiado y los Excel del ciclo incluyen la fecha real del conteo.
+
+Los datos usan el JSONB existente de cada inventario, sus permisos y su control
+de revisiones. No se requiere activación ni migración SQL. La vista previa se
+recupera por cuenta tras un conflicto o recarga y no sobrescribe otra sesión.
+Validar con `node --test tests/inventory-daily.test.cjs` y
+`node tests/inventory-daily-ui.cjs`; también ejecutar este último con
+`TMS_TEST_ENGINE=webkit`, además de las pruebas existentes de ambos conteos.
+
 ## Alertas de tránsito y saldo pendiente
+
+Cada factura activa ofrece «Editar ETA», con selector de fecha y aplicación a
+todas sus líneas. Conserva cantidades, estados y fechas de recepción/contabilidad,
+y añade `etaHistory` con fecha anterior, nueva fecha, autor y momento del cambio.
+El calendario y sus detalles abiertos se recalculan al sincronizar. El editor
+participa en la recuperación de formularios y el control de cambios simultáneos.
+
+Materiales en tránsito admite tres etapas por factura: En tránsito, Recibido y
+Contabilizado. Recibido confirma la entrada física; Contabilizado registra la
+confirmación manual de que la factura ya fue contabilizada en SAP en un proceso
+posterior. Solo se permite contabilizar una factura cuando todas sus líneas
+están recibidas. No ejecuta una contabilización ni modifica SAP.
+
+Se conservan `receivedAt/receivedBy` y `accountedAt/accountedBy` por separado,
+con un historial de cambios. Quitar la marca contable deja la mercancía recibida;
+para volver a tránsito hay que retirar primero esa marca. Recibido y Contabilizado
+se excluyen de alertas y cobertura futura del calendario. La reimportación de la
+misma identidad conserva ambas confirmaciones. El Excel incluye estado, fechas
+y responsables. Los campos viajan en `app_state.transitMaterials` mediante la
+sincronización existente; no requiere migración ni activación adicional.
+
+Validar con `node tests/transit-accounted-ui.cjs`,
+`node --test tests/audit-regression.cjs tests/transit-entry-import.test.cjs` y la
+prueba PostgreSQL `tests/session-sync-db.cjs`. Todas usan datos ficticios.
 
 El cruce requiere una falta sin stock de la línea del pedido. El saldo explícito
 pendiente de servir limita esa falta; cero la elimina. La cantidad ya facturada
