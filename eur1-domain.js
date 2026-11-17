@@ -208,7 +208,7 @@
    const fields=[certificate,...byKind.invoice,...byKind.proposal,...byKind.packing].filter(Boolean).map(d=>({doc:d,field:d.meta?.[key]})).filter(x=>value(x.field)!==null);
    const values=[...new Set(fields.map(x=>norm(value(x.field))))];
    const missingIdentity=['exporter','consignee'].includes(key)&&(value(certificate?.meta?.[key])===null||!byKind.invoice.some(d=>value(d.meta?.[key])!==null));
-   const first=fields.find(x=>x.doc===certificate)||fields[0],otherValues=[...new Set(fields.filter(x=>x!==first).map(x=>value(x.field)))];
+   const first=fields.find(x=>x.doc===certificate)||fields[0],otherValues=[...new Map(fields.filter(x=>x!==first).map(x=>[norm(value(x.field)),String(value(x.field)).trim()])).values()];
    check('Identificación documental · '+names[key],missingIdentity?'incomplete':fields.length<2?'unavailable':values.length>1?'review':'pass',value(first?.field)??'No consta',otherValues.join(' | ')||null,{sources:sourcesOf(fields.map(x=>x.field)),explanation:missingIdentity?'Falta identificar esta parte en el certificado o en la factura. Coteja el original y completa la revisión.':fields.length<2?'Información no contrastable entre dos fuentes; no se presenta como coincidencia.':values.length>1?'Las diferencias de escritura requieren revisión documental.':'Identificación coincidente en las fuentes indicadas.'});
   }
   const comparedKeys=['quantity','amount','net','gross'];
