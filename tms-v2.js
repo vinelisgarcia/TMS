@@ -140,6 +140,7 @@
     inventario: 'Inventario CT / AD',
     auditoriaJamaica: 'Auditoría Jamaica',
     packingMiami: 'Packing list Miami',
+    eur1: 'Verificador EUR.1',
     showroom: 'Inventario showroom'
   };
 
@@ -1027,6 +1028,7 @@
       almacen: 'almacen',
       inventario: 'inventario',
       packingMiami: 'packingMiami',
+      eur1: 'eur1',
       auditoriaJamaica: 'auditoriaJamaica',
       showroom: 'showroom',
       reportes: 'reportes'
@@ -1106,6 +1108,7 @@
       almacen: 'almacen',
       inventario: 'inventario',
       packingMiami: 'packingMiami',
+      eur1: 'eur1',
       auditoriaJamaica: 'auditoriaJamaica',
       showroom: 'showroom'
     };
@@ -1117,6 +1120,7 @@
       if (mobileOption) mobileOption.hidden = !allowed;
     });
     window.TMSActivity?.refreshUI();
+    window.TMSEUR1?.refreshAccess();
     syncMobileModuleSelect();
     updateImportExcelTableStatus();
     const activeModule = moduleFromViewId((document.querySelector('.view.active') || {}).id);
@@ -4449,7 +4453,7 @@
     const perms = getPermissionsForRole(role);
     return Object.entries(MODULE_LABELS).map(([module, label]) => {
       const actions = perms[module] || {};
-      const canImport = module === 'importar' || module === 'configuracion' || module === 'packingMiami';
+      const canImport = module === 'importar' || module === 'configuracion' || module === 'packingMiami' || module === 'eur1';
       return `<tr>
         <th scope="row">${escapeHtml(label)}</th>
         <td><label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Ver ${escapeHtml(label)}" data-module="${module}" data-action="ver" ${actions.ver ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label></td>
@@ -4609,6 +4613,7 @@
       inventario: { ver: true, editar: true, importar: true },
       auditoriaJamaica: { ver: true, editar: false, importar: false },
       packingMiami: { ver: true, editar: true, importar: true },
+      eur1: { ver: true, editar: true, importar: true },
       showroom: { ver: true, editar: true, importar: true }
     };
     if (role === 'Admin' || scope === 'full') return all;
