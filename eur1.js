@@ -4,6 +4,7 @@
  const columns='id,case_id,parent_id,original_name,storage_path,sha256,size_bytes,media_type,revision,kind,status,error,classification_confirmed,created_by,created_at,updated_at,line_count,extraction_bytes';
  const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const can=action=>!!window.TMSAuditCore?.hasPermission('eur1',action);
+ let transitAttempt = '', transitBusy = false;
  const S={user:null,generation:0,run:0,cases:[],current:null,docs:[],report:null,busy:false,loading:false,opening:0,connecting:false,worker:null,requests:new Map(),sequence:0,channel:null,poll:null,refreshing:false,controller:null};
  const metadataNames={exporter:'Exportador',consignee:'Destinatario',taxId:'Identificación fiscal',address:'Dirección',invoice:'Factura',date:'Fecha',expediente:'Expediente',container:'Contenedor',seal:'Precinto'};
  const fieldNames={reference:'Referencia',description:'Descripción',quantity:'Cantidad',price:'Precio unitario',amount:'Importe',origin:'Origen',hs:'HS completo',net:'Peso neto kg',gross:'Peso bruto de línea kg',packageId:'Bulto',packageGross:'Peso físico del bulto kg',packageType:'Embalaje',cee:'Marca CEE'};
@@ -18,15 +19,16 @@
   const id=++S.sequence;return new Promise((resolve,reject)=>{S.requests.set(id,{resolve,reject,onEntry});S.worker.postMessage({id,command,payload},payload.buffer?[payload.buffer]:[]);});
  }
  function stopWorker(error){S.worker?.terminate();S.worker=null;for(const p of S.requests.values())p.reject(error||new DOMException('Lectura detenida.','AbortError'));S.requests.clear();}
- function reset(){document.getElementById('eur1Review')?._eurPersist?.();S.generation++;S.run++;S.controller?.abort();stopWorker();clearInterval(S.poll);if(S.channel)SB.removeChannel(S.channel);S.channel=null;S.user=null;S.current=null;S.docs=[];S.report=null;S.busy=false;document.getElementById('eur1Review')?.close();document.getElementById('eur1Review')?.replaceChildren();document.getElementById('eur1')?.replaceChildren();if(document.getElementById('eur1'))delete document.getElementById('eur1').dataset.ready;}
+ function reset(){transitAttempt='';document.getElementById('eur1Review')?._eurPersist?.();S.generation++;S.run++;S.controller?.abort();stopWorker();clearInterval(S.poll);if(S.channel)SB.removeChannel(S.channel);S.channel=null;S.user=null;S.current=null;S.docs=[];S.report=null;S.busy=false;document.getElementById('eur1Review')?.close();document.getElementById('eur1Review')?.replaceChildren();document.getElementById('eur1')?.replaceChildren();if(document.getElementById('eur1'))delete document.getElementById('eur1').dataset.ready;}
  function refreshAccess(){const allowed=can('ver');const nav=document.getElementById('nav-eur1');if(nav)nav.style.display=allowed?'':'none';const option=document.querySelector('#mobileModuleSelect option[value="eur1"]');if(option)option.hidden=!allowed;if(!allowed&&S.user)reset();}
  function init(){
   const view=document.getElementById('eur1');if(!view||view.dataset.ready==='1')return;view.dataset.ready='1';
   view.innerHTML=`<div class="view-header"><div><h1>Verificador EUR.1</h1><p>Certificado, mercancías y documentos del embarque, con evidencia.</p></div><button class="btn btn-primary" id="eur1New">Nuevo expediente</button></div>
   <div class="card eur-toolbar"><label>Expediente<select id="eur1Cases" class="form-control"><option value="">Seleccionar expediente</option></select></label><button class="btn btn-outline" id="eur1Older">Más expedientes</button><button class="btn btn-outline" id="eur1Refresh">Actualizar</button></div>
   <section class="card" id="eur1Upload"><label class="eur-drop" id="eur1Drop"><strong>Adjunta el EUR.1 y la documentación</strong><span>PDF, XLSX o ZIP · varios archivos · hasta 50 MB por archivo</span><input type="file" id="eur1Files" accept=".pdf,.xlsx,.zip" multiple><span class="btn btn-outline">Seleccionar archivos</span></label><div class="eur-actions"><button class="btn btn-outline" id="eur1Resume">Reanudar lecturas pendientes</button><button class="btn btn-outline" id="eur1Stop" hidden>Detener lectura</button><button class="btn btn-primary" id="eur1Analyze">Analizar expediente</button></div><p id="eur1Status" role="status">Crea o selecciona un expediente para comenzar.</p></section>
-  <section class="card"><h2>Documentos originales</h2><div id="eur1Docs" class="eur-documents"></div></section><div id="eur1Result"></div>`;
+  <section class="card"><h2>Materiales en tránsito</h2><p>El packing legible se incorpora a la factura en tránsito, con ETA pendiente. Las facturas ya registradas se conservan.</p><button class="btn btn-outline" id="eur1Transit" type="button">Reintentar envío a tránsito</button><p id="eur1TransitStatus" role="status"></p></section><section class="card"><h2>Documentos originales</h2><div id="eur1Docs" class="eur-documents"></div></section><div id="eur1Result"></div>`;
   const footer=document.createElement('div');footer.className='app-view-footer';footer.textContent='TMS para uso exclusivo de Hospitality by Alvarez. Desarrollado por MVOG.';view.appendChild(footer);
+  document.getElementById('eur1Transit').onclick=()=>sendTransit(false);
   document.getElementById('eur1New').onclick=newCase;document.getElementById('eur1Cases').onchange=event=>openCase(event.target.value);document.getElementById('eur1Refresh').onclick=()=>refresh(true);document.getElementById('eur1Older').onclick=()=>loadCases(true);
   document.getElementById('eur1Files').onchange=event=>importFiles([...event.target.files]);const drop=document.getElementById('eur1Drop');drop.ondragover=event=>{event.preventDefault();drop.classList.add('dragover');};drop.ondragleave=()=>drop.classList.remove('dragover');drop.ondrop=event=>{event.preventDefault();drop.classList.remove('dragover');importFiles([...event.dataTransfer.files]);};
   document.getElementById('eur1Resume').onclick=()=>run(async token=>{for(const doc of S.docs.filter(d=>d.kind==='archive'&&d.status!=='ready')){if(!can('importar'))throw Error('Se necesita permiso de importar para reanudar un ZIP.');await readArchive(doc,await original(doc),token);}for(const doc of S.docs.filter(d=>d.kind!=='archive'&&d.status!=='ready')){checkRun(token);await readDocument(doc,token);}await openCase(S.current.id);});
@@ -34,6 +36,7 @@
  }
  function controls(){
   if(!document.getElementById('eur1Files'))return;
+  document.getElementById('eur1Transit').disabled=S.busy||transitBusy||!S.current||!window.TMSAuditCore?.hasPermission('materialesTransito','importar');
   document.getElementById('eur1New').disabled=S.busy||S.loading||!can('importar');document.getElementById('eur1Files').disabled=S.busy||S.loading||!can('importar')||!S.current;document.getElementById('eur1Cases').disabled=S.busy||S.loading;document.getElementById('eur1Refresh').disabled=S.busy||S.loading;
   document.getElementById('eur1Resume').disabled=S.busy||!S.current||!(can('editar')||can('importar'))||!S.docs.some(d=>d.status!=='ready');document.getElementById('eur1Analyze').disabled=S.busy||!S.docs.length||!(can('editar')||can('importar'));document.getElementById('eur1Stop').hidden=!S.busy;
   document.querySelectorAll('[data-eur-read],[data-eur-review],[data-eur-confirm],[data-eur-kind]').forEach(el=>el.disabled=S.busy||!(can('editar')||can('importar')));
@@ -52,7 +55,25 @@
   const request=++S.opening;S.loading=true;controls();
   if(!id){S.current=null;S.docs=[];S.report=null;S.loading=false;renderDocuments();renderResult();controls();return;}
   try{const g=S.generation;const [current,docs]=await Promise.all([query(SB.from('tms_eur1_cases').select('*').eq('id',id).single()),query(SB.from('tms_eur1_documents').select(columns).eq('case_id',id).order('created_at',{ascending:true}).limit(250))]);guard(g);if(request!==S.opening)return;S.current=current;S.docs=docs;S.report=current.result;renderCases();renderDocuments();renderResult();controls();message(current.result?'Análisis guardado. Puedes consultar el detalle y descargar el comparativo.':'Originales conservados. Revisa los tipos y analiza el expediente.');}
-  catch(error){message(error.message,true);}finally{if(request===S.opening){S.loading=false;controls();}}
+  catch(error){message(error.message,true);}finally{if(request===S.opening){S.loading=false;controls();if(!S.busy&&S.current)setTimeout(()=>sendTransit(true),0);}}
+ }
+ async function sendTransit(automatic){
+  if(!S.current||S.busy||transitBusy||!window.TMSAuditCore?.hasPermission('materialesTransito','importar'))return;
+  const candidates=S.docs.filter(d=>d.kind==='packing'&&d.status==='ready');
+  const status=document.getElementById('eur1TransitStatus');
+  if(!candidates.length){if(status)status.textContent='Esperando un packing list leído.';return;}
+  const caseId=S.current.id, token=S.generation, signature=caseId+':'+candidates.map(d=>d.id+':'+d.revision).join('|');
+  if(automatic&&transitAttempt===signature)return;transitAttempt=signature;transitBusy=true;controls();
+  try{
+   status.textContent='Comprobando el packing y los datos compartidos…';
+   const docs=await Promise.all(candidates.map(d=>query(SB.from('tms_eur1_documents').select('*').eq('id',d.id).single())));
+   if(token!==S.generation||S.current?.id!==caseId)return;
+   if(docs.some((d,i)=>d.revision!==candidates[i].revision))throw Error('El documento cambió. Actualiza el expediente antes de reintentar.');
+   const result=await window.importarPackingEUR1(docs,caseId);
+   if(token!==S.generation||S.current?.id!==caseId)return;
+   status.textContent=(result.rows.length?`${result.rows.length} materiales enviados a tránsito. ETA pendiente. `:'')+(result.messages.join(' ')||(!result.rows.length?'No hay materiales nuevos para enviar.':''));
+  }catch(error){if(token===S.generation&&S.current?.id===caseId)status.textContent='Pendiente de envío: '+error.message;}
+  finally{transitBusy=false;controls();}
  }
  async function refresh(force){if(S.busy||S.loading||S.refreshing||document.hidden||document.getElementById('eur1Review')?.open)return;S.refreshing=true;try{await loadCases(false);if(S.current){const latest=await query(SB.from('tms_eur1_cases').select('revision').eq('id',S.current.id).single());if(force||latest.revision!==S.current.revision)await openCase(S.current.id);}}catch(error){message('No se pudo actualizar: '+error.message,true);}finally{S.refreshing=false;}}
  function dialog(id){let modal=document.getElementById(id);if(!modal){modal=document.createElement('dialog');modal.id=id;modal.className='eur-dialog';document.body.appendChild(modal);}return modal;}
@@ -79,9 +100,9 @@
    }catch(error){if(error.name==='AbortError')throw error;failed++;message(error.message,true);}}
    for(const doc of S.docs.filter(d=>d.status==='stored'&&d.kind!=='archive')){checkRun(token);if(!await readDocument(doc,token))failed++;}
    const id=S.current.id;await openCase(id);message('Carga terminada. '+duplicates+' archivos ya existentes; '+failed+' lecturas o cargas requieren revisión.',failed>0);
-  });const input=document.getElementById('eur1Files');if(input)input.value='';
+  });const input=document.getElementById('eur1Files');if(input)input.value='';if(S.current)sendTransit(true);
  }
- async function run(operation){if(S.busy)return;const g=S.generation,token=++S.run;S.controller=new AbortController();S.busy=true;controls();try{await operation(token);}catch(error){if(g===S.generation)message(error.name==='AbortError'?'Lectura detenida. Puedes reanudar desde los originales guardados.':error.message,true);}finally{if(g===S.generation){S.busy=false;controls();}}}
+ async function run(operation){if(S.busy)return;const g=S.generation,token=++S.run;S.controller=new AbortController();S.busy=true;controls();try{await operation(token);}catch(error){if(g===S.generation)message(error.name==='AbortError'?'Lectura detenida. Puedes reanudar desde los originales guardados.':error.message,true);}finally{if(g===S.generation){S.busy=false;controls();if(S.current)setTimeout(()=>sendTransit(true),0);}}}
  async function readDocument(doc,token){
   checkRun(token);try{
    message('Leyendo '+doc.original_name+'…');const buffer=await original(doc);checkRun(token);let parsed;

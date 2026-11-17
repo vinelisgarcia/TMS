@@ -7310,6 +7310,27 @@
     mount.innerHTML = `<div class="transit-module"><section class="transit-hero"><div><h2>Materiales en tránsito</h2><p>Carga materiales de facturas de importación con ETA. En Excel usa Referencia para el código de material y Cantidad para lo que llegará; el TMS cruza esos datos contra la queue y recomienda esperar la importación cuando puede convertir un despacho parcial en completo.</p></div><div class="import-actions"><button class="btn btn-success btn-sm" onclick="exportarMaterialesTransitoExcel()">Excel</button></div></section><section class="card" style="display:${canEdit ? 'block' : 'none'};"><div class="card-title">Cargar factura / material en tránsito</div><div class="transit-form-grid"><input id="transitFactura" class="form-control" placeholder="Factura importación"><label class="form-row">ETA<input id="transitEta" class="form-control" type="date"></label><input id="transitCliente" class="form-control" placeholder="Cliente opcional"><input id="transitFile" class="form-control" type="file" accept=".xlsx,.xls,.csv,.txt,.pdf"></div><div class="import-actions" style="margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="importarMaterialesTransito()">Importar materiales</button><span id="transitStatus" class="import-bulk-status"></span></div></section><section class="transit-kpis"><div class="transit-kpi"><strong>${APP.transitMaterials.length}</strong><span>Líneas en tránsito</span></div><div class="transit-kpi"><strong>${analysis.materials}</strong><span>Materiales únicos</span></div><div class="transit-kpi"><strong>${analysis.totalQty.toLocaleString('es-DO')}</strong><span>Cantidad total</span></div><div class="transit-kpi"><strong>${analysis.matches.length}</strong><span>Matches en queue</span></div></section><section class="card"><div class="view-toolbar" style="justify-content:space-between;"><input id="transitSearch" class="search-input" value="${escapeHtml(q)}" placeholder="Buscar material, factura o cliente" oninput="renderMaterialesTransito()" style="max-width:340px;"><span class="badge badge-warn">${analysis.nextEta ? 'Próxima ETA ' + analysis.nextEta : 'Sin ETA próxima'}</span></div></section><section class="transit-table-wrap"><table class="transit-table"><thead><tr><th>Material</th><th>Factura</th><th>ETA</th><th>Cliente</th><th style="text-align:right;">Cantidad</th><th></th></tr></thead><tbody>${renderTransitMaterialRows(rows)}</tbody></table></section></div>`;
   };
 
+  // Reuse the revision-checked shared snapshot; never replace a dirty session.
+  window.importarPackingEUR1 = async function importarPackingEUR1(documents, caseId) {
+    if (!hasPermission('eur1', 'ver') || !hasPermission('materialesTransito', 'importar')) throw new Error('Necesitas permiso para importar materiales en tránsito.');
+    if (!cloudSync || !cloudUser) throw new Error('Espera a que se cargue la información compartida.');
+    const userId = cloudUser.id;
+    let state = cloudSync.getState();
+    if (state.dirty || state.draft || state.conflict || state.saving || state.revision === null) throw new Error('Hay cambios pendientes o una sincronización en curso. Guárdalos o resuelve el conflicto antes de enviar el packing.');
+    await cloudSync.refresh();
+    state = cloudSync.getState();
+    if (!cloudUser || cloudUser.id !== userId || state.dirty || state.draft || state.conflict || state.saving || state.phase !== 'synced') throw new Error('La información compartida cambió o tiene cambios pendientes. Revisa la sincronización y vuelve a intentarlo.');
+    if (!hasPermission('eur1', 'ver') || !hasPermission('materialesTransito', 'importar')) throw new Error('Tu acceso cambió.');
+    const result = window.TMSEURTransit.prepare(documents, APP.transitMaterials || [], caseId, () => 'tm-' + crypto.randomUUID(), nowIso());
+    if (!result.rows.length) return result;
+    pushUndoState('añadir packing EUR.1 a materiales en tránsito');
+    APP.transitMaterials.push(...result.rows);
+    construirQueueSemana(); renderMaterialesTransito(); renderCalendario();
+    cloudSync.markDirty();
+    await window.guardarEnSupabase();
+    return result;
+  };
+
   window.importarMaterialesTransito = async function importarMaterialesTransito() {
     if (!hasPermission('materialesTransito', 'importar')) return alert('Tu rol no puede importar materiales en tránsito.');
     const file = (document.getElementById('transitFile') || {}).files?.[0];

@@ -110,3 +110,36 @@ body.module-home #mainLayout{overflow:auto}
  .module-home-heading p{display:none}
  .module-home-heading h1{margin-bottom:13px}
 }
+
+/* A compact SAP dialog that fits phone and tablet screens without sideways scrolling. */
+#sapModuleDialog[open]{box-sizing:border-box;overflow-x:hidden}
+#sapModuleDialog *,#sapModuleDialog *::before,#sapModuleDialog *::after{box-sizing:border-box}
+#sapModuleDialog .sap-import-workspace,#sapModuleDialog .sap-import-grid,#sapModuleDialog .sap-import-tile,#sapModuleDialog .sap-warehouse-actions{min-width:0;max-width:100%}
+#sapModuleDialog .sap-file-status .sap-file-name{max-width:100%}
+@media (min-width:761px) and (max-width:1000px){
+ #sapModuleDialog .sap-import-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #sapModuleDialog .sap-import-tile:last-child{grid-column:1 / -1}
+ #sapModuleDialog .sap-warehouse-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:760px){
+ #sapModuleDialog>.sap-dialog-header{padding:14px 16px;align-items:center}
+ #sapModuleDialog .sap-dialog-heading{align-items:center}
+ #sapModuleDialog .sap-dialog-eyebrow,#sapModuleDialog .sap-dialog-heading p{display:none}
+ #sapModuleDialog #sapDialogTitle{margin:0;font-size:19px;line-height:1.2}
+ #sapModuleDialog .sap-dialog-close{width:36px;height:36px;flex-basis:36px}
+ #sapModuleDialog .sap-dialog-content{padding:14px 14px 18px}
+ #sapModuleDialog .sap-import-intro{margin:0 0 11px;font-size:12px;gap:8px}
+ #sapModuleDialog .sap-import-intro span{padding:4px 7px}
+ #sapModuleDialog .sap-import-grid{gap:8px}
+ #sapModuleDialog .sap-import-tile{padding:12px;border-radius:13px}
+ #sapModuleDialog .sap-import-tile>header{min-height:34px;margin-bottom:8px;gap:9px}
+ #sapModuleDialog .sap-tile-icon{width:32px;height:32px;flex-basis:32px;border-radius:10px}
+ #sapModuleDialog .sap-import-tile h2{font-size:15px;margin:0 0 2px}
+ #sapModuleDialog .sap-import-tile header p{font-size:11px}
+ #sapModuleDialog .sap-file-status{padding:8px 10px;margin:0 0 8px;min-height:34px;line-height:1.35}
+ #sapModuleDialog .sap-import-tile>.btn,#sapModuleDialog .sap-warehouse-actions>.btn{height:auto;min-height:40px;padding:8px;font-size:12px;line-height:1.2;white-space:normal}
+ #sapModuleDialog .sap-warehouse-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ #sapModuleDialog .warehouse-report-trigger{margin-top:7px}
+ #sapModuleDialog .sap-import-help{margin-top:12px;padding-top:10px}
+ #sapModuleDialog .sap-saved-files{margin-top:10px;padding:11px 12px}
+}

@@ -105,3 +105,22 @@ ni el ZIP H261096 / factura ESF3-1000652-2026. No se afirma haber obtenido sus
 resultados. El código no contiene sus referencias, importes ni cantidades de
 aceptación. Los formatos ambiguos o las lecturas OCR dudosas requieren revisión
 contra el original antes de completar la verificación.
+
+## Packing y materiales en tránsito
+
+Al terminar de leer un expediente o al abrir uno existente, un usuario con
+permiso de importar materiales en tránsito puede incorporar automáticamente el
+packing reconocido. Se exige factura identificada, referencias y cantidades
+válidas y lectura sin incidencias. Las líneas repetidas se agrupan por referencia,
+conservando el origen. Representaciones equivalentes de un mismo packing se
+cuentan una vez; si difieren se solicita revisión. Las facturas ya registradas
+no se vuelven a insertar ni se sobrescriben sus ETA o estados de recepción.
+La ETA de una factura nueva queda pendiente. El calendario usa el cruce existente
+por artículo y muestra las coincidencias para pedidos con faltante sin stock.
+
+El envío usa la sincronización compartida con revisión; si la sesión tiene
+borradores, cambios pendientes, conflicto o pierde conexión, muestra el motivo y
+permite reintentar desde el expediente. No se fuerza una actualización ni se
+sustituyen datos de otro usuario. El acceso a EUR.1 no concede permisos de
+importación en tránsito. Las fuentes dudosas, OCR sin revisar o identificaciones
+ambiguas no se publican como mercancía confirmada.
