@@ -11,7 +11,9 @@ Antes del commit, ejecuta las verificaciones pertinentes y conserva los cambios
 ajenos a la tarea. Informa la rama y el identificador del commit después de
 comprobar el push. No incluyas credenciales ni utilices force push.
 
-El commit y push no implican por sí solos fusionar en `main`, ejecutar migraciones
-en producción ni desplegar. Para esas acciones, sigue la autorización y los
-prerrequisitos de la conversación actual. Consulta `DEPLOYMENT.md` para el orden
-de aplicación de la migración de sincronización y del frontend.
+El usuario autoriza publicar automáticamente en producción cada cambio terminado,
+sin esperar otro visto bueno. Tras ejecutar las verificaciones pertinentes, haz
+commit, push y despliega por el procedimiento del proyecto; verifica el resultado e
+informa cualquier fallo. Conserva los cambios ajenos y nunca uses force push.
+Antes de aplicar migraciones, revisa su alcance y los prerrequisitos de
+`DEPLOYMENT.md`; no ejecutes migraciones ajenas al cambio.
