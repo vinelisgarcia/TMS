@@ -291,3 +291,13 @@ test('zero unserved balance survives saving and another session; legacy wholly m
  const legacy=b.context.mapDbOrderLine({cantidad_solicitada:0,cantidad_facturada:0,metadata:{cantidadSolicitadaOriginal:6,cantidadPendienteSinStock:6}});
  assert.equal(legacy.cantidadPendienteServir,6);assert.equal(require('../tms-domain.js').transitNeed(legacy),6);
 });
+
+
+test('customer legal name survives the shared order snapshot without inventing one',async t=>{
+ const db=server(),app=adapter(db);t.after(app.stop);await app.load();
+ app.APP.lineItems[0].clienteRazonSocial='Hotelera Ejemplo SRL';
+ app.context.cloudSync.markDirty();await app.save();
+ const stored=db.db.tables.tms_order_lines.find(row=>row.metadata.clienteRazonSocial==='Hotelera Ejemplo SRL');
+ assert.ok(stored);assert.equal(app.context.mapDbOrderLine(stored).clienteRazonSocial,'Hotelera Ejemplo SRL');
+ const unknown=app.context.mapDbOrderLine({...stored,metadata:{}});assert.equal(unknown.clienteRazonSocial,'');
+});

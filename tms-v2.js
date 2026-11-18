@@ -150,6 +150,8 @@
     });
     const label = document.getElementById('themeCurrentLabel');
     if (label) label.textContent = getThemeLabel(APP.visualTheme);
+    const select = document.getElementById('themeSelect');
+    if (select) select.value = normalizeVisualTheme(APP.visualTheme);
   }
 
   function ensureAppFooters() {
@@ -802,6 +804,7 @@
       idInterno: row.id,
       clienteId: row.cliente_id,
       clienteNombre: row.cliente_nombre || '',
+      clienteRazonSocial: metadata.clienteRazonSocial || '',
       rutaId: row.ruta_id || '',
       rutaNombre: row.ruta_nombre || '',
       fechaPlanificada: isoToFechaStr(row.fecha_planificada),
@@ -876,6 +879,7 @@
         manual_programado: !!item.manualProgramado,
         metadata: safeClone({
           dataset,
+          ...(item.clienteRazonSocial ? { clienteRazonSocial: text(item.clienteRazonSocial) } : {}),
           montoPlanificado: num(item.montoPlanificado),
           montoEntregadoNoFacturado: num(item.montoEntregadoNoFacturado),
           cantidadSolicitadaOriginal: num(item.cantidadSolicitadaOriginal || item.cantidadSolicitada),
@@ -1396,6 +1400,7 @@
     rows.forEach((row, index) => {
       const clienteId = text(pickField(row, ['Cliente', 'Codigo', 'Código', 'ID cliente', 'Cliente código', 'Destinatario de las mercancías descripción']));
       const clienteNombre = text(pickField(row, ['Nombre Comercial', 'Nombre', 'Cliente descripción', 'Cliente Nombre', 'Destinatario', 'Nombre cliente', 'Destinatario de las mercancías']));
+      const clienteRazonSocial = text(pickField(row, ['Razón social', 'Razon social', 'Razón social cliente', 'Razon social cliente', 'Nombre fiscal', 'Nombre legal']));
       const pedidoCliente = text(pickField(row, ['Pedido de cliente', 'Pedido del cliente', 'Pedido cliente', 'Pedido']));
       if (!clienteId || !clienteNombre || !pedidoCliente) return;
 
@@ -1443,6 +1448,7 @@
         idInterno: [mode, index + 1, nowIso()].join('-'),
         clienteId,
         clienteNombre,
+        clienteRazonSocial,
         rutaId: text(pickField(row, ['Ruta ID', 'Id ruta'])),
         rutaNombre,
         fechaPlanificada: fechaPrevista,
@@ -2231,16 +2237,17 @@
 
   function getRouteCatalogClients() {
     const map = new Map();
-    const add = (codigo, nombre) => {
+    const add = (codigo, nombre, razonSocial) => {
       const code = text(codigo);
       if (!code) return;
-      const current = map.get(code) || { codigo: code, nombre: text(nombre) || code };
+      const current = map.get(code) || { codigo: code, nombre: text(nombre) || code, razonSocial: '' };
       if (!current.nombre || current.nombre === code) current.nombre = text(nombre) || current.nombre;
+      if (!current.razonSocial && text(razonSocial)) current.razonSocial = text(razonSocial);
       map.set(code, current);
     };
-    Object.values(APP.clienteConfig || {}).forEach(cfg => add(cfg.codigoCliente || cfg.codigo, cfg.nombreCliente));
-    [...(APP.planificacion || []), ...(APP.clientes || [])].forEach(client => add(client.codigo, client.nombre));
-    [...(APP.lineItems || []), ...(APP.planLineItems || []), ...(APP.controlLineItems || [])].forEach(item => add(item.clienteId, item.clienteNombre));
+    Object.values(APP.clienteConfig || {}).forEach(cfg => add(cfg.codigoCliente || cfg.codigo, cfg.nombreCliente, cfg.razonSocial));
+    [...(APP.planificacion || []), ...(APP.clientes || [])].forEach(client => add(client.codigo, client.nombre, client.razonSocial && client.razonSocial !== client.nombre ? client.razonSocial : ''));
+    [...(APP.lineItems || []), ...(APP.planLineItems || []), ...(APP.controlLineItems || [])].forEach(item => add(item.clienteId, item.clienteNombre, item.clienteRazonSocial));
     [...(APP.solicitudesAlmacen || []), ...(APP.solicitudesPlanAlmacen || []), ...(APP.solicitudesControlAlmacen || [])].forEach(item => add(item.codigo, item.cliente));
     return [...map.values()].map(client => {
       const cfg = getClienteConfigV2(client.codigo, client.nombre);
@@ -4118,7 +4125,7 @@
       routeFilter.value = [...routeFilter.options].some(option => option.value === selectedRoute) ? selectedRoute : '';
     }
     const chosen = routeFilter ? routeFilter.value : '';
-    const filtered = baseClients.filter(item => (!search || [item.codigo, item.nombre].some(value => text(value).toLowerCase().includes(search))) && (!chosen || (chosen === '__unassigned__' ? !item.cfg.rutaAsignada : item.cfg.rutaAsignada === chosen)));
+    const filtered = baseClients.filter(item => (!search || [item.codigo, item.nombre, item.razonSocial].some(value => text(value).toLowerCase().includes(search))) && (!chosen || (chosen === '__unassigned__' ? !item.cfg.rutaAsignada : item.cfg.rutaAsignada === chosen)));
     const unassigned = baseClients.filter(item => !item.cfg.rutaAsignada).length;
     resumen.textContent = `${filtered.length} clientes · ${unassigned} sin ruta`;
     if (!filtered.length) {
@@ -4135,8 +4142,8 @@
       const cfg = item.cfg;
       const route = text(cfg.rutaAsignada);
       return `<div class="config-client-row ${APP.configClienteSel === item.codigo ? 'active' : ''}">
-        <button type="button" class="config-client-item" data-config-client="${escapeHtml(item.codigo)}" aria-pressed="${APP.configClienteSel === item.codigo}">
-          <strong>${escapeHtml(item.nombre)}</strong><span>${escapeHtml(item.codigo)} · ${route ? escapeHtml(route) : 'Sin ruta asignada'}</span>
+        <button type="button" class="config-client-item" data-config-client="${escapeHtml(item.codigo)}" aria-pressed="${APP.configClienteSel === item.codigo}" title="${escapeHtml(item.nombre)} · ${escapeHtml(item.razonSocial || 'Razón social no disponible')} · ${escapeHtml(item.codigo)}">
+          <strong>${escapeHtml(item.nombre)}</strong><span class="config-client-legal"> · ${escapeHtml(item.razonSocial || 'Razón social no disponible')}</span>
         </button>
         <label class="config-route-quick"><span>Ruta de ${escapeHtml(item.nombre)}</span><select class="form-control" data-config-route="${escapeHtml(item.codigo)}" ${canAssign ? '' : 'disabled'} aria-label="Ruta de ${escapeHtml(item.nombre)}"><option value="">Sin ruta</option>${routes.map(name => `<option value="${escapeHtml(name)}" ${route === name ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}</select></label>
       </div>`;
@@ -4172,8 +4179,8 @@
     ], item => item.nombre || item.zona);
     editor.innerHTML = `
       <div class="card-title" style="margin-bottom:4px;">${escapeHtml(client.nombre)}</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">${escapeHtml(client.codigo)} · ${cfg.rutaAsignada || client.zona || 'Sin ruta'}</div>
-      <div class="form-row"><label>Ruta / zona asignada</label>
+      <div class="config-editor-meta">${escapeHtml(client.codigo)} · ${escapeHtml(cfg.rutaAsignada || 'Sin ruta')}<br>Razón social: ${escapeHtml(client.razonSocial || 'No disponible')}</div>
+      <div class="config-editor-fields"><div class="form-row"><label>Ruta / zona asignada</label>
         <select id="cfgRuta" class="form-control">
           <option value="">Sin asignar</option>
           ${routeOptions.map(route => `<option value="${route.nombre || route.zona}" ${cfg.rutaAsignada === (route.nombre || route.zona) ? 'selected' : ''}>${route.nombre || route.zona}</option>`).join('')}
@@ -4182,9 +4189,9 @@
       <div class="form-row"><label>Días de recepción</label><input id="cfgDias" class="form-control" value="${(cfg.diasRecepcion || []).join(',')}" placeholder="1,2,4,5 = Lun,Mar,Jue,Vie"></div>
       <div class="form-row"><label>Horario almacén</label><input id="cfgHorario" class="form-control" value="${escapeHtml(cfg.horarioAlmacen || '')}" placeholder="08:00 - 14:00"></div>
       <div class="form-row"><label>Contacto</label><input id="cfgContacto" class="form-control" value="${escapeHtml(cfg.contacto || '')}" placeholder="Nombre / teléfono / correo"></div>
-      <div class="form-row"><label>Condiciones especiales</label><textarea id="cfgCondiciones" class="form-control" style="min-height:70px;">${escapeHtml(cfg.condicionesEspeciales || '')}</textarea></div>
-      <div class="form-row"><label>Observaciones</label><textarea id="cfgNota" class="form-control" style="min-height:90px;">${escapeHtml(cfg.observaciones || '')}</textarea></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div class="form-row"><label>Condiciones especiales</label><textarea id="cfgCondiciones" class="form-control" rows="2">${escapeHtml(cfg.condicionesEspeciales || '')}</textarea></div>
+      <div class="form-row"><label>Observaciones</label><textarea id="cfgNota" class="form-control" rows="2">${escapeHtml(cfg.observaciones || '')}</textarea></div>
+      </div><div class="config-editor-actions">
         <button class="btn btn-primary" onclick="guardarConfigCliente()">Guardar configuración</button>
         <button class="btn btn-outline" onclick="limpiarConfigCliente()">Limpiar</button>
       </div>
@@ -5960,30 +5967,11 @@
     card.id = 'visualThemeCard';
     card.className = 'card theme-settings-card';
     card.innerHTML = `
-      <div class="theme-settings-head">
-        <div>
-          <div class="card-title">Tema visual</div>
-          <div class="theme-settings-sub">Simplifica colores, iconos y encabezados para cada forma de trabajo.</div>
-        </div>
-        <span id="themeCurrentLabel" class="badge badge-outline">${getThemeLabel(APP.visualTheme)}</span>
-      </div>
-      <div class="theme-option-grid">
-        <button type="button" class="theme-option" data-theme-option="light" onclick="setVisualTheme('light')">
-          <span class="theme-preview theme-preview-light"></span>
-          <strong>Claro operativo</strong>
-          <small>Blanco, gris y azul sobrio.</small>
-        </button>
-        <button type="button" class="theme-option" data-theme-option="dark" onclick="setVisualTheme('dark')">
-          <span class="theme-preview theme-preview-dark"></span>
-          <strong>Oscuro</strong>
-          <small>Menos brillo para uso continuo.</small>
-        </button>
-        <button type="button" class="theme-option" data-theme-option="brand" onclick="setVisualTheme('brand')">
-          <span class="theme-preview theme-preview-brand"></span>
-          <strong>Alvarez color</strong>
-          <small>Marca simple con acento amarillo.</small>
-        </button>
-      </div>
+      <div class="theme-settings-head"><div><div class="card-title">Tema visual</div><div class="theme-settings-sub">Elige cómo quieres ver el sistema.</div></div><span id="themeCurrentLabel" class="badge badge-outline">${getThemeLabel(APP.visualTheme)}</span></div>
+      <label class="theme-select-label" for="themeSelect">Apariencia</label>
+      <select id="themeSelect" class="form-control" onchange="setVisualTheme(this.value)">
+        <option value="light">Claro operativo</option><option value="dark">Oscuro</option><option value="brand">Alvarez color</option>
+      </select>
     `;
     const toolbarCard = view.querySelector('.card');
     view.insertBefore(card, toolbarCard || view.firstChild);
