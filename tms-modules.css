@@ -143,3 +143,43 @@ body.module-home #mainLayout{overflow:auto}
  #sapModuleDialog .sap-import-help{margin-top:12px;padding-top:10px}
  #sapModuleDialog .sap-saved-files{margin-top:10px;padding:11px 12px}
 }
+/* Session restoration: avoid flashing the sign-in form or an uninitialized workspace. */
+#sessionBootstrap{display:none;position:fixed;inset:0;z-index:11000;align-items:center;justify-content:center;background:radial-gradient(circle at 80% 15%,#e4eef6,transparent 42%),#f3f6f9;color:#29465a}
+html.auth-initializing #sessionBootstrap{display:flex}
+html.auth-initializing #loginScreen{visibility:hidden}
+.session-bootstrap-content{display:grid;justify-items:center;gap:10px;padding:24px;text-align:center}
+.session-bootstrap-content strong{font-size:16px;letter-spacing:-.02em}
+.session-bootstrap-content>span:last-child{font-size:12px;color:#788c99}
+.session-bootstrap-mark{width:28px;height:28px;border:3px solid #d6e2e9;border-top-color:#3e7184;border-radius:50%;animation:session-spin .8s linear infinite}
+@keyframes session-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.session-bootstrap-mark{animation:none;border-color:#3e7184}}
+/* Compact, aligned module launcher. */
+#moduleHome{padding:clamp(32px,6vw,76px) clamp(20px,5vw,70px)}
+.module-home-heading,.module-cards{max-width:1120px}
+.module-home-heading h1{font-size:clamp(28px,3.2vw,38px);margin:12px 0 8px}
+.module-home-heading p{font-size:14px;margin-bottom:28px}
+.module-cards{grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.module-card{min-width:0;min-height:150px;padding:22px 12px;align-items:center;justify-content:center;text-align:center;border-radius:18px}
+.module-icon{width:48px;height:48px;border-radius:15px}
+.module-icon svg{width:25px;height:25px}
+.module-card-body{display:block;min-width:0;margin-top:15px}
+.module-card-body strong{display:block;font-size:15px;line-height:1.25;overflow-wrap:anywhere}
+@media(max-width:700px){
+ #moduleHome{padding:24px 16px 18px}
+ .module-home-heading h1{font-size:27px;line-height:1.1;margin:9px 0 6px}
+ .module-home-heading p{margin:0 0 19px;font-size:13px}
+ .module-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .module-card{min-height:100px;padding:12px}
+ .module-card:last-child{grid-column:1 / -1;min-height:88px}
+ .module-icon{width:38px;height:38px;border-radius:12px}
+ .module-icon svg{width:21px;height:21px}
+ .module-card-body{margin-top:8px}
+ .module-card-body strong{font-size:14px}
+}
+@media(max-width:600px) and (max-height:680px){
+ #moduleHome{padding-top:14px}
+ .module-home-heading p{display:none}
+ .module-home-heading h1{font-size:23px;margin-bottom:13px}
+ .module-card{min-height:87px;padding:9px}
+ .module-card:last-child{min-height:78px}
+}
