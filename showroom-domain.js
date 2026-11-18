@@ -1,6 +1,7 @@
 (function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./inventory-domain.js'):root.InventoryDomain);if(typeof module==='object'&&module.exports)module.exports=api;else root.ShowroomDomain=api;})(typeof globalThis==='object'?globalThis:this,function(D){
   'use strict';
   const norm=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const isProvisionalCode=value=>/^P(?:V)?\s*[-–—]\s*\S/i.test(String(value??'').trim());
   const labels=value=>String(value).replace(/\bAD\b/g,'virtual').replace(/\bCT\b/g,'físico');
   function prepareCodes(matrix,{codeColumn,headerRow=0,formats={},corrections={}}){
     const edited=matrix.slice(),reviewed=[],errors=[];let formattedCount=0;
@@ -51,12 +52,13 @@
     if(!result.ready)return result;
     result.rows=result.rows.map(row=>{
       const missing=!row.ct;
-      return {...row,ctQty:missing?null:row.ctQty,difference:missing||row.difference===null?null:row.difference===0?0:-row.difference,signedImpactDop:missing||row.signedImpactDop===null?null:row.signedImpactDop===0?0:-row.signedImpactDop,impactDop:missing?null:row.impactDop,status:missing?'not_counted':row.status,issues:[...row.issues.map(labels),...(missing?['Sin registro físico: no se supone cantidad cero.']:[])]};
+      const pendingRegistration=!!row.ct&&!row.ad&&Number.isFinite(row.ctQty)&&row.ctQty>0;
+      return {...row,pendingRegistration,provisionalCode:pendingRegistration&&isProvisionalCode(row.code),ctQty:missing?null:row.ctQty,difference:missing||row.difference===null?null:row.difference===0?0:-row.difference,signedImpactDop:missing||row.signedImpactDop===null?null:row.signedImpactDop===0?0:-row.signedImpactDop,impactDop:missing?null:row.impactDop,status:missing?'not_counted':row.status,issues:[...row.issues.map(labels),...(missing?['Sin registro físico: no se supone cantidad cero.']:[])]};
     });
     const differences=result.rows.filter(row=>row.difference!==null&&row.difference!==0),valued=differences.filter(row=>row.impactDop!==null);
-    result.summary={...result.summary,differences:differences.length,unvalued:differences.length-valued.length,valued:valued.length,notCounted:result.rows.filter(row=>row.status==='not_counted').length,grossImpactDop:Math.round(valued.reduce((sum,row)=>sum+row.impactDop,0)*100)/100,netImpactDop:Math.round(valued.reduce((sum,row)=>sum+row.signedImpactDop,0)*100)/100};
+    result.summary={...result.summary,pendingRegistration:result.rows.filter(row=>row.pendingRegistration).length,provisionalPending:result.rows.filter(row=>row.provisionalCode).length,differences:differences.length,unvalued:differences.length-valued.length,valued:valued.length,notCounted:result.rows.filter(row=>row.status==='not_counted').length,grossImpactDop:Math.round(valued.reduce((sum,row)=>sum+row.impactDop,0)*100)/100,netImpactDop:Math.round(valued.reduce((sum,row)=>sum+row.signedImpactDop,0)*100)/100};
     if(result.summary.notCounted)result.issues.push(`${result.summary.notCounted} artículos del stock virtual no tienen conteo físico. No se consideran faltantes hasta registrar un conteo, incluido cero cuando corresponda.`);
     return result;
   }
-  return {...D,detectLayout,consolidate,compare,prepareCodes};
+  return {...D,detectLayout,consolidate,compare,prepareCodes,isProvisionalCode};
 });

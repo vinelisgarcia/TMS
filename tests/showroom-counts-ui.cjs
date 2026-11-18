@@ -11,7 +11,7 @@ ct.semanticHash='SYNTHETIC_CT';ad.semanticHash='SYNTHETIC_AD';delete ct.semantic
 (async()=>{
  const browser=await chromium.launch({headless:true}),errors=[],db={revision:0,payload:{version:1,sources:{ct,ad},cases:{},settings:{sameScope:true}}};
  async function boot(page,role='Admin'){
-  await page.evaluate(role=>{const user={id:'11111111-1111-4111-8111-111111111111',email:'counter@example.invalid'};SB.auth.getUser=async()=>({data:{user},error:null});SB.rpc=(name,args)=>window.__countRpc(name,args);SB.channel=()=>({on(type,filter,callback){window.__countRemote=callback;return this;},subscribe(){return this;}});SB.removeChannel=async()=>{};APP.userProfiles=[{userId:user.id,email:user.email,rol:role,activo:true}];APP.currentUserProfile=APP.userProfiles[0];APP.rolePermissions={[role]:{showroom:{ver:true,editar:role==='Admin',importar:role==='Admin'}}};mostrarApp(user);cambiarVista('showroom',document.getElementById('nav-showroom'));},role);
+  await page.evaluate(role=>{const user={id:'11111111-1111-4111-8111-111111111111',email:'counter@example.invalid'};SB.auth.getUser=async()=>({data:{user},error:null});SB.rpc=(name,args)=>window.__countRpc(name,args);SB.channel=()=>({on(type,filter,callback){window.__countRemote=callback;return this;},subscribe(){return this;}});SB.removeChannel=async()=>{};APP.userProfiles=[{userId:user.id,email:user.email,rol:role,activo:true}];APP.currentUserProfile=APP.userProfiles[0];APP.rolePermissions={[role]:{showroom:{ver:true,editar:role==='Admin',importar:role==='Admin'}}};mostrarApp(user);window.dispatchEvent(new Event('tms-permissions-changed'));cambiarVista('showroom',document.getElementById('nav-showroom'));},role);
   await page.waitForFunction(()=>TMSShowroom.getSyncState().revision!==null&&TMSShowroom.getSyncState().revision!==undefined);
  }
  async function createPage(role='Admin'){
@@ -23,7 +23,7 @@ ct.semanticHash='SYNTHETIC_CT';ad.semanticHash='SYNTHETIC_AD';delete ct.semantic
    if(args.p_expected_revision!==db.revision)return {data:null,error:{code:'40001',message:'Concurrent update'}};
    db.payload=structuredClone(args.p_payload.tms_showroom_state[0].payload);return {data:{revision:++db.revision,changed:true},error:null};
   });
-  await page.goto(base,{waitUntil:'networkidle'});await page.waitForFunction(()=>!!window.ShowroomCounts);await boot(page,role);return page;
+  await page.goto(base+'/?modulo=inventarios',{waitUntil:'networkidle'});await page.waitForFunction(()=>!!window.ShowroomCounts);await boot(page,role);return page;
  }
  const tab=(page,name)=>page.locator(`[data-show-count="tab"][data-tab="${name}"]`).first().click();
  const settled=page=>page.waitForFunction(()=>TMSShowroom.getSyncState().phase==='synced');

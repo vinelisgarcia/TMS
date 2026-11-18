@@ -15,13 +15,13 @@ const initial=()=>({version:1,sources:{ct:null,ad:null},cases:{},settings:{sameS
       if(args.p_expected_revision!==db.revision)return {data:null,error:{code:'40001',message:'Another session updated showroom'}};
       db.payload=structuredClone(args.p_payload.tms_showroom_state[0].payload);return {data:{revision:++db.revision,changed:true},error:null};
     });
-    await page.goto(base,{waitUntil:'networkidle'});await page.waitForFunction(()=>!!window.TMSShowroom&&!!window.TMSAuditCore&&!!window.XLSX);
+    await page.goto(base+'/?modulo=inventarios',{waitUntil:'networkidle'});await page.waitForFunction(()=>!!window.TMSShowroom&&!!window.TMSAuditCore&&!!window.XLSX);
     await page.evaluate(role=>{
       const authUser={id:'11111111-1111-4111-8111-111111111111',email:'showroom-test@example.invalid'};
       SB.auth.getUser=async()=>({data:{user:authUser},error:null});SB.rpc=(name,args)=>window.__showroomRpc(name,args);
       SB.channel=()=>({on(type,filter,callback){window.__showroomChange=callback;return this;},subscribe(cb){return this;}});SB.removeChannel=async()=>{};
       APP.userProfiles=[{userId:authUser.id,authUserId:authUser.id,nombre:'Fixture',email:authUser.email,rol:role,activo:true}];APP.currentUserProfile=APP.userProfiles[0];APP.rolePermissions={[role]:{showroom:{ver:true,editar:role==='Admin',importar:role==='Admin'}}};
-      mostrarApp(authUser);cambiarVista('showroom',document.getElementById('nav-showroom'));
+      mostrarApp(authUser);window.dispatchEvent(new Event('tms-permissions-changed'));cambiarVista('showroom',document.getElementById('nav-showroom'));
     },role);
     await page.waitForFunction(()=>TMSShowroom.getSyncState().revision!==undefined&&TMSShowroom.getSyncState().revision!==null);return page;
   }

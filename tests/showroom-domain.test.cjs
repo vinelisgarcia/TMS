@@ -48,3 +48,24 @@ test('showroom count cycles reuse safely, preserve source snapshots and do not a
  C.recordCount(state,{code:'A',expectedLocation:'CUBO',actualLocation:'CUBO',confirmed:true,quantity:2});C.processItem(state,'A');
  assert.equal(C.itemReport(cycle,'A').referenceSource,'Físico');C.closeCycle(state);assert.equal(cycle.status,'closed');assert.equal(state.sources.ct.materials[0].quantity,2);
 });
+test('positive physical-only references are pending registration, regardless of prefix, without treating virtual zero as missing',()=>{
+ const p=physical([['O','P-001','A','',3],['O','PV-002','A','',4],['O','NORMAL','A','',2],['O','P-ZERO','A','',0],['O','P-REGISTERED','A','',5]]);
+ const v=virtual([['P-REGISTERED',0,0,'DOP','UN'],['VIRTUAL-ONLY',4,40,'DOP','UN']]);const result=D.compare(p,v);
+ assert.equal(result.summary.pendingRegistration,3);assert.equal(result.summary.provisionalPending,2);
+ for(const code of ['P-001','PV-002','NORMAL'])assert.equal(result.rows.find(row=>row.code===code).pendingRegistration,true);
+ assert.equal(result.rows.find(row=>row.code==='P-ZERO').pendingRegistration,false);
+ assert.equal(result.rows.find(row=>row.code==='P-REGISTERED').pendingRegistration,false);
+ assert.equal(result.rows.find(row=>row.code==='VIRTUAL-ONLY').pendingRegistration,false);
+ assert.equal(result.rows.find(row=>row.code==='P-001').provisionalCode,true);assert.equal(result.rows.find(row=>row.code==='NORMAL').provisionalCode,false);
+ assert.equal(D.compare(p,null).ready,false);
+ const updated=virtual([['P-001',0,0,'DOP','UN'],['P-REGISTERED',0,0,'DOP','UN']]);assert.equal(D.compare(p,updated).rows.find(row=>row.code==='P-001').pendingRegistration,false);
+});
+test('a positive cycle count is marked for registration before processing but verified export still requires processing',()=>{
+ const state={sources:{ct:physical([['O','PV-COUNT','A','',3]]),ad:virtual([['OTHER',1,10,'DOP','UN']])}};state.sources.ct.semanticHash='P';state.sources.ad.semanticHash='V';
+ const cycle=C.createCycle(state,D.compare(state.sources.ct,state.sources.ad),{id:'pending'});C.addItem(state,'PV-COUNT');
+ assert.equal(C.itemReport(cycle,'PV-COUNT').pendingRegistration,false);
+ C.recordCount(state,{code:'PV-COUNT',expectedLocation:'A',actualLocation:'A',confirmed:true,quantity:3});
+ assert.equal(C.itemReport(cycle,'PV-COUNT').pendingRegistration,true);assert.equal(C.itemReport(cycle,'PV-COUNT').readyForAD,false);
+ C.processItem(state,'PV-COUNT');assert.equal(C.itemReport(cycle,'PV-COUNT').readyForAD,true);
+ const withoutVirtual={...cycle,sourceDates:{...cycle.sourceDates,ad:null}};assert.equal(C.itemReport(withoutVirtual,'PV-COUNT').pendingRegistration,false);
+});

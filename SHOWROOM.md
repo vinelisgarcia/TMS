@@ -37,6 +37,24 @@ compartida. El formato numérico de ceros iniciales se conserva solo en la colum
 de referencia y únicamente cuando el valor base es un entero seguro. Los
 encabezados y las filas se mantienen en sus coordenadas reales de Excel.
 
+## Referencias pendientes de alta
+
+Cuando el conteo físico registra una cantidad positiva para una referencia que
+no aparece en el reporte virtual cargado, la conciliación la identifica como
+**Pendiente de alta**. El aviso permite ver todas esas referencias o solo las
+que empiezan por P- o PV-, para revisar su identificación. El prefijo es una
+pista, no prueba que el código sea incorrecto. Un artículo virtual presente con
+stock cero no se considera ausente y un conteo físico explícito de cero no se
+interpreta como existencia. Si falta alguno de los dos reportes no se concluye
+que haya un alta pendiente.
+
+En los resultados del ciclo también se muestra el aviso al registrar un conteo
+positivo para una referencia ausente del corte virtual del ciclo, incluso antes
+de procesarlo. Para incluirla en la hoja **Altas virtuales**, el conteo completo
+debe verificarse y procesarse como antes. El aviso no crea ni modifica artículos
+en SAP; al cargar un corte virtual que ya contenga la referencia, deja de figurar
+como pendiente en la conciliación del corte nuevo.
+
 ## Diferencias y valoración
 
 `Diferencia = cantidad física contada − cantidad virtual`.
