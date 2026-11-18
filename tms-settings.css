@@ -1,0 +1,47 @@
+#settingsNavigation{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px;padding:6px;border:1px solid var(--border);border-radius:14px;background:var(--surface-2)}
+#settingsNavigation button{flex:1 1 auto;min-height:42px;padding:8px 14px;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+#settingsNavigation button[aria-selected=true]{background:var(--surface);color:var(--primary);box-shadow:0 2px 9px #112a3f15}
+#configClientes[data-settings-panel]>.theme-settings-card,#configClientes[data-settings-panel]>.settings-client-toolbar,#configClientes[data-settings-panel]>.config-grid,#configClientes[data-settings-panel]>#auditCreateClient,#configClientes[data-settings-panel]>#auditTariffConfig,#configClientes[data-settings-panel]>#configExtrasMount{display:none!important}
+#configClientes[data-settings-panel=clientes]>.settings-client-toolbar{display:block!important}
+#configClientes[data-settings-panel=clientes]>.config-grid{display:grid!important}
+#configClientes[data-settings-panel=clientes]>#auditCreateClient.settings-create-open{display:block!important}
+#configClientes[data-settings-panel=rutas]>#configExtrasMount,#configClientes[data-settings-panel=accesos]>#configExtrasMount{display:block!important}
+#configClientes[data-settings-panel=rutas] #configExtrasMount>:not(:first-child),#configClientes[data-settings-panel=accesos] #configExtrasMount>:not(#accessSettings){display:none!important}
+#configClientes[data-settings-panel=costos]>#auditTariffConfig,#configClientes[data-settings-panel=apariencia]>.theme-settings-card{display:block!important}
+#configClientes .settings-client-toolbar .view-toolbar{display:flex;align-items:center;gap:8px}
+#configClientes .settings-client-toolbar #configSearch{flex:1 1 220px;min-width:160px;max-width:340px}
+#configClientes .settings-client-toolbar #configRouteFilter{flex:1 1 175px;min-width:160px;max-width:220px;width:auto}
+#configClientes .settings-client-toolbar .btn{min-height:40px}
+#configClientes .config-client-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(115px,145px);gap:8px;align-items:center;padding:8px;border-bottom:1px solid var(--border)}
+#configClientes .config-client-row.active{background:color-mix(in srgb,var(--primary) 8%,var(--surface))}
+#configClientes .config-client-item{min-width:0;padding:5px 4px;background:transparent;border:0}
+#configClientes .config-client-item strong,#configClientes .config-client-item span{display:block;overflow-wrap:anywhere}
+#configClientes .config-client-item span{margin-top:4px;font-size:11px;color:var(--muted)}
+#configClientes .config-route-quick{min-width:0;margin:0}
+#configClientes .config-route-quick>span{position:absolute;clip:rect(0,0,0,0);width:1px;height:1px;overflow:hidden}
+#configClientes .config-route-quick select{min-width:0;width:100%;font-size:12px}
+#configClientes .config-help-note{padding:12px}
+@media(max-width:900px){
+ #settingsNavigation{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:12px}
+ #settingsNavigation button{min-height:42px;padding:8px 5px;font-size:12px;line-height:1.2}
+ #configClientes .settings-client-toolbar .view-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ #configClientes .settings-client-toolbar #configSearch,#configClientes .settings-client-toolbar #configRouteFilter{width:100%;min-width:0;max-width:none}
+ #configClientes .settings-client-toolbar #configSearch{grid-column:1 / -1}
+ #configClientes .settings-client-toolbar #configResumen{grid-column:1 / -1;justify-self:start}
+ #configClientes .config-client-list{max-height:300px;overflow:auto}
+ #configClientes .config-grid{gap:10px}
+ #configClientes .config-client-row{grid-template-columns:minmax(0,1fr) minmax(110px,42%)}
+ #configClientes #configEditor{scroll-margin-top:12px}
+}
+#configClientes .settings-more{position:relative;min-width:130px;z-index:5}
+#configClientes .settings-more summary{display:flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);font-size:12px;font-weight:700;cursor:pointer;list-style:none}
+#configClientes .settings-more summary::after{content:'⌄';font-size:16px}
+#configClientes .settings-more>div{position:absolute;right:0;top:calc(100% + 6px);display:grid;gap:6px;min-width:220px;padding:8px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 12px 30px #17243b22}
+#configClientes .settings-more>div .btn{width:100%;justify-content:center}
+@media(max-width:900px){
+ body #configClientes .settings-client-toolbar .view-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ #configClientes .settings-client-toolbar #configRouteFilter{grid-column:1 / -1}
+ #configClientes .settings-more{min-width:0}
+ #configClientes .settings-more summary{width:100%}
+ #configClientes .settings-client-toolbar #configResumen{grid-column:1 / -1}
+}

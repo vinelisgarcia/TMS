@@ -2239,6 +2239,7 @@
       map.set(code, current);
     };
     Object.values(APP.clienteConfig || {}).forEach(cfg => add(cfg.codigoCliente || cfg.codigo, cfg.nombreCliente));
+    [...(APP.planificacion || []), ...(APP.clientes || [])].forEach(client => add(client.codigo, client.nombre));
     [...(APP.lineItems || []), ...(APP.planLineItems || []), ...(APP.controlLineItems || [])].forEach(item => add(item.clienteId, item.clienteNombre));
     [...(APP.solicitudesAlmacen || []), ...(APP.solicitudesPlanAlmacen || []), ...(APP.solicitudesControlAlmacen || [])].forEach(item => add(item.codigo, item.cliente));
     return [...map.values()].map(client => {
@@ -2329,6 +2330,7 @@
   };
 
   function commitClienteRutaAssignment(codigo, routeName, label) {
+    if (!hasPermission('configuracion', 'editar')) return;
     const route = text(routeName);
     const client = getRouteCatalogClients().find(item => item.codigo === text(codigo));
     if (!client) return;
@@ -4108,23 +4110,49 @@
     const resumen = document.getElementById('configResumen');
     if (!list || !resumen) return;
     const search = text((document.getElementById('configSearch') || {}).value).toLowerCase();
-    const baseClients = dedupeBy([...(APP.planificacion || []), ...(APP.clientes || []), ...Object.values(APP.clienteConfig || {}).map(cfg => ({ codigo: cfg.codigoCliente, nombre: cfg.nombreCliente }))], item => item.codigo);
-    const filtered = baseClients.filter(item => !search || [item.codigo, item.nombre].some(value => text(value).toLowerCase().includes(search)));
-    resumen.textContent = `${filtered.filter(item => clienteTieneConfigV2(item.codigo)).length} configurados`;
+    const baseClients = getRouteCatalogClients();
+    const routeFilter = document.getElementById('configRouteFilter');
+    const selectedRoute = routeFilter ? routeFilter.value : '';
+    if (routeFilter) {
+      routeFilter.innerHTML = '<option value="">Todas las rutas</option><option value="__unassigned__">Sin ruta asignada</option>' + getRouteAssignmentOptions().map(route => `<option value="${escapeHtml(route)}">${escapeHtml(route)}</option>`).join('');
+      routeFilter.value = [...routeFilter.options].some(option => option.value === selectedRoute) ? selectedRoute : '';
+    }
+    const chosen = routeFilter ? routeFilter.value : '';
+    const filtered = baseClients.filter(item => (!search || [item.codigo, item.nombre].some(value => text(value).toLowerCase().includes(search))) && (!chosen || (chosen === '__unassigned__' ? !item.cfg.rutaAsignada : item.cfg.rutaAsignada === chosen)));
+    const unassigned = baseClients.filter(item => !item.cfg.rutaAsignada).length;
+    resumen.textContent = `${filtered.length} clientes · ${unassigned} sin ruta`;
     if (!filtered.length) {
-      list.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><p>Sin clientes para configurar.</p></div>';
+      list.innerHTML = '<div class="empty-state"><p>No hay clientes que coincidan con los filtros.</p></div>';
+      document.getElementById('configEditor').innerHTML = '<div class="empty-state"><p>Elige otra ruta o cambia la búsqueda.</p></div>';
       renderConfigAuxSections();
       return;
     }
     if (!APP.configClienteSel || !filtered.some(item => item.codigo === APP.configClienteSel)) APP.configClienteSel = filtered[0].codigo;
     const pendingHelp = '<div class="config-help-note"><strong>Pendiente</strong> significa que falta guardar la configuración completa del cliente: ruta asignada, días de recepción y horario de almacén.</div>';
+    const canAssign = hasPermission('configuracion', 'editar');
+    const routes = getRouteAssignmentOptions();
     list.innerHTML = filtered.map(item => {
-      const cfg = getClienteConfigV2(item.codigo, item.nombre);
-      return `<button class="config-client-item ${APP.configClienteSel === item.codigo ? 'active' : ''}" onclick="seleccionarConfigCliente('${escapeHtml(item.codigo)}')">
-        <strong>${escapeHtml(item.nombre)}</strong>${cfg.configuracionCompleta ? '<span class="badge badge-ok" style="float:right;">Completa</span>' : '<span class="badge badge-warn" style="float:right;">Pendiente</span>'}<br>
-        <span style="font-size:11px;color:var(--muted);">${escapeHtml(item.codigo)} · ${cfg.rutaAsignada || item.zona || 'Sin ruta'}</span>
-      </button>`;
+      const cfg = item.cfg;
+      const route = text(cfg.rutaAsignada);
+      return `<div class="config-client-row ${APP.configClienteSel === item.codigo ? 'active' : ''}">
+        <button type="button" class="config-client-item" data-config-client="${escapeHtml(item.codigo)}" aria-pressed="${APP.configClienteSel === item.codigo}">
+          <strong>${escapeHtml(item.nombre)}</strong><span>${escapeHtml(item.codigo)} · ${route ? escapeHtml(route) : 'Sin ruta asignada'}</span>
+        </button>
+        <label class="config-route-quick"><span>Ruta de ${escapeHtml(item.nombre)}</span><select class="form-control" data-config-route="${escapeHtml(item.codigo)}" ${canAssign ? '' : 'disabled'} aria-label="Ruta de ${escapeHtml(item.nombre)}"><option value="">Sin ruta</option>${routes.map(name => `<option value="${escapeHtml(name)}" ${route === name ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}</select></label>
+      </div>`;
     }).join('') + pendingHelp;
+    list.onclick = event => {
+      const button = event.target.closest('[data-config-client]');
+      if (!button) return;
+      seleccionarConfigCliente(button.dataset.configClient);
+      if (window.matchMedia('(max-width: 900px)').matches) document.getElementById('configEditor')?.scrollIntoView({block:'start',behavior:'smooth'});
+    };
+    list.onchange = event => {
+      const select = event.target.closest('[data-config-route]');
+      if (!select) return;
+      if (!hasPermission('configuracion', 'editar')) { renderConfigClientes(); return; }
+      commitClienteRutaAssignment(select.dataset.configRoute, select.value, 'asignar ruta desde configuración');
+    };
     renderConfigEditor();
     renderConfigAuxSections();
   };
@@ -4132,7 +4160,7 @@
   window.renderConfigEditor = function renderConfigEditorV2() {
     const editor = document.getElementById('configEditor');
     if (!editor) return;
-    const client = APP.planificacion.find(item => item.codigo === APP.configClienteSel) || APP.clientes.find(item => item.codigo === APP.configClienteSel) || (APP.clienteConfig[APP.configClienteSel] ? { codigo: APP.configClienteSel, nombre: APP.clienteConfig[APP.configClienteSel].nombreCliente } : null);
+    const client = getRouteCatalogClients().find(item => item.codigo === APP.configClienteSel) || null;
     if (!client) {
       editor.innerHTML = '<div class="empty-state"><div class="empty-icon">👈</div><p>Selecciona un cliente.</p></div>';
       return;
@@ -4164,10 +4192,11 @@
   };
 
   window.guardarConfigCliente = function guardarConfigClienteV2() {
+    if (!hasPermission('configuracion', 'editar')) return;
     const codigo = APP.configClienteSel;
     if (!codigo) return;
     pushUndoState('guardar configuración de cliente');
-    const client = APP.planificacion.find(item => item.codigo === codigo) || APP.clientes.find(item => item.codigo === codigo) || { nombre: (APP.clienteConfig[codigo] || {}).nombreCliente || '' };
+    const client = getRouteCatalogClients().find(item => item.codigo === codigo) || { nombre: (APP.clienteConfig[codigo] || {}).nombreCliente || '' };
     const rutaAsignada = text(document.getElementById('cfgRuta').value);
     const diasRecepcion = text(document.getElementById('cfgDias').value).split(',').map(part => parseInt(part, 10)).filter(Boolean);
     APP.clienteConfig[codigo] = {
@@ -4195,6 +4224,7 @@
   };
 
   window.limpiarConfigCliente = function limpiarConfigClienteV2() {
+    if (!hasPermission('configuracion', 'editar')) return;
     if (!APP.configClienteSel) return;
     pushUndoState('limpiar configuración de cliente');
     const code = APP.configClienteSel;

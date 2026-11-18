@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const modules = {
-    rutas: { title: 'Gestión de rutas', icon: '↗', description: 'Planifica entregas y sigue la operación de despacho.', views: ['dashboard','calendario','prioridades','incidenciasDespacho','solicitudesAlmacen','importar'] },
+    rutas: { title: 'Gestión de rutas', icon: '↗', description: 'Planifica entregas y sigue la operación de despacho.', views: ['dashboard','calendario','prioridades','incidenciasDespacho','solicitudesAlmacen','configClientes','importar'] },
     inventarios: { title: 'Gestión de inventarios', icon: '▦', description: 'Consulta y concilia los inventarios de Caribetrans y showroom.', views: ['inventario','showroom'] },
     importaciones: { title: 'Gestión de importaciones', icon: '⇥', description: 'Sigue los materiales y la documentación de importación.', views: ['materialesTransito','packingMiami','auditoriaJamaica','eur1'] },
     comercial: { title: 'Comercial', icon: '◈', description: 'Consulta la actividad comercial y el calendario de entregas.', views: ['comercial','calendario'] },
@@ -31,6 +31,10 @@
       const id = button.id.replace(/^nav-/, '');
       button.classList.toggle('module-outside', !window.TMSModuleContains(id));
     });
+    const configLabel = document.querySelector('#nav-configClientes .nav-label');
+    if (configLabel) configLabel.textContent = current === 'rutas' ? 'Clientes y rutas' : 'Configuración';
+    const configTitle = document.querySelector('#configClientes .view-title');
+    if (configTitle) configTitle.textContent = current === 'rutas' ? 'Clientes y rutas' : 'Configuración';
     const importButton = document.getElementById('nav-importar');
     if (importButton) importButton.querySelector('.nav-label').textContent = 'Actualizar datos SAP';
     if (current && !available(modules[current])) {

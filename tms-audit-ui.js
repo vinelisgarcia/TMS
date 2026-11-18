@@ -272,7 +272,7 @@
       if(!code||!name)return toast('Completa el código SAP y el nombre.');
       if(!/^[a-z0-9_.-]+$/i.test(code))return toast('El código SAP debe contener letras, números, puntos o guiones.');
       if(APP.clienteConfig[code])return toast('Ese cliente ya existe. Búscalo en la configuración.');
-      core().pushUndoState('crear configuración de cliente');APP.clienteConfig[code]={...core().getClienteConfigV2(code,name),nombreCliente:name,codigoCliente:code};APP.configClienteSel=code;window.renderConfigClientes();save('Cliente creado. Asigna su ruta y recepción.');
+      core().pushUndoState('crear configuración de cliente');APP.clienteConfig[code]={...core().getClienteConfigV2(code,name),nombreCliente:name,codigoCliente:code};APP.configClienteSel=code;const search=document.getElementById('configSearch'),filter=document.getElementById('configRouteFilter');if(search)search.value='';if(filter)filter.value='';window.renderConfigClientes();save('Cliente creado. Asigna su ruta y recepción.');if(window.matchMedia('(max-width:900px)').matches)document.getElementById('configEditor')?.scrollIntoView({block:'start',behavior:'smooth'});
     }
     if(action==='save-tariffs'){
       if(!can('configuracion'))return;
