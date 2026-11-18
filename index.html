@@ -1586,6 +1586,7 @@ html { -webkit-text-size-adjust: 100%; }
           <input type="text" id="configSearch" class="search-input" placeholder="Buscar cliente o código" oninput="renderConfigClientes()" aria-label="Buscar cliente o código">
           <select id="configRouteFilter" class="form-control" aria-label="Filtrar clientes por ruta" onchange="renderConfigClientes()"><option value="">Todas las rutas</option><option value="__unassigned__">Sin ruta asignada</option></select>
           <button type="button" class="btn btn-outline btn-sm" id="settingsNewClient">Nuevo cliente</button>
+          <button type="button" class="btn btn-outline btn-sm" id="clientReportOpen">Informe ejecutivo</button>
           <input type="file" id="configFile" accept=".xlsx,.xls,.xml,.json" style="display:none" onchange="importarConfigClientes(this.files[0])">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('configFile').click()">Importar configuración</button>
           <button class="btn btn-success btn-sm" onclick="exportarConfigClientes()">Exportar configuración</button>
@@ -4637,7 +4638,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 <script src="./tms-domain.js?v=20261116-invoice-eta"></script>
 <script src="./tms-sync.js?v=20261031-inventory"></script>
 <script src="./warehouse-report-domain.js?v=20261103-executive"></script>
-<script src="./tms-v2.js?v=20261118-compact-client"></script>
+<script src="./tms-v2.js?v=20261118-client-report"></script>
 <script src="./tms-audit-ui.js?v=20261116-invoice-eta"></script>
 <script src="./inventory-domain.js?v=20261110-code-review"></script>
 <script src="./inventory-counts-domain.js?v=20261116-daily-counts"></script>
@@ -4672,7 +4673,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 <link rel="stylesheet" href="./tms-modules.css?v=20261117-sap-responsive">
 <script src="./tms-modules.js?v=20261118-settings-routes"></script>
 <script src="./sap-saved-files.js?v=20261116-sap-saved-files"></script>
-<link rel="stylesheet" href="./tms-settings.css?v=20261118-compact-client">
+<link rel="stylesheet" href="./tms-settings.css?v=20261118-client-report">
 <script src="./tms-settings.js?v=20261118-settings-routes"></script>
+<script src="./client-reports.js?v=20261118-client-report"></script>
 </body>
 </html>

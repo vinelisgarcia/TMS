@@ -2266,6 +2266,25 @@
     }).sort((a, b) => text(a.ruta).localeCompare(text(b.ruta), 'es') || text(a.nombre).localeCompare(text(b.nombre), 'es'));
   }
 
+  window.obtenerInformeClientes = function obtenerInformeClientes() {
+    if (!hasPermission('configuracion', 'ver')) throw new Error('Tu perfil no tiene acceso a la configuración de clientes.');
+    const search = text(document.getElementById('configSearch')?.value).toLowerCase();
+    const route = text(document.getElementById('configRouteFilter')?.value);
+    const rows = getRouteCatalogClients().filter(item =>
+      (!search || [item.codigo, item.nombre, item.razonSocial].some(value => text(value).toLowerCase().includes(search))) &&
+      (!route || (route === '__unassigned__' ? !item.cfg.rutaAsignada : item.cfg.rutaAsignada === route))
+    ).map(item => ({
+      ruta: text(item.cfg.rutaAsignada) || 'Sin ruta asignada', codigo: item.codigo,
+      comercial: item.nombre, razonSocial: item.razonSocial || '', completa: item.complete,
+      dias: (item.cfg.diasRecepcion || []).map(day => ({1:'Lun',2:'Mar',3:'Mié',4:'Jue',5:'Vie',6:'Sáb',7:'Dom'})[day] || String(day)).join(', '),
+      horario: text(item.cfg.horarioAlmacen), contacto: text(item.cfg.contacto),
+      condiciones: text(item.cfg.condicionesEspeciales), observaciones: text(item.cfg.observaciones),
+      camion: text(item.cfg.camionPermitido),
+      restricciones: [item.cfg.noMiercoles ? 'No miércoles' : '', item.cfg.noUltimaSemana ? 'No última semana del mes' : ''].filter(Boolean).join('; ')
+    }));
+    return { rows, search, route: route === '__unassigned__' ? 'Sin ruta asignada' : route || 'Todas las rutas', at: new Date().toISOString(), author: text(APP.currentUserProfile?.nombre || APP.currentUserProfile?.email) || 'Usuario' };
+  };
+
   function getRouteAssignmentOptions() {
     const names = uniqueTexts([
       ...(APP.routeConfigs || []).map(route => route.nombre || route.zona),

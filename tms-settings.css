@@ -73,3 +73,39 @@
 }
 
 #configClientes .config-editor-meta{margin:3px 0 14px;color:var(--muted);font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+#clientReportOpen{white-space:normal}
+#clientReportDialog[open]{position:fixed;inset:0;margin:auto;width:min(780px,calc(100% - 28px));max-height:calc(100dvh - 28px);overflow:auto;padding:0;border:1px solid var(--border);border-radius:20px;background:var(--surface);color:var(--text);box-shadow:0 24px 80px #0d223855}
+#clientReportDialog::backdrop{background:#0d1f32aa;backdrop-filter:blur(5px)}
+#clientReportDialog>header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--border)}
+#clientReportDialog>header h2{margin:0;font-size:19px}
+#clientReportDialog>header button{width:38px;height:38px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:23px;cursor:pointer}
+#clientReportDialog .client-report-status{margin:0;padding:0 22px;color:var(--muted);font-size:12px}
+#clientReportDialog .client-report-status:not(:empty){padding-top:12px}
+#clientReportDialog .client-report-preview{margin:18px 22px;border:1px solid #dae5e9;border-radius:12px;overflow:hidden;background:#fff;color:#17384c}
+#clientReportDialog .client-report-brand{display:flex;justify-content:space-between;gap:10px;padding:14px 18px;background:#17384c;color:white;font-size:11px;font-weight:700;letter-spacing:.05em}
+#clientReportDialog .client-report-brand span{font-size:10px;opacity:.85}
+#clientReportDialog .client-report-inner{padding:20px}
+#clientReportDialog .client-report-eyebrow{margin:0;color:#087f8c;font-size:10px;font-weight:800;letter-spacing:.12em}
+#clientReportDialog .client-report-inner h3{margin:7px 0;font-size:22px;color:#17384c}
+#clientReportDialog .client-report-inner>p{font-size:12px;line-height:1.5;color:#627b8a;overflow-wrap:anywhere}
+#clientReportDialog .client-report-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:18px 0}
+#clientReportDialog .client-report-metrics>div{display:grid;gap:4px;padding:12px;border-radius:9px;background:#f0f6f8;color:#17384c}
+#clientReportDialog .client-report-metrics strong{font-size:21px}
+#clientReportDialog .client-report-metrics span{font-size:11px;color:#5a7889}
+#clientReportDialog .client-report-inner h4{margin:18px 0 8px;font-size:14px}
+#clientReportDialog .client-report-table{overflow:auto}
+#clientReportDialog table{width:100%;border-collapse:collapse;font-size:12px}
+#clientReportDialog th,#clientReportDialog td{padding:9px;border-bottom:1px solid #e6eef1;text-align:left;overflow-wrap:anywhere}
+#clientReportDialog th{background:#eaf4f5;color:#246674}
+#clientReportDialog .client-report-caption{margin-top:16px}
+#clientReportDialog>footer{display:flex;justify-content:flex-end;gap:8px;padding:0 22px 20px}
+@media(max-width:600px){
+ #clientReportDialog>header{padding:14px 16px}
+ #clientReportDialog .client-report-preview{margin:12px}
+ #clientReportDialog .client-report-inner{padding:15px}
+ #clientReportDialog .client-report-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #clientReportDialog>footer{padding:0 12px 16px}
+ #clientReportDialog>footer .btn{flex:1;min-width:0}
+}
+
+@media(max-width:900px){#configClientes .settings-client-toolbar #clientReportOpen{grid-column:1 / -1}}
