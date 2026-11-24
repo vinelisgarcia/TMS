@@ -1,7 +1,18 @@
 (function(root,factory){const api=factory(root);if(typeof module==='object'&&module.exports)module.exports=api;else root.InventoryDailyExcel=api;})(typeof globalThis==='object'?globalThis:this,function(root){
  'use strict';
  const headers=['Fecha de conteo','Referencia','Descripción','Ubicación prevista','Ubicación contada','Unidad','Cantidad física','Contado por','Observaciones','ID de fila'];
+ function compactWorkbook(ExcelJS,template){
+  const book=new ExcelJS.Workbook();book.creator='Hospitality by Alvarez · TMS';book.title='Conteo diario del showroom';book.created=new Date(template.generatedAt);
+  const sheet=book.addWorksheet('Conteo',{views:[{state:'frozen',ySplit:1,showGridLines:false}],pageSetup:{orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1}});
+  sheet.columns=[{header:'Código del material',key:'code',width:32},{header:'Cantidad contada',key:'quantity',width:25}];
+  sheet.getRow(1).height=32;sheet.getRow(1).eachCell(cell=>{cell.font={name:'Arial',size:11,bold:true,color:{argb:'FFFFFFFF'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF183F66'}};cell.alignment={vertical:'middle',wrapText:true};});
+  for(const item of template.rows){const row=sheet.addRow({code:item.code});row.height=25;row.getCell(1).numFmt='@';row.getCell(2).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFF4D5'}};row.getCell(2).dataValidation={type:'decimal',operator:'greaterThanOrEqual',allowBlank:true,showErrorMessage:true,error:'Indica una cantidad mayor o igual que cero.',formulae:[0]};}
+  sheet.autoFilter={from:'A1',to:'B'+(template.rows.length+1)};sheet.pageSetup.printArea='A1:B'+(template.rows.length+1);sheet.pageSetup.printTitlesRow='1:1';
+  const meta=book.addWorksheet('_TMS',{state:'veryHidden'});meta.addRows([['TMS_DAILY_COUNT',2],['kind',template.kind],['templateId',template.templateId],['cycleId',template.cycleId],['sourcePair',template.sourcePair],['generatedAt',template.generatedAt],['day',template.day],['ID','Referencia','Ubicación prevista','Unidad'],...template.rows.map(row=>[row.id,row.code,row.expectedLocation||null,row.unit])]);
+  return book;
+ }
  function createWorkbook(ExcelJS,template){
+  if(template.version===2&&template.kind==='showroom')return compactWorkbook(ExcelJS,template);
   const book=new ExcelJS.Workbook(),blue='FF183F66',ink='FF23364B',amber='FFFFF4D5';book.creator='Hospitality by Alvarez · TMS';book.title='Plantilla de conteo físico diario';book.created=new Date(template.generatedAt);
   const sheet=book.addWorksheet('Conteo',{views:[{state:'frozen',xSplit:2,ySplit:7,showGridLines:false}],pageSetup:{orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:.25,right:.25,top:.4,bottom:.4,header:.15,footer:.15}},properties:{tabColor:{argb:blue},defaultRowHeight:26}});
   sheet.columns=[16,20,42,22,22,12,18,25,38,40].map((width,index)=>({width,hidden:index===9}));
@@ -26,10 +37,10 @@
  }
  function decode(book,XLSX){
   const sheet=book.Sheets.Conteo,meta=book.Sheets._TMS;if(!sheet||!meta)throw Error('Usa la plantilla de conteo diario descargada desde el TMS.');
-  const matrix=XLSX.utils.sheet_to_json(meta,{header:1,raw:true,defval:null,range:0});if(matrix[0]?.[0]!=='TMS_DAILY_COUNT'||matrix[0]?.[1]!==1)throw Error('Formato de plantilla no reconocido.');
-  const values=Object.fromEntries(matrix.slice(1,6).map(row=>[row[0],row[1]]));
-  const template={version:1,...values,rows:matrix.slice(7).filter(row=>row[0]).map(row=>({id:String(row[0]),code:String(row[1]??''),expectedLocation:String(row[2]??''),unit:String(row[3]??'')}))};
-  const formulaRows=[];for(const [address,cell]of Object.entries(sheet))if(!address.startsWith('!')&&cell.f&&XLSX.utils.decode_cell(address).c===6)formulaRows.push(XLSX.utils.decode_cell(address).r+1);
+  const matrix=XLSX.utils.sheet_to_json(meta,{header:1,raw:true,defval:null,range:0});if(matrix[0]?.[0]!=='TMS_DAILY_COUNT'||![1,2].includes(matrix[0]?.[1]))throw Error('Formato de plantilla no reconocido.');
+  const version=matrix[0][1],values=Object.fromEntries(matrix.slice(1,version===2?7:6).map(row=>[row[0],row[1]]));
+  const template={version,...values,rows:matrix.slice(version===2?8:7).filter(row=>row[0]).map(row=>({id:String(row[0]),code:String(row[1]??''),expectedLocation:String(row[2]??''),unit:String(row[3]??'')}))};
+  const formulaRows=[];for(const [address,cell]of Object.entries(sheet))if(!address.startsWith('!')&&cell.f&&XLSX.utils.decode_cell(address).c===(version===2?1:6))formulaRows.push(XLSX.utils.decode_cell(address).r+1);
   return {template,matrix:XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:null,range:0}),options:{formulaRows,date1904:!!book.Workbook?.WBProps?.date1904}};
  }
  return {createWorkbook,decode,load:()=>root.ShowroomExecutiveExcel.load()};

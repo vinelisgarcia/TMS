@@ -11,9 +11,9 @@
   for(const item of selected){
    if(!item.unitConflict)api.addItem(next,item.code,{catalogItem:item});
    const frozen=cycle.items[item.code],bins=frozen?.expectedLocations||(item.locations.length?item.locations:[{location:''}]);
-   for(const bin of bins)rows.push({id:templateId+'-'+(rows.length+1),code:item.code,description:frozen?.description||item.description||'',expectedLocation:bin.location||'',unit:frozen?.unit||item.unit||'UND',unitConflict:!!item.unitConflict});
+   for(const bin of (kind==='showroom' ? [bins[0]] : bins))rows.push({id:templateId+'-'+(rows.length+1),code:item.code,description:frozen?.description||item.description||'',expectedLocation:bin.location||'',unit:frozen?.unit||item.unit||'UND',unitConflict:!!item.unitConflict});
   }
-  return {data:next,template:{version:1,kind,templateId,cycleId:cycle.id,sourcePair:cycle.sourcePair,sourceDates:cycle.sourceDates,day,generatedAt:now,rows}};
+  return {data:next,template:{version:kind==='showroom'?2:1,kind,templateId,cycleId:cycle.id,sourcePair:cycle.sourcePair,sourceDates:cycle.sourceDates,day,generatedAt:now,rows}};
  }
  function excelDay(value,date1904=false){
   if(value instanceof Date)return C.validateCountDay(value.toISOString().slice(0,10));
@@ -21,7 +21,25 @@
   const text=clean(value),match=text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);return C.validateCountDay(match?match[3]+'-'+match[2].padStart(2,'0')+'-'+match[1].padStart(2,'0'):text);
  }
  function parse(template,matrix,{date1904=false,formulaRows=[]}={}){
-  domain(template.kind);if(template.version!==1||!template.templateId||!template.cycleId||!Array.isArray(template.rows))throw Error('La plantilla no es válida. Descárgala desde el TMS.');
+  domain(template.kind);if(![1,2].includes(template.version)||(template.version===2&&template.kind!=='showroom')||!template.templateId||!template.cycleId||!Array.isArray(template.rows))throw Error('La plantilla no es válida. Descárgala desde el TMS.');
+  if(template.version===2){
+   const lookup=new Map(template.rows.map(row=>[row.code,row])),seen=new Set(),rows=[],errors=[];let blank=0;
+   const countedOn=C.validateCountDay(template.day);
+   matrix.slice(1).forEach((values,index)=>{
+    const row=index+2,code=clean(values[0]),value=values[1];
+    if(clean(value)===''){if(formulaRows.includes(row))errors.push({row,message:'Escribe la cantidad como número, sin fórmula.'});else blank++;return;}
+    try{
+     if(formulaRows.includes(row))throw Error('Escribe la cantidad como número, sin fórmula.');
+     const original=lookup.get(code);if(!original)throw Error('Código no incluido en esta plantilla.');
+     if(seen.has(code))throw Error('El código está repetido. Indica un único total por material.');seen.add(code);
+     const quantity=D.parseNumber(value,'auto');if(quantity===null||quantity<0)throw Error('La cantidad debe ser mayor o igual que cero.');
+     rows.push({row,code:original.code,expectedLocation:original.expectedLocation,actualLocation:'',quantity,countedOn,countedBy:'',note:'',totalForArticle:true,importKey:JSON.stringify([template.templateId,original.id,countedOn]),rowId:original.id});
+    }catch(error){errors.push({row,message:error.message});}
+   });
+   if(errors.length){const error=Error('Revisa '+errors.length+' filas antes de cargar el conteo.');error.invalidRows=errors;throw error;}
+   if(!rows.length)throw Error('No hay cantidades físicas registradas. Las celdas vacías no cuentan como cero.');
+   return {rows,blank,days:[countedOn]};
+  }
   const lookup=new Map(template.rows.map(row=>[row.id,row])),seen=new Set(),rows=[],errors=[];let blank=0;
   matrix.slice(7).forEach((values,index)=>{
    const row=index+8;if(clean(values[6])===''){if(formulaRows.includes(row))errors.push({row,message:'Escribe la cantidad física como número, sin fórmula.'});else blank++;return;}
@@ -40,7 +58,7 @@
   if(!rows.length)throw Error('No hay cantidades físicas registradas. Las celdas vacías no cuentan como cero.');
   return {rows,blank,days:[...new Set(rows.map(row=>row.countedOn))].sort()};
  }
- const same=(record,row)=>['code','expectedLocation','actualLocation','quantity','countedOn','countedBy','note'].every(key=>(record[key]??'')===(row[key]??''));
+ const same=(record,row)=>(!row.countedBy||record.countedBy===row.countedBy)&&['code','expectedLocation','actualLocation','quantity','countedOn','note','totalForArticle'].every(key=>(record[key]??'')===(row[key]??''));
  function apply(data,template,rows,{kind,user='',fileName='',now=new Date().toISOString()}={}){
   const api=domain(kind);if(template.kind!==kind)throw Error('La plantilla corresponde a otro inventario.');
   const next=clone(data),cycle=api.active(next);
@@ -50,7 +68,7 @@
    const old=cycle.records.find(record=>record.importKey===row.importKey);
    if(old){if(!old.voided&&same(old,row)){skipped++;continue;}throw Error('Fila '+row.row+': este registro ya fue cargado y cambió. Corrígelo desde Resultados y bitácora.');}
    if(!cycle.items[row.code])throw Error('Fila '+row.row+': el artículo no tiene una referencia de conteo válida. Revisa sus unidades.');
-   try{const record=api.recordCount(next,{...row,confirmed:true,unconfirmed:!row.actualLocation},{user,now});Object.assign(record,{importKey:row.importKey,templateId:template.templateId,templateRowId:row.rowId,sourceFile:fileName});inserted++;}
+   try{const record=api.recordCount(next,{...row,confirmed:true,unconfirmed:!row.actualLocation},{user,now});Object.assign(record,{...(row.totalForArticle?{totalForArticle:true}:{}),importKey:row.importKey,templateId:template.templateId,templateRowId:row.rowId,sourceFile:fileName});inserted++;}
    catch(error){throw Error('Fila '+row.row+': '+error.message);}
   }
   if(inserted){(cycle.imports||=[]).push({id:id(),templateId:template.templateId,fileName,inserted,skipped,days:[...new Set(rows.map(row=>row.countedOn))].sort(),at:now,by:user});Object.assign(data,next);}

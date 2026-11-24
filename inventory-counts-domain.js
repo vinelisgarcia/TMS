@@ -89,12 +89,14 @@
   }
   function recordsFor(cycle,code){
     const rows=cycle.records.filter(record=>record.code===code&&!record.voided),latest=new Map();
+    const totals=rows.filter(row=>row.totalForArticle).sort((a,b)=>recordDay(b).localeCompare(recordDay(a))||String(b.at||'').localeCompare(String(a.at||'')));
+    if(totals.length){const total=totals[0],later=rows.filter(row=>!row.totalForArticle&&(recordDay(row)>recordDay(total)||(recordDay(row)===recordDay(total)&&String(row.at||'')>String(total.at||''))));if(!later.length)return [total];rows.splice(0,rows.length,...later);}
     for(const row of rows){const day=recordDay(row),bin=row.expectedLocation||'';if(!latest.has(bin)||day>latest.get(bin))latest.set(bin,day);}
     return rows.filter(row=>recordDay(row)===latest.get(row.expectedLocation||''));
   }
   function itemReport(cycle,code){
     const item=cycle.items[code],records=recordsFor(cycle,code);
-    const missing=item.expectedLocations.filter(bin=>!records.some(record=>record.expectedLocation===bin.location)).map(bin=>bin.location||'Artículo sin contar');
+    const missing=item.expectedLocations.filter(bin=>!records.some(record=>record.totalForArticle||record.expectedLocation===bin.location)).map(bin=>bin.location||'Artículo sin contar');
     const complete=records.length>0&&missing.length===0;
     const quantity=records.length?round(records.reduce((sum,record)=>sum+record.quantity,0)):null;
     const referenceStock=item.stockCT??item.stockAD??item.masterStock??null;
@@ -111,7 +113,7 @@
     if(!cycle)return [];
     return Object.values(cycle.items).flatMap(item=>{
       const records=recordsFor(cycle,item.code);
-      return item.expectedLocations.map(bin=>{const counted=records.filter(record=>record.expectedLocation===bin.location);return {code:item.code,description:item.description,expectedLocation:bin.location,required:item.required,reasons:item.reasons,complete:counted.length>0,countedOn:counted.map(recordDay).sort().at(-1)||''};});
+      return item.expectedLocations.map(bin=>{const counted=records.filter(record=>!record.totalForArticle&&record.expectedLocation===bin.location);return {code:item.code,description:item.description,expectedLocation:bin.location,required:item.required,reasons:item.reasons,complete:counted.length>0,countedOn:counted.map(recordDay).sort().at(-1)||''};});
     }).sort((a,b)=>Number(b.required)-Number(a.required)||a.code.localeCompare(b.code,undefined,{numeric:true})||(a.expectedLocation||'\uffff').localeCompare(b.expectedLocation||'\uffff'));
   }
   function recordCount(data,input,options={}){
