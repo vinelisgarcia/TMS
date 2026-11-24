@@ -21,7 +21,7 @@
   }
   function createWorkbook(ExcelJS,report){
     const rows=report.rows,book=new ExcelJS.Workbook();
-    book.creator='TMS · Álvarez Dominicana';book.title='Informe ejecutivo · Inventario del showroom';book.created=new Date(report.at);
+    book.creator='TMS · Álvarez Dominicana';book.title='Informe · Inventario del showroom';book.created=new Date(report.at);
     const sheet=book.addWorksheet('Conciliacion',{views:[{state:'frozen',ySplit:12,showGridLines:false}],pageSetup:{paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:.3,right:.3,top:.4,bottom:.4,header:.15,footer:.2}},properties:{tabColor:{argb:ink}}});
     sheet.columns=[18,48,16,27,18,16].map(width=>({width}));sheet.properties.defaultRowHeight=23;
     const fill=color=>({type:'pattern',pattern:'solid',fgColor:{argb:argb(color)}}),font={name:'Arial',size:11,color:{argb:ink}};
@@ -32,7 +32,7 @@
     sheet.getRow(1).height=8;
     block(2,1,6,'Inventario del showroom',{size:17,bold:true});sheet.getRow(2).height=32;
     const generated=new Date(report.at).toLocaleString('es-DO',{timeZone:'America/Santo_Domingo',dateStyle:'short',timeStyle:'short'});
-    line(3,'ÁLVAREZ DOMINICANA · INFORME EJECUTIVO   |   Generado: '+generated);
+    line(3,'ÁLVAREZ DOMINICANA · INFORME   |   Generado: '+generated);
     line(4,'Corte virtual: '+date(report.virtualAsOf)+'   ·   Corte físico: '+date(report.physicalAsOf));
     sheet.getRow(4).getCell(1).border={bottom:{style:'thin',color:{argb:'FFB9CAD9'}}};
     line(5,'Alcance: '+report.scope+' · '+rows.length+' de '+report.totalRows+' referencias'+(report.search?' · Búsqueda: '+report.search:''));

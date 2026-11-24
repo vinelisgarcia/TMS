@@ -193,7 +193,7 @@
     Object.entries(sheet).forEach(([key,cell])=>{if(key[0]!=='!'&&cell.t==='n')cell.z=/^H/.test(key)?'#,##0.000000':/^[G-J]/.test(key)?'#,##0.00':'#,##0.###';});
     XLSX.utils.book_append_sheet(book,sheet,'Conciliacion');
     const sources=[['Fuente','Archivo','Fecha corte','Filas','Materiales','Cantidad','Valor total DOP','Huella de contenido','Tipos incluidos','Filas excluidas'],...['ct','ad'].map(key=>{const source=data.sources[key];return [key.toUpperCase(),source.fileName,source.asOf,source.acceptedRowCount,source.materials.length,source.totals.quantity,source.totals.totalValueDop,source.semanticHash,(source.stockTypes||[]).join(', '),source.filteredRows||0];}),[],['Método','Costo ponderado = valor total AD consolidado / cantidad AD consolidada. Impacto absoluto = abs(AD - CT) × costo ponderado.'],['Sin valoración','Una celda vacía de costo/impacto indica que no se puede valorar con AD; no representa costo cero.'],['Alcance','Mercancía de AD depositada en CT.'],['Fechas',result.issues.join(' ')||'Fechas de corte iguales.']];
-    XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(sources),'Fuentes y metodo');window.InventoryTrace?.addSheets(book,data,'',new Set(filteredRows().map(row=>row.code)));XLSX.writeFile(book,'TMS_Conciliacion_CT_AD_'+data.sources.ct.asOf+'.xlsx');
+    XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(sources),'Fuentes y metodo');window.InventoryTrace?.addSheets(book,data,'',new Set(filteredRows().map(row=>row.code)));XLSX.writeFile(book,'TMS Conciliacion CT AD '+data.sources.ct.asOf+'.xlsx');
   }
   document.addEventListener('change',event=>{
     const target=event.target;

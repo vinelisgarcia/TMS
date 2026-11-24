@@ -1982,7 +1982,7 @@
       modal = document.createElement('dialog'); modal.id = 'calendarDayNoteDialog'; modal.className = 'calendar-dispatch-dialog';
       modal.setAttribute('aria-labelledby','calendarDayNoteTitle'); document.body.appendChild(modal);
     }
-    modal.innerHTML = `<h2 id="calendarDayNoteTitle">Nota del calendario · ${escapeHtml(fecha)}</h2><label for="calendarDayNoteText">Nota pública</label><textarea id="calendarDayNoteText" class="form-control" rows="5"></textarea><p>Deja el texto vacío para eliminar una nota existente.</p><div class="modal-actions"><button class="btn btn-outline" data-day-report>Informe ejecutivo</button><button class="btn btn-outline" data-day-cancel>Cancelar</button><button class="btn btn-primary" data-day-save>Guardar</button></div>`;
+    modal.innerHTML = `<h2 id="calendarDayNoteTitle">Nota del calendario · ${escapeHtml(fecha)}</h2><label for="calendarDayNoteText">Nota pública</label><textarea id="calendarDayNoteText" class="form-control" rows="5"></textarea><p>Deja el texto vacío para eliminar una nota existente.</p><div class="modal-actions"><button class="btn btn-outline" data-day-report>Informe</button><button class="btn btn-outline" data-day-cancel>Cancelar</button><button class="btn btn-primary" data-day-save>Guardar</button></div>`;
     const input = document.getElementById('calendarDayNoteText'); input.value = value;
     modal.onclose = () => { if (!modal.open) { unsubmittedDrafts.delete(input); modal.replaceChildren(); } };
     modal.querySelector('[data-day-cancel]').onclick = () => modal.close();
@@ -2423,7 +2423,7 @@
     if (!rows.length) return alert('No hay clientes para exportar.');
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Rutas clientes');
-    XLSX.writeFile(wb, 'TMS_Rutas_Clientes.xlsx');
+    XLSX.writeFile(wb, 'TMS Rutas Clientes.xlsx');
   };
 
   window.renderRutas = function renderRutasV2() {
@@ -2889,7 +2889,7 @@
   window.exportarCalendarioJSON = function exportarCalendarioJSONV2() {
     if (!APP.lineItems || !APP.lineItems.length) return alert('No hay calendario para exportar.');
     const month = APP.calMeses && APP.calMeses[APP.calMesIdx];
-    const filename = 'TMS_Calendario_' + (month ? month.key : fechaToStr(new Date())) + '.json';
+    const filename = 'TMS Calendario ' + (month ? month.key : fechaToStr(new Date())) + '.json';
     downloadJsonFile(getCalendarJsonPayload(), filename);
   };
 
@@ -3056,7 +3056,7 @@
         pdf.setPage(i);pdf.setFont('helvetica','normal');pdf.setFontSize(8);
         pdf.text('Página '+i+' de '+pdf.internal.getNumberOfPages(),194,289,{align:'right'});
       }
-      downloadPdf(pdf,'TMS_Resumen_Rutas_'+month.key+'.pdf');
+      downloadPdf(pdf,'TMS Resumen Rutas '+month.key+'.pdf');
     } catch(error) {
       console.error('Error exportando resumen de rutas:',error);
       alert('No se pudo exportar el resumen: '+error.message);
@@ -3219,7 +3219,7 @@
     if (!rows.length) return alert('No hay histórico de control diario para exportar.');
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Histórico control');
-    XLSX.writeFile(wb, 'TMS_Historico_Control_Diario.xlsx');
+    XLSX.writeFile(wb, 'TMS Historico Control Diario.xlsx');
   };
 
   function matchWarehouseToOrders() {
@@ -4053,7 +4053,7 @@
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Vista Comercial');
-    XLSX.writeFile(wb, 'TMS_Vista_Comercial.xlsx');
+    XLSX.writeFile(wb, 'TMS Vista Comercial.xlsx');
   };
 
   window.exportarComercialPDF = async function exportarComercialPDFV2() {
@@ -4110,7 +4110,7 @@
         pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', margin, position, imgW, imgH);
         remaining -= pageImgH;
       }
-      downloadPdf(pdf, 'TMS_Vista_Comercial.pdf');
+      downloadPdf(pdf, 'TMS Vista Comercial.pdf');
     } catch (error) {
       console.error('Error exportando vista comercial:', error);
       alert('No se pudo exportar la vista comercial: ' + error.message);
@@ -4297,7 +4297,7 @@
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Configuracion');
-    XLSX.writeFile(wb, 'TMS_Configuracion.xlsx');
+    XLSX.writeFile(wb, 'TMS Configuracion.xlsx');
   };
 
   window.importarConfigClientes = function importarConfigClientesV2(file) {
@@ -5140,7 +5140,7 @@
     const wsWarehouse = XLSX.utils.json_to_sheet(APP.solicitudesHistory);
     XLSX.utils.book_append_sheet(wb, wsRoutes, 'Rutas');
     XLSX.utils.book_append_sheet(wb, wsWarehouse, 'Almacen');
-    XLSX.writeFile(wb, 'TMS_Reportes.xlsx');
+    XLSX.writeFile(wb, 'TMS Reportes.xlsx');
   };
 
   window.exportarSolicitudesAlmacenExcel = function exportarSolicitudesAlmacenExcelV2() {
@@ -5163,7 +5163,7 @@
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Solicitudes');
-    XLSX.writeFile(wb, 'TMS_Solicitudes_Almacen.xlsx');
+    XLSX.writeFile(wb, 'TMS Solicitudes Almacen.xlsx');
   };
 
   window.exportarExcelRutas = function exportarExcelRutasV2() {
@@ -5199,14 +5199,14 @@
     if (summaryRows.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Resumen');
     }
-    XLSX.writeFile(wb, 'TMS_Rutas_' + APP.rutaFecha.replace(/\//g, '-') + '.xlsx');
+    XLSX.writeFile(wb, 'TMS Rutas ' + APP.rutaFecha.replace(/\//g, '-') + '.xlsx');
   };
 
   window.exportarAlmacenExcel = function exportarAlmacenExcelV2() {
     const ws = XLSX.utils.json_to_sheet(APP.solicitudesHistory.length ? APP.solicitudesHistory : APP.solicitudesAlmacen);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Almacen');
-    XLSX.writeFile(wb, 'TMS_Almacen.xlsx');
+    XLSX.writeFile(wb, 'TMS Almacen.xlsx');
   };
 
   window.exportarPlanVsRealExcel = function exportarPlanVsRealExcelV2() {
@@ -5225,7 +5225,7 @@
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'PlanVsReal');
-    XLSX.writeFile(wb, 'TMS_Plan_vs_Real.xlsx');
+    XLSX.writeFile(wb, 'TMS Plan vs Real.xlsx');
   };
 
   const originalActualizarDashboard = window.actualizarDashboard;
@@ -5849,7 +5849,7 @@
           <header><span class="sap-tile-icon" aria-hidden="true">03</span><div><h2>Solicitudes a almacén</h2><p>Solicitado y preparado</p></div></header>
           <div id="importTableSolStatus" class="sap-file-status" role="status">Sin archivo</div>
           <div class="sap-warehouse-actions"><button type="button" class="btn btn-primary" data-sap-upload="warehouse-plan" onclick="document.getElementById('solicitudesPlanFileImport').click()">Cargar solicitudes</button><button type="button" class="btn btn-outline" data-sap-upload="warehouse-control" onclick="document.getElementById('solicitudesControlFileImport').click()">Cargar control</button></div>
-          <small id="importTableNewCount" class="sap-import-count"></small><button type="button" class="btn btn-outline warehouse-report-trigger" data-warehouse-report="all" onclick="TMSWarehouseReports.open('all')" disabled>Informe ejecutivo</button>
+          <small id="importTableNewCount" class="sap-import-count"></small><button type="button" class="btn btn-outline warehouse-report-trigger" data-warehouse-report="all" onclick="TMSWarehouseReports.open('all')" disabled>Informe</button>
         </section>
       </div>
       <details class="sap-import-help"><summary>Ayuda de importación</summary><p>Programación: archivo SAP de pedidos de cliente. Control diario: cierre SAP; requiere una programación cargada. Almacén: solicitudes y su control de preparación.</p><p>Cada carga actualiza su documento. Revisa el archivo antes de reemplazarlo.</p></details>`;
@@ -7410,7 +7410,7 @@
     ensureTransitMaterials();
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.transitMaterials.map(item => ({ Factura: item.factura, ETA: item.eta, Material: item.codigoMaterial, Descripcion: item.descripcion, Cantidad: item.cantidad, Cliente: item.cliente, Estado:({active:'En tránsito',received:'Recibido',accounted:'Contabilizado'})[TMSDomain.transitState(item)], 'Fecha recepción':item.receivedAt || '', 'Recibido por':item.receivedBy || '', 'Fecha contabilización SAP':item.accountedAt || '', 'Contabilizado por':item.accountedBy || '' }))), 'Materiales transito');
-    XLSX.writeFile(wb, 'TMS_Materiales_Transito.xlsx');
+    XLSX.writeFile(wb, 'TMS Materiales Transito.xlsx');
   };
 
 
@@ -8154,7 +8154,7 @@
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Importaciones');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{ Reporte: buildImportDailyReport() }]), 'Reporte diario');
-    XLSX.writeFile(wb, 'TMS_Importaciones.xlsx');
+    XLSX.writeFile(wb, 'TMS Importaciones.xlsx');
   };
 
 
@@ -8657,7 +8657,7 @@
     }))), 'Prioridades');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(priorityDateRange(APP.prioritiesDate || todayIsoDate()).map(getPriorityMetricsForDate)), 'Resumen');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(APP.prioritySpainTopics.map(item => ({ Tema: item.titulo, Notas: item.notas || '', Estado: item.done ? 'Cerrado' : 'Pendiente', Creado: item.createdAt || '', Cerrado: item.completedAt || '' }))), 'Temas Espana');
-    XLSX.writeFile(wb, 'TMS_Prioridades_' + (APP.prioritiesDate || todayIsoDate()) + '.xlsx');
+    XLSX.writeFile(wb, 'TMS Prioridades ' + (APP.prioritiesDate || todayIsoDate()) + '.xlsx');
   };
 
   window.exportarPrioridadesPdf = async function exportarPrioridadesPdf() {
@@ -8671,7 +8671,7 @@
       const html2pdfLib = await ensureHtml2Pdf();
       await html2pdfLib().set({
         margin: 8,
-        filename: `TMS_Prioridades_${period.from}_a_${period.to}.pdf`,
+        filename: `TMS Prioridades ${period.from} a ${period.to}.pdf`,
         html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       }).from(stage.firstElementChild || stage).save();
@@ -8992,7 +8992,7 @@
     }))), 'Incidencias');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(analysis.byType), 'Por tipo');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(analysis.timeline), 'Tendencia');
-    XLSX.writeFile(wb, `TMS_Incidencias_Despacho_${analysis.period.from}_a_${analysis.period.to}.xlsx`);
+    XLSX.writeFile(wb, `TMS Incidencias Despacho ${analysis.period.from} a ${analysis.period.to}.xlsx`);
   };
 
   window.exportarIncidenciasDespachoPdf = async function exportarIncidenciasDespachoPdf() {
@@ -9005,7 +9005,7 @@
       const html2pdfLib = await ensureHtml2Pdf();
       await html2pdfLib().set({
         margin: 8,
-        filename: `TMS_Incidencias_Despacho_${analysis.period.from}_a_${analysis.period.to}.pdf`,
+        filename: `TMS Incidencias Despacho ${analysis.period.from} a ${analysis.period.to}.pdf`,
         html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       }).from(stage.firstElementChild || stage).save();

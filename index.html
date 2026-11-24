@@ -1057,7 +1057,7 @@ html { -webkit-text-size-adjust: 100%; }
         <option value="importar">Importar SAP</option>
         <option value="dashboard">Dashboard</option>
         <option value="calendario">Calendario</option>
-        <option value="comercial">Vista Comercial</option>
+        <option value="comercial">Vista comercial</option>
         <option value="inventario">Inventario CT / AD</option>
         <option value="showroom">Inventario showroom</option>
         <option value="rutas">Rutas</option>
@@ -1068,10 +1068,10 @@ html { -webkit-text-size-adjust: 100%; }
         <option value="auditoriaSistema" hidden>Actividad del sistema</option>
         <option value="materialesTransito">Materiales en tránsito</option>
         <option value="prioridades">Prioridades</option>
-        <option value="incidenciasDespacho">Incidencias Despacho</option>
-        <option value="configClientes">Config. Clientes</option>
-        <option value="solicitudesAlmacen">Solicitudes Almacén</option>
-        <option value="almacen">Vista Almacén</option>
+        <option value="incidenciasDespacho">Incidencias de despacho</option>
+        <option value="configClientes">Configuración de clientes</option>
+        <option value="solicitudesAlmacen">Solicitudes a almacén</option>
+        <option value="almacen">Vista de almacén</option>
       </select>
     </label>
   </div>
@@ -1088,7 +1088,7 @@ html { -webkit-text-size-adjust: 100%; }
       <span class="nav-icon">📅</span><span class="nav-label">Calendario</span>
     </button>
     <button class="nav-btn" id="nav-comercial" onclick="cambiarVista('comercial',this)">
-      <span class="nav-icon">👔</span><span class="nav-label">Vista Comercial</span>
+      <span class="nav-icon">👔</span><span class="nav-label">Vista comercial</span>
     </button>
     <button class="nav-btn" id="nav-inventario" onclick="cambiarVista('inventario',this)" style="display:none"><span class="nav-icon">▦</span><span class="nav-label">Inventario CT / AD</span></button>
     <button class="nav-btn" id="nav-showroom" onclick="cambiarVista('showroom',this)" style="display:none"><span class="nav-icon">▦</span><span class="nav-label">Inventario showroom</span></button>
@@ -1109,16 +1109,16 @@ html { -webkit-text-size-adjust: 100%; }
       <span class="nav-icon">!</span><span class="nav-label">Prioridades</span>
     </button>
     <button class="nav-btn" id="nav-incidenciasDespacho" onclick="cambiarVista('incidenciasDespacho',this)">
-      <span class="nav-icon">!</span><span class="nav-label">Incidencias Despacho</span>
+      <span class="nav-icon">!</span><span class="nav-label">Incidencias de despacho</span>
     </button>
     <button class="nav-btn" id="nav-configClientes" onclick="cambiarVista('configClientes',this)">
-      <span class="nav-icon">⚙️</span><span class="nav-label">Config. Clientes</span>
+      <span class="nav-icon">⚙️</span><span class="nav-label">Configuración de clientes</span>
     </button>
     <button class="nav-btn" id="nav-solicitudesAlmacen" onclick="cambiarVista('solicitudesAlmacen',this)">
-      <span class="nav-icon">📦</span><span class="nav-label">Solicitudes Almacén</span>
+      <span class="nav-icon">📦</span><span class="nav-label">Solicitudes a almacén</span>
     </button>
     <button class="nav-btn" id="nav-almacen" onclick="cambiarVista('almacen',this)">
-      <span class="nav-icon">🏭</span><span class="nav-label">Vista Almacén</span>
+      <span class="nav-icon">🏭</span><span class="nav-label">Vista de almacén</span>
     </button>
   </nav>
 
@@ -1132,7 +1132,7 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 1: IMPORTAR SAP ========== -->
     <div id="importar" class="view active">
-      <div class="view-title">Importar Reporte SAP</div>
+      <div class="view-title">Importar reporte SAP</div>
 
       <!-- ESTADO ACTUAL DE ARCHIVOS CARGADOS -->
       <div id="sapEstadoBanner" style="display:none;margin-bottom:16px;">
@@ -1463,7 +1463,7 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 3: CALENDARIO ========== -->
     <div id="calendario" class="view">
-      <div class="view-title">Calendario de Entregas</div>
+      <div class="view-title">Calendario de entregas</div>
 
       <div class="card" style="padding:14px 16px;">
         <div class="view-toolbar">
@@ -1501,7 +1501,7 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 6: COMERCIAL ========== -->
     <div id="comercial" class="view">
-      <div class="view-title">Vista Comercial</div>
+      <div class="view-title">Vista comercial</div>
 
       <!-- KPIs -->
       <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
@@ -1548,7 +1548,7 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 7: ALMACÉN ========== -->
     <div id="almacen" class="view">
-      <div class="view-title">Vista Almacén</div>
+      <div class="view-title">Vista de almacén</div>
 
       <div class="stats" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
         <div class="kpi-card"><div class="kpi-label">Total Pedidos</div><div class="kpi-val" id="ak1">—</div></div>
@@ -1588,14 +1588,14 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 9: CONFIGURACIÓN CLIENTES ========== -->
     <div id="configClientes" class="view">
-      <div class="view-title">Configuración de Clientes</div>
+      <div class="view-title">Configuración de clientes</div>
 
       <div class="card" style="padding:14px 16px;">
         <div class="view-toolbar">
           <input type="text" id="configSearch" class="search-input" placeholder="Buscar cliente o código" oninput="renderConfigClientes()" aria-label="Buscar cliente o código">
           <select id="configRouteFilter" class="form-control" aria-label="Filtrar clientes por ruta" onchange="renderConfigClientes()"><option value="">Todas las rutas</option><option value="__unassigned__">Sin ruta asignada</option></select>
           <button type="button" class="btn btn-outline btn-sm" id="settingsNewClient">Nuevo cliente</button>
-          <button type="button" class="btn btn-outline btn-sm" id="clientReportOpen">Informe ejecutivo</button>
+          <button type="button" class="btn btn-outline btn-sm" id="clientReportOpen">Informe</button>
           <input type="file" id="configFile" accept=".xlsx,.xls,.xml,.json" style="display:none" onchange="importarConfigClientes(this.files[0])">
           <button class="btn btn-outline btn-sm" onclick="document.getElementById('configFile').click()">Importar configuración</button>
           <button class="btn btn-success btn-sm" onclick="exportarConfigClientes()">Exportar configuración</button>
@@ -1619,7 +1619,7 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 10: IMPORTACIONES ========== -->
     <div id="importaciones" class="view">
-      <div class="view-title">Control de Importaciones</div>
+      <div class="view-title">Control de importaciones</div>
       <div id="importacionesMount">
         <div class="empty-state"><div class="empty-icon">↗</div><p>Cargando módulo de importaciones...</p></div>
       </div>
@@ -1635,7 +1635,7 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 11: PRIORIDADES ADMIN ========== -->
     <div id="prioridades" class="view">
-      <div class="view-title">Prioridades del Día</div>
+      <div class="view-title">Prioridades del día</div>
       <div id="prioridadesMount">
         <div class="empty-state"><div class="empty-icon">!</div><p>Cargando prioridades...</p></div>
       </div>
@@ -1643,7 +1643,7 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 12: INCIDENCIAS DESPACHO ADMIN ========== -->
     <div id="incidenciasDespacho" class="view">
-      <div class="view-title">Incidencias en Despacho</div>
+      <div class="view-title">Incidencias de despacho</div>
       <div id="incidenciasDespachoMount">
         <div class="empty-state"><div class="empty-icon">!</div><p>Cargando incidencias...</p></div>
       </div>
@@ -1651,7 +1651,7 @@ html { -webkit-text-size-adjust: 100%; }
 
     <!-- ========== VISTA 9: SOLICITUDES A ALMACÉN ========== -->
     <div id="solicitudesAlmacen" class="view">
-      <div class="view-title">Solicitudes a Almacén</div>
+      <div class="view-title">Solicitudes a almacén</div>
 
       <div class="card" style="border-left:4px solid var(--secondary);">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
@@ -1663,7 +1663,7 @@ html { -webkit-text-size-adjust: 100%; }
         </div>
         <div class="view-toolbar">
           <input type="text" id="solSearch" class="search-input" placeholder="Buscar código, cliente o solicitud..." oninput="renderSolicitudesAlmacen()" style="max-width:280px;">
-          <button class="btn btn-outline btn-sm" onclick="TMSWarehouseReports.open('visible')" data-warehouse-report="visible" disabled>Informe ejecutivo · PDF / Excel</button>
+          <button class="btn btn-outline btn-sm" onclick="TMSWarehouseReports.open('visible')" data-warehouse-report="visible" disabled>Informe · PDF / Excel</button>
           <span id="solicitudesResumen" class="badge badge-pend">Sin archivo</span>
         </div>
       </div>
@@ -2743,7 +2743,7 @@ function exportarPlanVsRealExcel() {
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'PlanVsReal');
-  XLSX.writeFile(wb, 'RouteControl_PlanVsReal_'+( APP.controlFecha||'').replace(/\//g,'-')+'.xlsx');
+  XLSX.writeFile(wb, 'RouteControl PlanVsReal '+( APP.controlFecha||'').replace(/\//g,'-')+'.xlsx');
 }
 
 // ===================== DASHBOARD =====================
@@ -3390,7 +3390,7 @@ function exportarCalendarioVisiblePDF() {
   const semana = APP.calSemanas[APP.calSemanaIdx];
   const opt = {
     margin: [8,8,8,8],
-    filename: 'RouteControl_Calendario_' + (semana ? semana.key.replace(/\//g,'-') : 'visible') + '.pdf',
+    filename: 'RouteControl Calendario ' + (semana ? semana.key.replace(/\//g,'-') : 'visible') + '.pdf',
     image: {type:'jpeg',quality:0.95},
     html2canvas: {scale:2,useCORS:true},
     jsPDF: {unit:'mm',format:'a4',orientation:'landscape'}
@@ -3837,7 +3837,7 @@ function descargarPDF() {
   }
   const opt = {
     margin: [10,10,10,10],
-    filename: 'RouteControl_Reporte.pdf',
+    filename: 'RouteControl Reporte.pdf',
     image: {type:'jpeg',quality:0.95},
     html2canvas: {scale:2,useCORS:true},
     jsPDF: {unit:'mm',format:'a4',orientation:'portrait'}
@@ -3866,7 +3866,7 @@ function exportarReporteExcel() {
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
-  XLSX.writeFile(wb, 'RouteControl_Reporte.xlsx');
+  XLSX.writeFile(wb, 'RouteControl Reporte.xlsx');
 }
 
 // ===================== COMERCIAL =====================
@@ -4108,7 +4108,7 @@ function exportarComercialExcel() {
     if (!ws[addr]) continue;
     ws[addr].s = {fill:{fgColor:{rgb:'1B4F72'}},font:{color:{rgb:'FFFFFF'},bold:true}};
   }
-  XLSX.writeFile(wb, 'RouteControl_Comercial.xlsx');
+  XLSX.writeFile(wb, 'RouteControl Comercial.xlsx');
 }
 
 // ===================== CONFIGURACIÓN CLIENTES =====================
@@ -4263,7 +4263,7 @@ function exportarConfigClientes() {
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'ConfigClientes');
-  XLSX.writeFile(wb, 'RouteControl_Config_Clientes.xlsx');
+  XLSX.writeFile(wb, 'RouteControl Config Clientes.xlsx');
 }
 
 function importarConfigClientes(file) {
@@ -4457,7 +4457,7 @@ function exportarSolicitudesAlmacenExcel() {
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Solicitudes');
-  XLSX.writeFile(wb, 'RouteControl_Solicitudes_Almacen.xlsx');
+  XLSX.writeFile(wb, 'RouteControl Solicitudes Almacen.xlsx');
 }
 
 // ===================== ALMACÉN =====================
@@ -4570,7 +4570,7 @@ function exportarAlmacenExcel() {
     alert('No hay datos para exportar.');
     return;
   }
-  XLSX.writeFile(wb, 'RouteControl_Almacen.xlsx');
+  XLSX.writeFile(wb, 'RouteControl Almacen.xlsx');
 }
 
 // ===================== EXPORTAR EXCEL RUTAS =====================
@@ -4602,7 +4602,7 @@ function exportarExcelRutas() {
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
   });
   if (wb.SheetNames.length === 0) { alert('No hay datos en las rutas del día.'); return; }
-  XLSX.writeFile(wb, 'RouteControl_Rutas_' + APP.rutaFecha.replace(/\//g,'-') + '.xlsx');
+  XLSX.writeFile(wb, 'RouteControl Rutas ' + APP.rutaFecha.replace(/\//g,'-') + '.xlsx');
 }
 
 // ===================== GEOCODIFICACIÓN =====================
@@ -4657,43 +4657,43 @@ window.addEventListener('DOMContentLoaded', async () => {
 <script src="./tms-domain.js?v=20261124-transit-speed"></script>
 <script src="./tms-sync.js?v=20261124-transit-speed"></script>
 <script src="./warehouse-report-domain.js?v=20261103-executive"></script>
-<script src="./tms-v2.js?v=20261124-transit-speed"></script>
-<script src="./tms-audit-ui.js?v=20261124-transit-speed"></script>
+<script src="./tms-v2.js?v=20261124-reportes"></script>
+<script src="./tms-audit-ui.js?v=20261124-reportes"></script>
 <script src="./inventory-domain.js?v=20261110-code-review"></script>
 <script src="./inventory-counts-domain.js?v=20261116-daily-counts"></script>
 <script src="./inventory-trace-domain.js?v=20261103-trace"></script>
-<script src="./tms-inventory.js?v=20261103-trace"></script>
-<script src="./inventory-trace.js?v=20261103-trace"></script>
-<script src="./inventory-counts.js?v=20261116-article-comments"></script>
+<script src="./tms-inventory.js?v=20261124-reportes"></script>
+<script src="./inventory-trace.js?v=20261124-reportes"></script>
+<script src="./inventory-counts.js?v=20261124-reportes"></script>
 <script src="./showroom-domain.js?v=20261118-pending-registration"></script>
 <script src="./showroom-counts-domain.js?v=20261118-pending-registration"></script>
-<script src="./showroom-report.js?v=20261110-executive"></script>
-<script src="./showroom-inventory.js?v=20261118-pending-registration"></script>
-<script src="./showroom-counts.js?v=20261118-pending-registration"></script>
+<script src="./showroom-report.js?v=20261124-reportes"></script>
+<script src="./showroom-inventory.js?v=20261124-reportes"></script>
+<script src="./showroom-counts.js?v=20261124-reportes"></script>
 <script src="./inventory-daily-domain.js?v=20261116-daily-counts"></script>
 <script src="./inventory-daily-excel.js?v=20261116-daily-counts"></script>
-<script src="./inventory-daily.js?v=20261116-daily-counts"></script>
+<script src="./inventory-daily.js?v=20261124-reportes"></script>
 <script src="./inventory-comments-domain.js?v=20261116-article-comments"></script>
 <script src="./inventory-comments.js?v=20261116-article-comments"></script>
 <script src="./tms-responsive.js?v=20261118-settings-routes"></script>
 <script src="./tms-reading.js?v=20261102-count-notes"></script>
-<script src="./calendar-reports.js?v=20261102-executive"></script>
-<script src="./warehouse-reports.js?v=20261103-executive"></script>
+<script src="./calendar-reports.js?v=20261124-reportes"></script>
+<script src="./warehouse-reports.js?v=20261124-reportes"></script>
 <script src="./packing-miami-domain.js?v=20261102-miami"></script>
 <script src="./packing-pdf-domain.js?v=20261103-ocr"></script>
 <script src="./packing-pdf-reader.js?v=20261103-ocr"></script>
 <script src="./packing-pdf-ui.js?v=20261103-ocr"></script>
-<script src="./packing-miami.js?v=20261103-ocr"></script>
+<script src="./packing-miami.js?v=20261124-reportes"></script>
 <script src="./activity-audit.js?v=20261116-activity"></script>
 <script src="./eur1-domain.js?v=20261116-eur1"></script>
 <script src="./eur1-excel.js?v=20261116-eur1"></script>
 <script src="./eur1-transit.js?v=20261117-eur-transit"></script>
-<script src="./eur1.js?v=20261117-eur-transit"></script>
+<script src="./eur1.js?v=20261124-reportes"></script>
 <link rel="stylesheet" href="./tms-modules.css?v=20261118-compact-home">
 <script src="./tms-modules.js?v=20261118-compact-home"></script>
 <script src="./sap-saved-files.js?v=20261116-sap-saved-files"></script>
 <link rel="stylesheet" href="./tms-settings.css?v=20261118-client-report">
 <script src="./tms-settings.js?v=20261118-settings-routes"></script>
-<script src="./client-reports.js?v=20261118-client-report"></script>
+<script src="./client-reports.js?v=20261124-reportes"></script>
 </body>
 </html>

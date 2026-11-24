@@ -32,7 +32,7 @@
    const value=readTemplate(kind),prepared=D.plan(app.getState(),app.getReport(),{kind,day:value.day,scope:value.scope,user:app.currentUser()?.email||''});
    const library=await X.load(),book=X.createWorkbook(library,prepared.template),bytes=await book.xlsx.writeBuffer();
    close(kind);await app.edit(state=>Object.assign(state,prepared.data));
-   const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),link=document.createElement('a');link.href=url;link.download='TMS_Conteo_Ciego_'+(kind==='showroom'?'Showroom':'CT_AD')+'_'+prepared.template.day+'.xlsx';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+   const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),link=document.createElement('a');link.href=url;link.download='TMS Conteo Ciego '+(kind==='showroom'?'Showroom':'CT AD')+' - '+prepared.template.day+'.xlsx';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
    notify(kind,'Plantilla descargada. Completa la fecha, cantidad física y responsable; luego usa Subir conteo diario.');
   }finally{working=false;}
  }

@@ -197,8 +197,8 @@
       const context={rows:result.rows,totalRows:result.rows.length,physicalAsOf:data.sources.ct.asOf,virtualAsOf:data.sources.ad.asOf,scope:'Todas las referencias de ambos inventarios',search:'',at:new Date().toISOString()};
       const book=window.ShowroomExecutiveExcel.createWorkbook(window.ExcelJS,context),bytes=await book.xlsx.writeBuffer();guard();
       const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),link=document.createElement('a');
-      link.href=url;link.download='TMS_Conciliacion_Showroom_'+context.physicalAsOf+'.xlsx';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-      notify('Informe ejecutivo completo descargado: '+context.rows.length+' referencias de ambos inventarios, incluidas las que coinciden.');
+      link.href=url;link.download='TMS Conciliacion Showroom '+context.physicalAsOf+'.xlsx';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      notify('Informe completo descargado: '+context.rows.length+' referencias de ambos inventarios, incluidas las que coinciden.');
     }finally{exporting=false;const current=document.querySelector('[data-show-inv="export"]');if(current){current.disabled=!can('ver')||!report().ready;current.textContent='Exportar Excel completo';}}
   }
   function showRegistration(status){

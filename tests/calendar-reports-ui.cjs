@@ -24,8 +24,8 @@ const playwright=require(process.env.TMS_PLAYWRIGHT||'/Users/vinelis/.npm/_npx/e
    await page.locator(kind==='note'?'#notaModal [data-calendar-report]':kind==='move'?'#moveModal [data-calendar-report]':'#calendarDispatchDialog [data-calendar-report]').click();await report.waitFor({state:'visible'});
   }
   async function close(){await report.locator('[data-exec-close]').click();await page.waitForFunction(()=>!document.querySelector('#calendarReportDialog').open&&!document.querySelector('#calendarReportDialog').children.length);}
-  async function download(format,path){const event=page.waitForEvent('download');await report.locator('[data-exec-format="'+format+'"]').click();const file=await event;await file.saveAs(path);assert.equal(await file.failure(),null);await report.locator('[data-exec-format="'+format+'"]').waitFor({state:'visible'});return path;}
-  await open();assert.doesNotMatch(await report.innerText(),/PRIVADO|SECRETO/);assert.match(await report.innerText(),/26,500/);
+  async function download(format,path){const event=page.waitForEvent('download');await report.locator('[data-exec-format="'+format+'"]').click();const file=await event;assert.doesNotMatch(file.suggestedFilename(),/_/);await file.saveAs(path);assert.equal(await file.failure(),null);await report.locator('[data-exec-format="'+format+'"]').waitFor({state:'visible'});return path;}
+  await open();assert.doesNotMatch(await report.innerText(),/informe ejecutivo/i);assert.doesNotMatch(await report.innerText(),/PRIVADO|SECRETO/);assert.match(await report.innerText(),/26,500/);
   await page.route('**/vendor/exceljs-4.4.0.min.js',r=>r.abort());await report.locator('[data-exec-format="xlsx"]').click();await report.locator('.exec-status').filter({hasText:'No se pudo cargar'}).waitFor();assert.equal(await report.locator('[data-exec-format="xlsx"]').isEnabled(),true);await page.unroute('**/vendor/exceljs-4.4.0.min.js');
   await download('xlsx','/tmp/tms-executive-report.xlsx');
   const bytes=[...await fs.readFile('/tmp/tms-executive-report.xlsx')];

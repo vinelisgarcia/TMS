@@ -229,7 +229,7 @@
   function exportCosts(){
     const rows=costRows().map(row=>({Fecha:row.date,Camion:row.truck,Salida:row.trip,Rutas:row.routes.join(', '),Clientes:row.clients.length,TransporteUSD:row.usd,TipoCambio:row.fx,TransporteDOP:row.dop,FacturadoRealDOP:billForTrip(row),Estado:row.executed?'Confirmada':'Prevista',Pendientes:row.issues.join('; ')}));
     if(!rows.length)return toast('No hay salidas para exportar.');
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Transporte');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(preparationRows()),'Preparacion');XLSX.writeFile(wb,'TMS_Costos_Transporte.xlsx');
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Transporte');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(preparationRows()),'Preparacion');XLSX.writeFile(wb,'TMS Costos Transporte.xlsx');
   }
   async function importBilling(file){
     if(!file||!can('configuracion'))return;
