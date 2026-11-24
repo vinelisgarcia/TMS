@@ -2,6 +2,7 @@
 
 Locally hosted, lazy-loaded browser builds. No report data is sent to a third party.
 
+- SheetJS 0.18.5: https://github.com/SheetJS/sheetjs (Apache-2.0), hosted locally for dependable startup.
 - ExcelJS 4.4.0: https://github.com/exceljs/exceljs (MIT)
 - jsPDF 4.2.1: https://github.com/parallax/jsPDF (MIT)
 - jsPDF-AutoTable 5.0.9: https://github.com/simonbengtsson/jsPDF-AutoTable (MIT)

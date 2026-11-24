@@ -6,15 +6,16 @@
 <script>
 // Keep the login screen out of view while an existing session is restored.
 let sessionBootstrapGeneration = 0;
+function withStartupTimeout(promise, message, ms=8000){let timer;return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(message)),ms);})]).finally(()=>clearTimeout(timer));}
 function finishSessionBootstrap(token){if(token !== sessionBootstrapGeneration)return;clearTimeout(window.sessionBootstrapTimer);document.documentElement.classList.remove('auth-initializing');}
 function startSessionBootstrap(){const token=++sessionBootstrapGeneration;document.documentElement.classList.add('auth-initializing');clearTimeout(window.sessionBootstrapTimer);window.sessionBootstrapTimer=setTimeout(()=>{finishSessionBootstrap(token);const error=document.getElementById('loginError');if(error&&document.getElementById('loginScreen')?.style.display!=='none')error.textContent='La conexión está tardando. Puedes volver a intentar el acceso.';},15000);return token;}
 const initialSessionBootstrap = startSessionBootstrap();
 </script>
 <title>TMS — ALVAREZ</title>
 <style>html.auth-initializing #loginScreen{visibility:hidden}#sessionBootstrap{display:none}html.auth-initializing #sessionBootstrap{display:flex;position:fixed;inset:0;z-index:11000;align-items:center;justify-content:center;background:#f3f6f9;color:#29465a}</style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="./vendor/xlsx-0.18.5.min.js"></script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" onload="if(document.querySelector('#dashboard.active') &amp;&amp; typeof window.actualizarDashboard === 'function') window.actualizarDashboard()"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
@@ -2657,7 +2658,7 @@ function renderPlanVsReal() {
   });
 
   const ctxPvR = document.getElementById('chartPvR');
-  if (ctxPvR) {
+  if (ctxPvR && typeof Chart !== 'undefined') {
     if (_chartPvR) { _chartPvR.destroy(); _chartPvR = null; }
     _chartPvR = new Chart(ctxPvR, {
       type: 'bar',
@@ -2784,7 +2785,7 @@ function actualizarDashboard() {
   const labelesDias    = fechas.map(f => { const d=fechaToDate(f); const dias=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']; return dias[d.getDay()]+' '+d.getDate(); });
 
   const ctxDias = document.getElementById('chartDias');
-  if (ctxDias) {
+  if (ctxDias && typeof Chart !== 'undefined') {
     if (_chartDias) { _chartDias.destroy(); _chartDias = null; }
     _chartDias = new Chart(ctxDias, {
       type: 'bar',
@@ -2812,7 +2813,7 @@ function actualizarDashboard() {
   // ── Gráfico 2: Donut por camión ───────────────────────
   const almCount = cl.filter(c=>c.camion==='ALMACEN').length;
   const ctxCam = document.getElementById('chartCamiones');
-  if (ctxCam) {
+  if (ctxCam && typeof Chart !== 'undefined') {
     if (_chartCam) { _chartCam.destroy(); _chartCam = null; }
     _chartCam = new Chart(ctxCam, {
       type: 'doughnut',
@@ -4639,7 +4640,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Restore the session and its shared permissions before revealing the workspace.
   try {
-    const { data, error } = await SB.auth.getSession();
+    const { data, error } = await withStartupTimeout(SB.auth.getSession(), 'La sesión está tardando demasiado. Vuelve a intentarlo.');
     if (error) throw error;
     if (initialSessionBootstrap !== sessionBootstrapGeneration) return;
     if (data.session && data.session.user) {
@@ -4653,47 +4654,47 @@ window.addEventListener('DOMContentLoaded', async () => {
   } finally { finishSessionBootstrap(initialSessionBootstrap); }
 });
 </script>
-<script src="./DATA.js"></script>
-<script src="./tms-domain.js?v=20261124-transit-speed"></script>
-<script src="./tms-sync.js?v=20261124-transit-speed"></script>
-<script src="./warehouse-report-domain.js?v=20261103-executive"></script>
-<script src="./tms-v2.js?v=20261124-reportes"></script>
-<script src="./tms-audit-ui.js?v=20261124-reportes"></script>
-<script src="./inventory-domain.js?v=20261110-code-review"></script>
-<script src="./inventory-counts-domain.js?v=20261124-showroom-import"></script>
-<script src="./inventory-trace-domain.js?v=20261103-trace"></script>
-<script src="./tms-inventory.js?v=20261124-reportes"></script>
-<script src="./inventory-trace.js?v=20261124-reportes"></script>
-<script src="./inventory-counts.js?v=20261124-reportes"></script>
-<script src="./showroom-domain.js?v=20261118-pending-registration"></script>
-<script src="./showroom-counts-domain.js?v=20261118-pending-registration"></script>
-<script src="./showroom-report.js?v=20261124-reportes"></script>
-<script src="./showroom-inventory.js?v=20261124-reportes"></script>
-<script src="./showroom-counts.js?v=20261124-reportes"></script>
-<script src="./inventory-daily-domain.js?v=20261124-showroom-import"></script>
-<script src="./inventory-daily-excel.js?v=20261124-showroom-import"></script>
-<script src="./inventory-daily.js?v=20261124-showroom-import"></script>
-<script src="./inventory-comments-domain.js?v=20261116-article-comments"></script>
-<script src="./inventory-comments.js?v=20261116-article-comments"></script>
-<script src="./tms-responsive.js?v=20261118-settings-routes"></script>
-<script src="./tms-reading.js?v=20261102-count-notes"></script>
-<script src="./calendar-reports.js?v=20261124-reportes"></script>
-<script src="./warehouse-reports.js?v=20261124-reportes"></script>
-<script src="./packing-miami-domain.js?v=20261102-miami"></script>
-<script src="./packing-pdf-domain.js?v=20261103-ocr"></script>
-<script src="./packing-pdf-reader.js?v=20261103-ocr"></script>
-<script src="./packing-pdf-ui.js?v=20261103-ocr"></script>
-<script src="./packing-miami.js?v=20261124-reportes"></script>
-<script src="./activity-audit.js?v=20261116-activity"></script>
-<script src="./eur1-domain.js?v=20261116-eur1"></script>
-<script src="./eur1-excel.js?v=20261116-eur1"></script>
-<script src="./eur1-transit.js?v=20261117-eur-transit"></script>
-<script src="./eur1.js?v=20261124-reportes"></script>
+<script defer src="./DATA.js"></script>
+<script defer src="./tms-domain.js?v=20261124-transit-speed"></script>
+<script defer src="./tms-sync.js?v=20261124-access-fast"></script>
+<script defer src="./warehouse-report-domain.js?v=20261103-executive"></script>
+<script defer src="./tms-v2.js?v=20261124-access-fast"></script>
+<script defer src="./tms-audit-ui.js?v=20261124-reportes"></script>
+<script defer src="./inventory-domain.js?v=20261110-code-review"></script>
+<script defer src="./inventory-counts-domain.js?v=20261124-showroom-import"></script>
+<script defer src="./inventory-trace-domain.js?v=20261103-trace"></script>
+<script defer src="./tms-inventory.js?v=20261124-reportes"></script>
+<script defer src="./inventory-trace.js?v=20261124-reportes"></script>
+<script defer src="./inventory-counts.js?v=20261124-reportes"></script>
+<script defer src="./showroom-domain.js?v=20261118-pending-registration"></script>
+<script defer src="./showroom-counts-domain.js?v=20261118-pending-registration"></script>
+<script defer src="./showroom-report.js?v=20261124-reportes"></script>
+<script defer src="./showroom-inventory.js?v=20261124-reportes"></script>
+<script defer src="./showroom-counts.js?v=20261124-reportes"></script>
+<script defer src="./inventory-daily-domain.js?v=20261124-showroom-import"></script>
+<script defer src="./inventory-daily-excel.js?v=20261124-showroom-import"></script>
+<script defer src="./inventory-daily.js?v=20261124-showroom-import"></script>
+<script defer src="./inventory-comments-domain.js?v=20261116-article-comments"></script>
+<script defer src="./inventory-comments.js?v=20261116-article-comments"></script>
+<script defer src="./tms-responsive.js?v=20261118-settings-routes"></script>
+<script defer src="./tms-reading.js?v=20261102-count-notes"></script>
+<script defer src="./calendar-reports.js?v=20261124-reportes"></script>
+<script defer src="./warehouse-reports.js?v=20261124-reportes"></script>
+<script defer src="./packing-miami-domain.js?v=20261102-miami"></script>
+<script defer src="./packing-pdf-domain.js?v=20261103-ocr"></script>
+<script defer src="./packing-pdf-reader.js?v=20261103-ocr"></script>
+<script defer src="./packing-pdf-ui.js?v=20261103-ocr"></script>
+<script defer src="./packing-miami.js?v=20261124-reportes"></script>
+<script defer src="./activity-audit.js?v=20261116-activity"></script>
+<script defer src="./eur1-domain.js?v=20261116-eur1"></script>
+<script defer src="./eur1-excel.js?v=20261116-eur1"></script>
+<script defer src="./eur1-transit.js?v=20261117-eur-transit"></script>
+<script defer src="./eur1.js?v=20261124-reportes"></script>
 <link rel="stylesheet" href="./tms-modules.css?v=20261118-compact-home">
-<script src="./tms-modules.js?v=20261118-compact-home"></script>
-<script src="./sap-saved-files.js?v=20261116-sap-saved-files"></script>
+<script defer src="./tms-modules.js?v=20261124-access-fast"></script>
+<script defer src="./sap-saved-files.js?v=20261116-sap-saved-files"></script>
 <link rel="stylesheet" href="./tms-settings.css?v=20261118-client-report">
-<script src="./tms-settings.js?v=20261118-settings-routes"></script>
-<script src="./client-reports.js?v=20261124-reportes"></script>
+<script defer src="./tms-settings.js?v=20261118-settings-routes"></script>
+<script defer src="./client-reports.js?v=20261124-reportes"></script>
 </body>
 </html>

@@ -64,10 +64,18 @@
         if (options.onStatus) options.onStatus(getState());
       }
     }
-    async function rpc(name, args) {
+    async function rpc(name, args, timeoutMs) {
       const client = options.getClient();
       if (!client) throw new Error('No hay conexión de Supabase.');
-      const result = await client.rpc(name, args || {});
+      let request = client.rpc(name, args || {}), timer, controller;
+      if (timeoutMs && typeof AbortController !== 'undefined' && typeof request?.abortSignal === 'function') {
+        controller = new AbortController(); request = request.abortSignal(controller.signal);
+      }
+      let result;
+      try {
+        if (!timeoutMs) result = await request;
+        else result = await Promise.race([Promise.resolve(request),new Promise((_,reject)=>{timer=setTimeout(()=>{reject(new Error('La carga de datos tardó demasiado. Revisa la conexión y pulsa Reintentar.'));controller?.abort();},timeoutMs);})]);
+      } finally { if(timer) clearTimeout(timer); }
       if (result.error) throw failure(result.error);
       return result.data;
     }
@@ -180,7 +188,7 @@
       }
       status('loading');
       try {
-        const snapshot = await rpc(getSnapshotRpc, {p_known_revision:null});
+        const snapshot = await rpc(getSnapshotRpc, {p_known_revision:null}, options.startTimeoutMs || 8000);
         if (token !== lifecycle || stopped) return;
         await apply(snapshot, token,!!pending);
         if (pending && pending.userId === user.id && pending.base && pending.payload) {

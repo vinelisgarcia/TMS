@@ -121,6 +121,7 @@ function session(db, options = {}) {
     restoreDrafts: drafts => { draft = !!drafts.length; },
     eventTarget,
     pollMs: 60 * 60 * 1000,
+    startTimeoutMs:options.startTimeoutMs,
   });
   return {
     controller, status, eventTarget, tabStorage,
@@ -418,4 +419,11 @@ test('stop removes channels and event listeners', async () => {
   await tick();
   assert.equal(db.channels.size, 0);
   assert.equal(a.eventTarget.listenerCount(), 0);
+});
+
+test('a stalled initial snapshot times out, ignores the late response, and can retry safely', async t=>{
+ const db=server(),a=session(db,{startTimeoutMs:40});t.after(()=>a.controller.stop());let release;db.setBeforeGet(()=>new Promise(resolve=>{release=resolve;}));
+ await assert.rejects(a.controller.start(user('a')),/tardó demasiado/);assert.equal(a.controller.getState().phase,'offline');assert.equal(a.controller.getState().revision,null);
+ db.db.tables.tms_order_lines[0].metadata.incidencia='LATEST';db.db.revision++;release();await tick();assert.equal(a.controller.getState().revision,null);
+ db.setBeforeGet(null);await a.controller.start(user('a'));assert.equal(a.controller.getState().revision,2);assert.equal(a.tables.tms_order_lines[0].metadata.incidencia,'LATEST');assert.equal(db.saves().length,0);
 });

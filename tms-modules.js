@@ -38,6 +38,9 @@
     const importButton = document.getElementById('nav-importar');
     if (importButton) importButton.querySelector('.nav-label').textContent = 'Actualizar datos SAP';
     if (current && !available(modules[current])) {
+      // Keep the requested module while access is still unverified, so a
+      // delayed connection can open it after permissions arrive.
+      if (APP.currentUserProfile?.rol === 'Sin perfil') { document.body.classList.add('module-home'); back.hidden=true; return; }
       current = null; update(); return;
     }
     if (current && !initialized) {

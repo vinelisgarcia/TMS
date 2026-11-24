@@ -577,6 +577,7 @@
   }
 
   function ensureAdminProfile() {
+    const pendingProfile = APP.currentUserProfile?.rol === 'Sin perfil' && (!cloudSync || cloudSync.getState().revision === null) ? APP.currentUserProfile : null;
     const { userEmail } = getSessionInfo();
     const fallbackEmail = DEFAULT_ADMIN_EMAIL;
     let adminProfile = APP.userProfiles.find(profile => profile.rol === 'Admin');
@@ -603,11 +604,12 @@
       APP.userProfiles.find(profile => text(profile.email).toLowerCase() === text(userEmail).toLowerCase()) ||
       (!userEmail ? adminProfile : null) ||
       null;
+    if (pendingProfile) APP.currentUserProfile = pendingProfile;
   }
 
   function getSessionInfo() {
     const email = (document.getElementById('userEmail') || {}).textContent || '';
-    return { userEmail: email.trim() };
+    return { userEmail: email.split(' · ')[0].trim() };
   }
 
   function getProfileForAuthUser(user) {
@@ -763,7 +765,7 @@
   async function getAuthenticatedUser() {
     const client = getSupabaseClient();
     if (!client || !client.auth) return null;
-    const { data, error } = await client.auth.getUser();
+    const { data, error } = await withStartupTimeout(client.auth.getUser(), 'No se pudo verificar la sesión a tiempo. Reintenta la conexión.');
     if (error) throw error;
     return data && data.user ? data.user : null;
   }
@@ -1079,6 +1081,7 @@
   }
 
   function enforceCurrentViewPermission() {
+    if (APP.currentUserProfile?.rol === 'Sin perfil' && (!cloudSync || cloudSync.getState().revision === null)) return;
     const active = document.querySelector('.view.active');
     const activeId = active && active.id;
     if (!activeId || hasPermission(moduleFromViewId(activeId), 'ver')) return;
@@ -5597,19 +5600,14 @@
     rebuildDerivedState();
     updateSolicitudesImportStatus();
     actualizarEstadoBanner();
-    actualizarDashboard();
-    renderCalendario();
-    renderRutas();
-    renderRouteCatalog();
-    renderComercial();
-    renderConfigClientes();
-    renderSolicitudesAlmacen();
-    renderAlmacen();
-    renderPrioridades();
-    renderMaterialesTransito();
-    renderIncidenciasDespacho();
+    // Only build the visible view. Other modules render when selected, so a
+    // shared update stays current without blocking entry on hidden screens.
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('modulo')) {
+      const currentView = document.querySelector('.view.active')?.id;
+      const renderers = {dashboard:actualizarDashboard,calendario:renderCalendario,rutas:renderRutas,comercial:renderComercial,configClientes:renderConfigClientes,solicitudesAlmacen:renderSolicitudesAlmacen,almacen:renderAlmacen,prioridades:renderPrioridades,materialesTransito:renderMaterialesTransito,incidenciasDespacho:renderIncidenciasDespacho};
+      renderers[currentView]?.();
+    }
     applyPermissionUi();
-    saveLocalSnapshot();
   }
 
   function hasUnsubmittedDraft() {
@@ -5701,7 +5699,8 @@
             if (!window.confirm('¿Cargar la versión compartida? Se conservará además un respaldo de tus cambios locales en este dispositivo.')) return;
             await cloudSync.discardAndReload();
             unsubmittedDrafts.clear();
-          } else if (cloudSync.getState().revision === null) await cloudSync.start(cloudUser);
+          } else if (!cloudSync || !cloudUser) await window.cargarDesdeSupabase();
+          else if (cloudSync.getState().revision === null) await cloudSync.start(cloudUser);
           else if (cloudSync.getState().dirty) await cloudSync.save();
           else await cloudSync.refresh();
         } catch (error) { console.warn('Sincronización pendiente:',error); }
@@ -5720,9 +5719,11 @@
 
   window.cargarDesdeSupabase = async function cargarDesdeSupabaseV2(authenticatedUser) {
     try {
+      APP.currentUserProfile = {userId:'',email:'',nombre:'Usuario',rol:'Sin perfil',activo:true};
       const user = authenticatedUser || await getAuthenticatedUser();
       if (!user) throw new Error('Inicia sesión para cargar los datos compartidos.');
       cloudUser = user;
+      APP.currentUserProfile = {userId:user.id,authUserId:user.id,email:user.email||'',nombre:user.email||'Usuario',rol:'Sin perfil',activo:true};
       await getCloudSync().start(user);
       await enforcePasswordChangeIfNeeded();
       const state = cloudSync.getState();
