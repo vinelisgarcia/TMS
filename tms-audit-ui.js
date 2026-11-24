@@ -47,8 +47,10 @@
         const dates = [...new Set(group.rows.map(row=>row.eta).filter(Boolean))].sort();
         const receipt = group.rows.find(row=>row.receivedAt);
         const accounting = group.rows.find(row=>row.accountedAt);
-        return `<article class="card audit-invoice"><header><div><span class="audit-eyebrow">${accounted ? 'Contabilizado en SAP' : received ? 'Recibido · pendiente de contabilizar' : 'Factura de importación'}</span><h3>${escape(group.invoice || 'Factura sin identificar')}</h3><p>${group.rows.length} líneas · ${accounted ? `Contabilización SAP: ${escape((accounting?.accountedAt || '').slice(0,10) || 'fecha no registrada')}` : received ? `Recepción: ${escape((receipt?.receivedAt || '').slice(0,10) || 'fecha no registrada')}` : `ETA ${escape(dates.join(' / ') || 'por confirmar')}`}</p></div>${can('materialesTransito') && group.invoice ? `<div class="audit-invoice-actions">${!received&&!accounted?`<button class="btn btn-outline" data-audit="edit-invoice-eta" data-invoice="${escape(group.invoice)}">Editar ETA</button>`:''}${accounted ? `<button class="btn btn-outline" data-audit="account-invoice" data-invoice="${escape(group.invoice)}" data-value="revert">Quitar marca de contabilización</button>` : `${received ? `<button class="btn btn-primary" data-audit="account-invoice" data-invoice="${escape(group.invoice)}" data-value="account">Marcar contabilizada en SAP</button>` : ''}<button class="btn ${received ? 'btn-outline' : 'btn-primary'}" data-audit="receive-invoice" data-invoice="${escape(group.invoice)}" data-value="${received ? 'reopen' : 'receive'}">${received ? 'Volver a tránsito' : 'Marcar factura recibida'}</button>`}</div>` : ''}</header>
-          <details><summary>Ver materiales</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Cliente</th><th>ETA</th></tr></thead><tbody>${group.rows.map(row=>`<tr><td>${escape(row.codigoMaterial)}</td><td>${escape(row.descripcion)}</td><td>${Number(row.cantidad).toLocaleString('es-DO')}</td><td>${escape(row.cliente || 'Sin asignación exclusiva')}</td><td>${escape(row.eta || 'Pendiente')}</td></tr>`).join('')}</tbody></table></div></details>${receipt ? `<small>Recepción: ${escape(receipt.receivedAt.slice(0,10))} · ${escape(receipt.receivedBy || 'usuario autorizado')}</small>` : ''}${accounted ? `<small>Contabilización de la factura en SAP: ${escape((accounting?.accountedAt || '').slice(0,10) || 'fecha no registrada')} · ${escape(accounting?.accountedBy || 'usuario autorizado')}</small>` : ''}</article>`;
+        const note = group.rows.find(row=>row.invoiceNote)?.invoiceNote || '';
+        const noteInfo = group.rows.find(row=>row.invoiceNote)?.invoiceNoteAt || '';
+        return `<article class="card audit-invoice"><header><div><span class="audit-eyebrow">${accounted ? 'Contabilizado en SAP' : received ? 'Recibido · pendiente de contabilizar' : 'Factura de importación'}</span><h3>${escape(group.invoice || 'Factura sin identificar')}</h3><p>${group.rows.length} líneas · ${accounted ? `Contabilización SAP: ${escape((accounting?.accountedAt || '').slice(0,10) || 'fecha no registrada')}` : received ? `Recepción: ${escape((receipt?.receivedAt || '').slice(0,10) || 'fecha no registrada')}` : `ETA ${escape(dates.join(' / ') || 'por confirmar')}`}</p></div>${can('materialesTransito') && group.invoice ? `<div class="audit-invoice-actions">${!received&&!accounted?`<button class="btn btn-outline" data-audit="edit-invoice-eta" data-invoice="${escape(group.invoice)}">Editar ETA</button>`:''}${received ? `<button class="btn btn-outline" data-audit="edit-invoice-note" data-invoice="${escape(group.invoice)}">${note ? 'Editar nota' : 'Agregar nota'}</button>` : ''}${accounted ? `<button class="btn btn-outline" data-audit="account-invoice" data-invoice="${escape(group.invoice)}" data-value="revert">Quitar marca de contabilización</button>` : `${received ? `<button class="btn btn-primary" data-audit="account-invoice" data-invoice="${escape(group.invoice)}" data-value="account">Marcar contabilizada en SAP</button>` : ''}<button class="btn ${received ? 'btn-outline' : 'btn-primary'}" data-audit="receive-invoice" data-invoice="${escape(group.invoice)}" data-value="${received ? 'reopen' : 'receive'}">${received ? 'Volver a tránsito' : 'Marcar factura recibida'}</button>`}</div>` : ''}</header>
+          ${note ? `<div class="audit-invoice-note"><strong>Nota de la factura</strong><p>${escape(note).replace(/\n/g, '<br>')}</p>${noteInfo ? `<small>Actualizada: ${escape(noteInfo.slice(0,10))}</small>` : ''}</div>` : ''}<details><summary>Ver materiales</summary><div class="table-wrap"><table class="data-table"><thead><tr><th>Referencia</th><th>Descripción</th><th>Cantidad</th><th>Cliente</th><th>ETA</th></tr></thead><tbody>${group.rows.map(row=>`<tr><td>${escape(row.codigoMaterial)}</td><td>${escape(row.descripcion)}</td><td>${Number(row.cantidad).toLocaleString('es-DO')}</td><td>${escape(row.cliente || 'Sin asignación exclusiva')}</td><td>${escape(row.eta || 'Pendiente')}</td></tr>`).join('')}</tbody></table></div></details>${receipt ? `<small>Recepción: ${escape(receipt.receivedAt.slice(0,10))} · ${escape(receipt.receivedBy || 'usuario autorizado')}</small>` : ''}${accounted ? `<small>Contabilización de la factura en SAP: ${escape((accounting?.accountedAt || '').slice(0,10) || 'fecha no registrada')} · ${escape(accounting?.accountedBy || 'usuario autorizado')}</small>` : ''}</article>`;
       }).join('') || `<div class="audit-empty">${accounted ? 'Todavía no hay facturas contabilizadas.' : received ? 'Todavía no hay facturas recibidas pendientes de contabilizar.' : 'No hay facturas activas para esta búsqueda.'}</div>`}</div>`;
   }
   window.renderMaterialesTransito = transitView;
@@ -78,6 +80,37 @@
     modal.showModal();input.focus();
   }
   window.TMSTransitEtaEditor={open:openInvoiceEtaEditor};
+
+  function openInvoiceNoteEditor(invoice, restoredValue) {
+    if (!can('materialesTransito')) return toast('Tu perfil no puede editar notas.');
+    const rows = () => APP.transitMaterials.filter(row => D.invoiceKey(row) === D.invoiceKey({factura:invoice}));
+    const materials = rows();
+    if (!materials.some(row => D.transitState(row) === 'received')) return toast('Selecciona una factura recibida pendiente de contabilizar.');
+    const original = JSON.stringify(materials.map(row => [row.id, row.invoiceNote || '', D.transitState(row)]));
+    document.getElementById('transitNoteDialog')?.remove();
+    const modal = document.createElement('dialog'); modal.id='transitNoteDialog'; modal.className='calendar-dispatch-dialog audit-eta-dialog'; modal.dataset.invoice=invoice;
+    modal.innerHTML = `<form><h2>Nota de la factura</h2><p>Factura <strong>${escape(invoice)}</strong> · pendiente de contabilizar</p><label for="transitInvoiceNote">Observación<textarea id="transitInvoiceNote" class="form-control" rows="4" maxlength="2000" placeholder="Escribe aquí la nota de seguimiento"></textarea></label><p>La nota quedará visible en la ficha. Déjala vacía para eliminarla.</p><p role="alert" hidden></p><div class="modal-actions"><button type="button" class="btn btn-outline" data-note-cancel>Cancelar</button><button type="submit" class="btn btn-primary">Guardar nota</button></div></form>`;
+    document.body.appendChild(modal); const input = modal.querySelector('textarea'); input.value = restoredValue ?? (materials.find(row=>row.invoiceNote)?.invoiceNote || '');
+    modal.addEventListener('close',()=>modal.remove());
+    modal.querySelector('[data-note-cancel]').onclick=()=>modal.close();
+    modal.querySelector('form').onsubmit=event=>{
+      event.preventDefault();
+      try {
+        if (!can('materialesTransito')) throw new Error('Tu perfil no puede editar notas.');
+        if (JSON.stringify(rows().map(row => [row.id, row.invoiceNote || '', D.transitState(row)])) !== original) throw new Error('La factura cambió en otra sesión. Cierra y vuelve a abrir la ficha.');
+        const note=input.value.trim(), at=new Date().toISOString(), by=(APP.currentUserProfile||{}).email||'Usuario';
+        if (materials.some(row => (row.invoiceNote || '') !== note)) {
+          core().pushUndoState('editar nota de factura');
+          APP.transitMaterials=APP.transitMaterials.map(row=>D.invoiceKey(row)===D.invoiceKey({factura:invoice}) ? {...row,invoiceNote:note,invoiceNoteAt:note?at:'',invoiceNoteBy:note?by:''} : row);
+        }
+        modal.close(); transitView(); save('Nota de factura actualizada.');
+      } catch(error) {const message=modal.querySelector('[role="alert"]');message.textContent=error.message;message.hidden=false;}
+    };
+    modal.showModal(); input.focus();
+  }
+
+
+  window.TMSTransitNoteEditor={open:openInvoiceNoteEditor};
 
   function billForTrip(trip) {
     const rows = (settings().actualInvoices || []).filter(row=>row.tripKey===trip.id && (trip.orderRefs || []).includes(D.key(row.customer)+'|'+D.key(row.order)));
@@ -245,6 +278,7 @@
     const button=event.target.closest('[data-audit]');if(!button)return;
     const action=button.dataset.audit;
     if(action==='edit-invoice-eta')openInvoiceEtaEditor(button.dataset.invoice);
+    if(action==='edit-invoice-note')openInvoiceNoteEditor(button.dataset.invoice);
     if(action==='transit-tab'){APP.auditTransitTab=['received','accounted'].includes(button.dataset.value)?button.dataset.value:'active';transitView();}
     if(action==='receive-invoice'){
       if(!can('materialesTransito'))return toast('Tu perfil no puede confirmar recepciones.');

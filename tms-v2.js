@@ -1627,7 +1627,6 @@
     if (cloudSync) cloudSync.markDirty();
     if (window._autoSaveTimer) clearTimeout(window._autoSaveTimer);
     window._autoSaveTimer = setTimeout(() => {
-      saveLocalSnapshot();
       window.guardarEnSupabase({ silent: true }).catch(e => console.warn('AutoSave error:', e));
     }, 1200);
   };
@@ -2048,11 +2047,11 @@
     const summary = TMSDomain.calendarDispatchSummary(group.items || [], APP.transitMaterials);
     const selectedInvoice = detail.transitOnly ? summary.invoices.find(invoice => invoice.key === detail.invoiceKey) : null;
     const transitInvoices = detail.transitOnly ? (selectedInvoice ? [selectedInvoice] : []) : summary.invoices;
-    const transitTable = invoice => `<section class="calendar-detail-transit"><h3>Factura en tránsito: ${escapeHtml(invoice.invoice || 'sin identificar')}</h3><p>ETA: ${escapeHtml(invoice.dates.join(' / ') || 'por confirmar')}</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido / línea</th><th>Material afectado</th><th>Sin confirmar</th><th>En esta factura</th></tr></thead><tbody>${invoice.affected.map(row => `<tr><td>${escapeHtml(row.line.pedidoCliente || 'Sin pedido')}<small>${escapeHtml(row.line.lineaPedidoCliente || '')}</small></td><td><strong>${escapeHtml(row.line.articulo)}</strong><small>${escapeHtml(row.line.descripcionArticulo || '')}</small></td><td>${formatLoadQty(row.pending)}</td><td>${formatLoadQty(row.transitQuantity)}</td></tr>`).join('')}</tbody></table></div></section>`;
+    const transitTable = invoice => `<section class="calendar-detail-transit"><h3>Factura en tránsito: ${escapeHtml(invoice.invoice || 'sin identificar')}</h3><p>ETA: ${escapeHtml(invoice.dates.join(' / ') || 'por confirmar')}</p><div class="table-wrap"><table class="data-table"><thead><tr><th>Pedido / línea</th><th>Material afectado</th><th>Pendiente de servir</th><th>En esta factura</th></tr></thead><tbody>${invoice.affected.map(row => `<tr><td>${escapeHtml(row.line.pedidoCliente || 'Sin pedido')}<small>${escapeHtml(row.line.lineaPedidoCliente || '')}</small></td><td><strong>${escapeHtml(row.line.articulo)}</strong><small>${escapeHtml(row.line.descripcionArticulo || '')}</small></td><td>${formatLoadQty(row.pending)}</td><td>${formatLoadQty(row.transitQuantity)}</td></tr>`).join('')}</tbody></table></div></section>`;
     modal.innerHTML = `<header><div><p class="calendar-detail-eyebrow">${detail.transitOnly ? 'Materiales afectados por tránsito' : 'Despacho del cliente'}</p><h2 id="calendarDispatchTitle">${escapeHtml(group.nombre)}</h2><p>${escapeHtml(group.codigo)} · ${escapeHtml(group.fecha)} · ${escapeHtml(getTruckLabel(group.camion))} · ${escapeHtml(group.rutaNombre || group.zona || 'Sin ruta')}</p></div><button type="button" data-calendar-detail-close class="btn btn-outline">Cerrar</button></header>
       ${detail.transitOnly ? '' : `${calendarDispatchMetricsHtml(summary)}<p class="calendar-detail-explanation">Confirmado no entregado + entregado pendiente de facturar = valor de este cliente en la ruta.</p><section><h3>Pedidos de este despacho</h3><div class="table-wrap"><table class="data-table calendar-dispatch-orders"><thead><tr><th>Pedido / línea</th><th>Material</th><th>Cant. pendiente</th><th>Confirmado</th><th>Pend. facturar</th><th>Valor en ruta</th></tr></thead><tbody>${(group.items || []).map(line => `<tr><td>${escapeHtml(line.pedidoCliente || 'Sin pedido')}<small>${escapeHtml(line.lineaPedidoCliente || '')}</small></td><td><strong>${escapeHtml(line.articulo || 'Sin referencia')}</strong><small>${escapeHtml(line.descripcionArticulo || '')}</small></td><td>${formatLoadQty(line.cantidadPendiente)}</td><td>${formatMonto(getConfirmedUndeliveredAmount(line))}</td><td>${formatMonto(getDeliveredNotInvoicedAmount(line))}</td><td>${formatMonto(getOperationalAmount(line))}</td></tr>`).join('')}</tbody></table></div></section>`}
       ${transitInvoices.map(transitTable).join('') || (detail.transitOnly ? '<p>Esta factura ya no afecta a los pedidos de este despacho o fue recibida.</p>' : '')}
-      ${transitInvoices.length ? '<p class="calendar-detail-explanation">Las cantidades en tránsito son coincidencias de material; no representan una reserva confirmada para el cliente.</p>' : ''}
+      ${transitInvoices.length ? '<p class="calendar-detail-explanation">Las coincidencias indican que el material está en tránsito; no confirman una falta de stock ni una reserva para el cliente.</p>' : ''}
       ${detail.transitOnly ? '' : `<section class="calendar-dispatch-extra">${(group.alertas || []).length ? `<p>${escapeHtml(group.alertas.join(' · '))}</p>` : ''}${group.nota ? `<p><strong>Nota:</strong> ${escapeHtml(group.nota)}</p>` : ''}${group.precintoDespacho ? `<p><strong>Precinto:</strong> ${escapeHtml(group.precintoDespacho)}</p>` : ''}${group.choferRuta ? `<p><strong>Chofer / recibido:</strong> ${escapeHtml(group.choferRuta)}</p>` : ''}${group.fotoCamion ? '<p>Foto de evidencia adjunta al despacho.</p>' : ''}${group.cantidadSolicitudes ? `<p>${group.cantidadSolicitudes} solicitudes · Liberado a almacén: ${formatMonto(group.montoSolicitudes)}</p>` : ''}</section>`}`;
   }
 
@@ -2117,6 +2116,7 @@
       </div>
     `];
 
+    const calendarTransitIndex = TMSDomain.indexTransit(APP.transitMaterials);
     currentMonth.semanas.forEach((semana, weekIndex) => {
       html.push(`<section class="cal-month-section">
         <div class="cal-week-title">Semana ${weekIndex + 1}<span>${semana.nombre}</span></div>
@@ -2158,7 +2158,7 @@
           groups.forEach(group => {
             const realIdx = (dayRoutes[camion] || []).indexOf(group);
             const selected = isGroupSelected(group);
-            const dispatchSummary = TMSDomain.calendarDispatchSummary(group.items || [], APP.transitMaterials);
+            const dispatchSummary = TMSDomain.calendarDispatchSummary(group.items || [], APP.transitMaterials, calendarTransitIndex);
             const openDispatch = `abrirDespachoCalendario('${escapeHtml(jsString(fecha))}','${escapeHtml(jsString(camion))}',${realIdx})`;
             html.push(`<div class="cal-card ${cardClass} ${selected ? 'cal-card-selected' : ''}" draggable="true" tabindex="0" role="group" aria-label="Despacho de ${escapeHtml(group.nombre)}"
               onclick="if(!event.target.closest('button,input,label,select,a,textarea')){${openDispatch}}"
@@ -5620,7 +5620,7 @@
   function trackUnsubmittedDraft(event) {
     const control = event.target;
     if (!control || !control.matches || !control.matches('input,textarea,select')) return;
-    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog, #transitEtaDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami, #auditoriaSistema, #eur1')) return;
+    if ((!control.closest('#mainLayout') && !control.closest('#calendarDayNoteDialog, #transitEtaDialog, #transitNoteDialog')) || control.closest('#inventario, #showroom') || control.closest('#packingMiami, #auditoriaSistema, #eur1')) return;
     if (control.type === 'search' || /search|filter|groupmode|^mobileModule|^rolePermissionSelect$|^prio(Date|PeriodFrom|PeriodTo)$|^(auditCost|incident|commercial|prio)(From|To)$/i.test(control.id || '') || control.classList.contains('search-input')) return;
     // Default to preserving editable controls, including id-less checkboxes,
     // file inputs and new forms added by other modules.
@@ -5636,13 +5636,14 @@
       field:control.id,label:control.name || control.className || control.type,
       value:control.type === 'file' ? [...control.files].map(file=>file.name) : control.value,
       checked:control.type === 'checkbox' || control.type === 'radio' ? control.checked : undefined,
-      ...(control.closest?.('#transitEtaDialog')?{transitInvoice:control.closest('#transitEtaDialog').dataset.invoice}:{})
+      ...(control.closest?.('#transitEtaDialog, #transitNoteDialog')?{transitInvoice:control.closest('#transitEtaDialog, #transitNoteDialog').dataset.invoice}:{})
     }));
   }
 
   function restoreFormDrafts(drafts) {
     (drafts || []).forEach(draft => {
       if(draft.field==='transitInvoiceEta'&&draft.transitInvoice)window.TMSTransitEtaEditor?.open(draft.transitInvoice,draft.value);
+      if(draft.field==='transitInvoiceNote'&&draft.transitInvoice)window.TMSTransitNoteEditor?.open(draft.transitInvoice,draft.value);
       const control = draft.field && document.getElementById(draft.field);
       if (!control || control.type === 'file' || control.type === 'password') return;
       control.value = draft.value;
@@ -5717,9 +5718,9 @@
     return cloudSync;
   }
 
-  window.cargarDesdeSupabase = async function cargarDesdeSupabaseV2() {
+  window.cargarDesdeSupabase = async function cargarDesdeSupabaseV2(authenticatedUser) {
     try {
-      const user = await getAuthenticatedUser();
+      const user = authenticatedUser || await getAuthenticatedUser();
       if (!user) throw new Error('Inicia sesión para cargar los datos compartidos.');
       cloudUser = user;
       await getCloudSync().start(user);

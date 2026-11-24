@@ -10,7 +10,7 @@ const domain=require('../tms-domain.js');
  db.tables.tms_settings=[{clave:'role_permissions',valor:{'Consulta tránsito':{materialesTransito:{ver:true,editar:false,importar:false}}}}];
  async function boot(page,readonly=false){await page.evaluate(async({id,email})=>{
   const user={id,email};SB.auth.getUser=async()=>({data:{user},error:null});SB.rpc=(name,args)=>window.__transitRpc(name,args);SB.channel=()=>({on(type,filter,callback){window.__transitRemote=callback;return this;},subscribe(){return this;}});SB.removeChannel=async()=>{};
-  await cargarDesdeSupabase();mostrarApp(user);cambiarVista('materialesTransito',document.getElementById('nav-materialesTransito'));
+  await cargarDesdeSupabase();mostrarApp(user);window.dispatchEvent(new Event('tms-permissions-changed'));cambiarVista('materialesTransito',document.getElementById('nav-materialesTransito'));
  },{id:readonly?reader:admin,email:readonly?'reader@example.invalid':'accounting@example.invalid'});}
  async function pageFor(readonly=false){
   const page=await browser.newPage({viewport:{width:1440,height:1000}});page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
@@ -25,7 +25,7 @@ const domain=require('../tms-domain.js');
     else db.tables[key]=structuredClone(value);
    }writes++;return {data:{revision:++db.revision,changed:true},error:null};
   });
-  await page.goto(base,{waitUntil:'networkidle'});await page.waitForFunction(()=>!!window.TMSAuditCore&&!!window.TMSDomain&&!!window.XLSX);await boot(page,readonly);
+  await page.goto(base+'/?modulo=importaciones',{waitUntil:'networkidle'});await page.waitForFunction(()=>!!window.TMSAuditCore&&!!window.TMSDomain&&!!window.XLSX);await boot(page,readonly);
   assert.equal(await page.locator('#materialesTransito').isVisible(),true,JSON.stringify(await page.evaluate(()=>({role:APP.currentUserProfile?.rol,permissions:APP.rolePermissions[APP.currentUserProfile?.rol],view:document.querySelector('.view.active')?.id}))));return page;
  }
  const rows=()=>db.tables.tms_settings.find(row=>row.clave==='app_state').valor.transitMaterials;
@@ -51,7 +51,7 @@ const domain=require('../tms-domain.js');
   await etaButton(a).click();await a.locator('#transitInvoiceEta').fill('2026-11-20');await a.locator('#transitEtaForm button[type="submit"]').click();await flush(a);await remote(b);await b.waitForFunction(()=>document.getElementById('calendarDispatchDialog').textContent.includes('2026-11-20'));await b.keyboard.press('Escape');await b.evaluate(()=>cambiarVista('materialesTransito',document.getElementById('nav-materialesTransito')));
   await a.setViewportSize({width:1440,height:1000});await action(a,'receive-invoice','receive').click();await flush(a);const receipt=structuredClone(rows().filter(row=>row.factura==='F-100'));assert.ok(receipt.every(row=>row.receivedAt&&row.receivedBy==='accounting@example.invalid'&&!row.accountedAt));assert.equal(await a.locator('.calendar-transit-chip').count(),0);
   await remote(b);await b.waitForFunction(()=>APP.transitMaterials.filter(row=>row.factura==='F-100').every(row=>TMSDomain.transitState(row)==='received'));await tab(b,'received').click();assert.equal(await action(b,'account-invoice','account').count(),1);
-  await tab(a,'received').click();await action(a,'account-invoice','account').click();await flush(a);
+  await tab(a,'received').click();await a.locator('[data-audit="edit-invoice-note"][data-invoice="F-100"]').click();await a.locator('#transitInvoiceNote').fill('Pendiente revisión de documentos');await a.locator('#transitNoteDialog button[type=submit]').click();await flush(a);assert.ok(rows().filter(row=>row.factura==='F-100').every(row=>row.invoiceNote==='Pendiente revisión de documentos'));await remote(b);await b.waitForFunction(()=>APP.transitMaterials.find(row=>row.id==='A').invoiceNote==='Pendiente revisión de documentos');assert.match(await b.locator('.audit-invoice').innerText(),/Pendiente revisión de documentos/);await action(a,'account-invoice','account').click();await flush(a);
   const posted=structuredClone(rows().filter(row=>row.factura==='F-100'));assert.ok(posted.every((row,i)=>row.estado==='contabilizada'&&row.accountedAt&&row.accountedBy==='accounting@example.invalid'&&row.receivedAt===receipt[i].receivedAt&&row.receivedBy===receipt[i].receivedBy&&row.statusHistory.length===2));assert.equal(rows().find(row=>row.factura==='F100').estado,undefined);
   await remote(b);await b.waitForFunction(()=>APP.transitMaterials.filter(row=>row.factura==='F-100').every(row=>TMSDomain.transitState(row)==='accounted'));assert.equal(await b.locator('.audit-invoice').count(),0);await tab(b,'accounted').click();assert.match(await b.locator('.audit-invoice').innerText(),/Recepción:|Contabilización de la factura en SAP:/);assert.equal(await b.locator('.calendar-transit-chip').count(),0);
   await b.reload({waitUntil:'networkidle'});await boot(b);await tab(b,'accounted').click();assert.equal(await b.locator('.audit-invoice').count(),1);assert.equal(await b.locator('[data-audit="receive-invoice"]').count(),0);

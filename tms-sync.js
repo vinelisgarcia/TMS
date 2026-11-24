@@ -234,11 +234,13 @@
       if (conflict) throw Object.assign(new Error('Otra sesión guardó cambios. Tus cambios locales están conservados; revisa la versión compartida antes de continuar.'),{code:'40001'});
       if (!dirty) return true;
       const token = lifecycle;
+      let needsNormalization = false;
       saving = (async () => {
         while (dirty && !stopped && token === lifecycle) {
           const captured = clone(options.capture());
           const payload = difference(base,captured);
           if (!Object.keys(payload).length) { dirty=false; break; }
+          if (Object.keys(payload).some(table => table !== 'tms_settings')) needsNormalization = true;
           status('saving');
           try {
             const result = await rpc(saveSnapshotRpc,{p_expected_revision:revision,p_payload:payload});
@@ -264,7 +266,7 @@
           if (!dirty && !stopped) {
             // Refresh generated database identifiers and server-normalized data.
             if (refreshing) await refreshing.catch(()=>{});
-            await refresh({force:true}).catch(()=>{});
+            await refresh(needsNormalization ? {force:true} : undefined).catch(()=>{});
           }
         }
       }

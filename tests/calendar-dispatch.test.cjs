@@ -24,9 +24,13 @@ test('zero balances and pending-billing aliases keep their original accounting m
  assert.equal(summary.confirmed,0);assert.equal(summary.pendingBilling,15);assert.equal(summary.total,15);
 });
 
-test('covered or fully served orders do not alert just because the same material is in transit',()=>{
+test('fully served orders do not alert, but pending orders show neutral material matches',()=>{
  const materials=[{factura:'INCOMING',codigoMaterial:'A',cantidad:50}];
- for(const entry of [line({cantidadPendienteSinStock:0,cantidadPendienteServir:10}),line({cantidadPendienteSinStock:3,cantidadPendienteServir:0}),line({cantidadPendienteSinStock:3,cantidadSolicitadaOriginal:10,cantidadFacturada:10}),line({archivedAt:'now'})]){
+ const covered=line({cantidadPendienteSinStock:0,cantidadPendienteServir:10});
+ assert.equal(D.transitForLine(covered,materials).note,'');
+ const match=D.calendarDispatchSummary([covered],materials).invoices[0];
+ assert.equal(match.affected[0].pending,10);assert.equal(match.affected[0].shortage,0);
+ for(const entry of [line({cantidadPendienteSinStock:3,cantidadPendienteServir:0}),line({cantidadPendienteSinStock:3,cantidadSolicitadaOriginal:10,cantidadFacturada:10}),line({archivedAt:'now'})]){
   assert.equal(D.transitForLine(entry,materials).note,'');assert.equal(D.calendarDispatchSummary([entry],materials).invoices.length,0);
  }
 });

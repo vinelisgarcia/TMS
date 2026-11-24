@@ -381,6 +381,7 @@ test('only changed tables and changed settings keys are sent', async t => {
   const payload = db.saves()[0].args.p_payload;
   assert.deepEqual(Object.keys(payload), ['tms_settings']);
   assert.deepEqual(payload.tms_settings.map(row => row.clave), ['warehouse']);
+  assert.equal(db.calls.filter(call => call.method === 'tms_get_snapshot').at(-1).args.p_known_revision, db.db.revision, 'settings-only saves check revision without forcing a full snapshot');
   assert.equal(db.db.tables.tms_settings.find(row => row.clave === 'app_state').valor.calendarNotes.length, 0);
 });
 

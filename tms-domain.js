@@ -49,11 +49,22 @@
     if (original > 0) pending = Math.min(pending, Math.max(0, original - number(line.cantidadFacturada)));
     return pending;
   }
-  function transitForLine(line, materials) {
-    const pending = transitNeed(line);
+  function indexTransit(materials) {
+    const index = new Map();
+    for (const row of materials || []) {
+      if (!activeTransit(row) || !(Number(row.cantidad) > 0)) continue;
+      const code = key(row.codigoMaterial);
+      if (!index.has(code)) index.set(code, []);
+      index.get(code).push(row);
+    }
+    return index;
+  }
+  function transitForLine(line, materials, index, includePendingMatch = false) {
+    const shortage = transitNeed(line);
+    const pending = shortage || (includePendingMatch && line && !line.archivedAt && (!(Number(line.cantidadSolicitadaOriginal) > 0) || Number(line.cantidadFacturada || 0) < Number(line.cantidadSolicitadaOriginal)) ? Math.max(0, Number(line.cantidadPendienteServir ?? line.cantidadPendiente) || 0) : 0);
     const result = { pending, quantity: 0, covered: 0, invoices: [], eta: '', rows: [], note: '' };
     if (!pending || !line.articulo) return result;
-    const rows = (materials || []).filter(row => {
+    const rows = (index ? (index.get(key(line.articulo)) || []) : (materials || [])).filter(row => {
       if (!activeTransit(row) || key(row.codigoMaterial) !== key(line.articulo)) return false;
       if (row.cliente && ![line.clienteId, line.clienteNombre].some(value => key(value) === key(row.cliente))) return false;
       if (row.pedidoCliente && key(row.pedidoCliente) !== key(line.pedidoCliente)) return false;
@@ -72,7 +83,8 @@
     if (rows.length) result.note = `${pending} uds sin confirmar · ${result.covered} uds con coincidencia en tránsito · Factura ${result.invoices.join(', ') || 'sin identificar'} · ETA ${result.eta || 'por confirmar'} · Posible cobertura ${result.covered >= pending ? 'completa' : 'parcial'}, sin reserva confirmada`;
     return result;
   }
-  function calendarDispatchSummary(lines, materials) {
+  function calendarDispatchSummary(lines, materials, index) {
+    index = index || indexTransit(materials);
     const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
     const orders = new Set(), invoices = new Map();
     let confirmed = 0, pendingBilling = 0, unidentifiedOrders = 0;
@@ -82,7 +94,7 @@
       else unidentifiedOrders++;
       confirmed += number(line.montoPlanificado);
       pendingBilling += number(line.montoEntregadoNoFacturado || line.importeEntregadoNoFacturado || line.montoPendienteFacturar || 0);
-      const transit = transitForLine(line, materials);
+      const transit = transitForLine(line, materials, index, true);
       const matches = new Map();
       transit.rows.forEach(row => {
         const invoice = invoiceKey(row);
@@ -91,7 +103,7 @@
         if (row.eta) entry.dates.add(row.eta);
         matches.set(invoice, (matches.get(invoice) || 0) + number(row.cantidad));
       });
-      matches.forEach((quantity, invoice) => invoices.get(invoice).affected.push({ line, pending: transit.pending, transitQuantity: quantity }));
+      matches.forEach((quantity, invoice) => invoices.get(invoice).affected.push({ line, pending: transit.pending, shortage: transitNeed(line), transitQuantity: quantity }));
     });
     return {
       orders: orders.size, unidentifiedOrders, confirmed, pendingBilling, total: confirmed + pendingBilling,
@@ -221,5 +233,5 @@
       { id: 'audit-20261023-facturado', titulo: 'Adjuntar reporte SAP de lo realmente facturado', notas: 'Cargar importes efectivos por cliente, pedido, referencia y fecha para comparar facturación con costo de transporte.' }
     ].map(row => ({ ...row, fecha: '2026-10-23', estado: 'pendiente', createdAt: '2026-10-22T12:00:00Z', updatedAt: '2026-10-22T12:00:00Z' }));
   }
-  return { key, rates, extras, isoDate, invoiceKey, updateInvoiceEta, transitState, activeTransit, transitNeed, transitForLine, calendarDispatchSummary, receiveInvoice, accountInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
+  return { key, rates, extras, isoDate, invoiceKey, updateInvoiceEta, transitState, activeTransit, transitNeed, transitForLine, indexTransit, calendarDispatchSummary, receiveInvoice, accountInvoice, orderKey, archiveSplitResidues, latestOrders, buildQueue, calculateTrips, warehouseCosts, reminderSeeds };
 });

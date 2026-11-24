@@ -1008,7 +1008,7 @@ html { -webkit-text-size-adjust: 100%; }
 <link rel="stylesheet" href="./calendar-reports.css?v=20261103-warehouse">
 <link rel="stylesheet" href="./tms-access.css?v=20261102-users-roles">
 <link rel="stylesheet" href="./packing-miami.css?v=20261103-ocr">
-<link rel="stylesheet" href="./activity-audit.css?v=20261116-activity">
+<link rel="stylesheet" href="./activity-audit.css?v=20261124-transit-speed">
 <link rel="stylesheet" href="./eur1.css?v=20261116-eur1">
 </head>
 <body>
@@ -3019,7 +3019,7 @@ async function iniciarSesion() {
     }
     if (bootstrap !== sessionBootstrapGeneration) return;
     mostrarApp(data.user);
-    await cargarDesdeSupabase();
+    await cargarDesdeSupabase(data.user);
   } catch (error) {
     errEl.textContent = 'Servicio de acceso no disponible. Revisa la conexión y vuelve a intentar.';
   } finally {
@@ -4654,11 +4654,11 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 <script src="./DATA.js"></script>
-<script src="./tms-domain.js?v=20261116-invoice-eta"></script>
-<script src="./tms-sync.js?v=20261031-inventory"></script>
+<script src="./tms-domain.js?v=20261124-transit-speed"></script>
+<script src="./tms-sync.js?v=20261124-transit-speed"></script>
 <script src="./warehouse-report-domain.js?v=20261103-executive"></script>
-<script src="./tms-v2.js?v=20261118-client-report"></script>
-<script src="./tms-audit-ui.js?v=20261116-invoice-eta"></script>
+<script src="./tms-v2.js?v=20261124-transit-speed"></script>
+<script src="./tms-audit-ui.js?v=20261124-transit-speed"></script>
 <script src="./inventory-domain.js?v=20261110-code-review"></script>
 <script src="./inventory-counts-domain.js?v=20261116-daily-counts"></script>
 <script src="./inventory-trace-domain.js?v=20261103-trace"></script>
