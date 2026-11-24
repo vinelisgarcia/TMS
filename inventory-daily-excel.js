@@ -35,6 +35,21 @@
   const meta=book.addWorksheet('_TMS',{state:'veryHidden'});meta.addRows([['TMS_DAILY_COUNT',1],['kind',template.kind],['templateId',template.templateId],['cycleId',template.cycleId],['sourcePair',template.sourcePair],['generatedAt',template.generatedAt],['ID','Referencia','Ubicación prevista','Unidad'],...template.rows.map(row=>[row.id,row.code,row.expectedLocation||null,row.unit])]);
   return book;
  }
+ function decodeSimple(book,XLSX){
+  const normalize=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const codes=new Set(['codigo','codigomaterial','codigodelmaterial','codigoarticulo','codigodelarticulo','codigosap','codigomaterialsap','referencia','referenciaarticulo','material','articulo','sku','producto']);
+  const quantities=new Set(['cantidad','cantidadcontada','cantidadfisica','conteo','contado','unidadescontadas','fisico','cantidadfisicacontada','conteofisico','totalcontado','unidades','cantidadreal']);
+  for(const name of book.SheetNames){
+   const sheet=book.Sheets[name],matrix=XLSX.utils.sheet_to_json(sheet,{header:1,raw:false,defval:null,range:0});
+   for(let i=0;i<Math.min(matrix.length,20);i++){
+    const row=matrix[i]||[],code=row.findIndex(value=>codes.has(normalize(value))),qty=row.findIndex(value=>quantities.has(normalize(value)));
+    if(code<0||qty<0||code===qty)continue;
+    const formulaRows=[];for(const [address,cell]of Object.entries(sheet))if(!address.startsWith('!')&&cell.f&&XLSX.utils.decode_cell(address).c===qty){const n=XLSX.utils.decode_cell(address).r+1;if(n>i+1)formulaRows.push(n-i);}
+    return {matrix:[['Código del material','Cantidad contada'],...matrix.slice(i+1).map(values=>[values[code],values[qty]])],formulaRows};
+   }
+  }
+  throw Error('No se encontraron las columnas Código del material y Cantidad contada. Descarga el formato de ejemplo y utiliza esos encabezados.');
+ }
  function decode(book,XLSX){
   const sheet=book.Sheets.Conteo,meta=book.Sheets._TMS;if(!sheet||!meta)throw Error('Usa la plantilla de conteo diario descargada desde el TMS.');
   const matrix=XLSX.utils.sheet_to_json(meta,{header:1,raw:true,defval:null,range:0});if(matrix[0]?.[0]!=='TMS_DAILY_COUNT'||![1,2].includes(matrix[0]?.[1]))throw Error('Formato de plantilla no reconocido.');
@@ -43,5 +58,5 @@
   const formulaRows=[];for(const [address,cell]of Object.entries(sheet))if(!address.startsWith('!')&&cell.f&&XLSX.utils.decode_cell(address).c===(version===2?1:6))formulaRows.push(XLSX.utils.decode_cell(address).r+1);
   return {template,matrix:XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:null,range:0}),options:{formulaRows,date1904:!!book.Workbook?.WBProps?.date1904}};
  }
- return {createWorkbook,decode,load:()=>root.ShowroomExecutiveExcel.load()};
+ return {createWorkbook,decode,decodeSimple,load:()=>root.ShowroomExecutiveExcel.load()};
 });

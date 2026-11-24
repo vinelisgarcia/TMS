@@ -2,10 +2,10 @@
  'use strict';
  const clone=value=>JSON.parse(JSON.stringify(value)),clean=value=>String(value??'').trim(),id=()=>crypto.randomUUID();
  const domain=kind=>{if(!['ctad','showroom'].includes(kind))throw Error('Inventario no reconocido.');return kind==='showroom'?S:C;};
- function plan(data,report,{kind,day,scope='all',user='',templateId=id(),now=new Date().toISOString()}={}){
+ function plan(data,report,{kind,day,scope='all',user='',templateId=id(),cycleId,now=new Date().toISOString()}={}){
   const api=domain(kind);C.validateCountDay(day);
   const next=clone(data),catalog=api.catalog(next);if(!catalog.length)throw Error('Carga el inventario o el maestro antes de generar la plantilla.');
-  const cycle=api.createCycle(next,report,{user,now}),selected=scope==='guided'?catalog.filter(item=>cycle.items[item.code]?.required):catalog;
+  const cycle=api.createCycle(next,report,{user,now,...(cycleId?{id:cycleId}:{})}),selected=scope==='guided'?catalog.filter(item=>cycle.items[item.code]?.required):catalog;
   if(!selected.length)throw Error('No hay artículos obligatorios para esta plantilla.');
   const rows=[];
   for(const item of selected){
