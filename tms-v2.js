@@ -5602,7 +5602,7 @@
     actualizarEstadoBanner();
     // Only build the visible view. Other modules render when selected, so a
     // shared update stays current without blocking entry on hidden screens.
-    if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('modulo')) {
+    if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('modulo') && cloudSync?.getState().revision !== null) {
       const currentView = document.querySelector('.view.active')?.id;
       const renderers = {dashboard:actualizarDashboard,calendario:renderCalendario,rutas:renderRutas,comercial:renderComercial,configClientes:renderConfigClientes,solicitudesAlmacen:renderSolicitudesAlmacen,almacen:renderAlmacen,prioridades:renderPrioridades,materialesTransito:renderMaterialesTransito,incidenciasDespacho:renderIncidenciasDespacho};
       renderers[currentView]?.();
@@ -5712,7 +5712,7 @@
   function getCloudSync() {
     if (!cloudSync) {
       if (!window.TMSSessionSync) throw new Error('No se cargó el componente de sincronización. Recarga la página.');
-      cloudSync = window.TMSSessionSync.create({getClient:getSupabaseClient,capture:buildCloudPayload,applySnapshot:applyCloudSnapshot,onStatus:showSyncStatus,hasDraft:hasUnsubmittedDraft,captureDrafts:captureFormDrafts,restoreDrafts:restoreFormDrafts});
+      cloudSync = window.TMSSessionSync.create({snapshotCache:window.TMSSnapshotCache,getClient:getSupabaseClient,capture:buildCloudPayload,applySnapshot:applyCloudSnapshot,onStatus:showSyncStatus,hasDraft:hasUnsubmittedDraft,captureDrafts:captureFormDrafts,restoreDrafts:restoreFormDrafts});
     }
     return cloudSync;
   }
@@ -5745,6 +5745,7 @@
   window.cerrarSesion = async function cerrarSesionSincronizada() {
     document.getElementById('calendarDispatchDialog')?.close();
     if (window._autoSaveTimer) clearTimeout(window._autoSaveTimer);
+    if (cloudUser?.id) ['tms','tms_inventory','tms_showroom'].forEach(namespace=>window.TMSSnapshotCache?.remove(namespace+':'+cloudUser.id));
     if (cloudSync) cloudSync.stop();
     cloudUser = null;
     return originalCerrarSesion();

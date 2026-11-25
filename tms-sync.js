@@ -188,8 +188,19 @@
       }
       status('loading');
       try {
-        const snapshot = await rpc(getSnapshotRpc, {p_known_revision:null}, options.startTimeoutMs || 8000);
+        const cacheKey=(namespace || 'tms')+':'+user.id;
+        let cached = null;
+        if (options.snapshotCache && !pending) {
+          // Cache is advisory only: a verified server revision is mandatory.
+          let timer;try { cached = await Promise.race([options.snapshotCache.read(cacheKey),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),250);})]); } catch (_) {} finally { clearTimeout(timer); }
+          if (token !== lifecycle || stopped) return;
+          if (cached?.revision === null || cached?.revision === undefined || !cached?.tables || !Object.keys(cached.tables).length || !Object.values(cached.tables).every(Array.isArray) || !Number.isSafeInteger(Number(cached.revision))) cached = null;
+        }
+        const response = await rpc(getSnapshotRpc, {p_known_revision:cached ? Number(cached.revision) : null}, options.startTimeoutMs || 8000);
         if (token !== lifecycle || stopped) return;
+        const snapshot = response?.unchanged && cached && Number(response.revision)===Number(cached.revision) ? cached : response;
+        if (!snapshot?.tables) throw new Error('No se recibió una versión compartida completa. Reintenta la carga.');
+        if (!response.unchanged && options.snapshotCache) Promise.resolve(options.snapshotCache.write(cacheKey,snapshot)).catch(()=>{});
         await apply(snapshot, token,!!pending);
         if (pending && pending.userId === user.id && pending.base && pending.payload) {
           const tables = {...snapshot.tables, ...pending.payload};

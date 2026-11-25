@@ -28,7 +28,7 @@
     if(panel){panel.hidden=!state.conflict&&state.phase!=='offline'&&!state.error;panel.innerHTML=`<span>${escape(state.conflict?'Otra sesión actualizó el inventario. Tus cambios se conservan. Descarga tu copia antes de cargar la versión compartida.':state.error||'Se reintentará al volver la conexión.')}</span><div class="inv-actions"><button class="btn btn-outline btn-sm" data-show-inv="backup">Descargar mi copia</button><button class="btn btn-outline btn-sm" data-show-inv="reload">${state.conflict?'Cargar versión compartida':'Reintentar'}</button></div>`;}
   }
   function getSync(){
-    if(!sync)sync=window.TMSSessionSync.create({
+    if(!sync)sync=window.TMSSessionSync.create({snapshotCache:window.TMSSnapshotCache,
       namespace:'tms_showroom',getSnapshotRpc:'tms_showroom_get_snapshot',saveSnapshotRpc:'tms_showroom_save_snapshot',realtimeTable:'tms_showroom_sync_state',getClient:client,
       capture:()=>({tms_showroom_state:[{id:true,payload:copy(data)}]}),
       applySnapshot:snapshot=>{const row=snapshot.tables?.tms_showroom_state?.[0];if(!row?.payload)throw new Error('No se recibió el inventario compartido.');data=copy(row.payload);render();},
