@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
       return response({name,xml:body.part==='original'?record.original_xml:record.corrected_xml});
     }
     if (body.action === 'template') {
-      if (!access.admin || body.sapAccepted !== true) return response({error:'Solo un administrador puede registrar plantillas aceptadas por SAP.'},403);
+      if (!access.admin || body.dgiiAccepted !== true) return response({error:'Solo un administrador puede registrar plantillas aceptadas por la DGII.'},403);
       if (typeof body.original !== 'string' || typeof body.corrected !== 'string') throw Error('Faltan los dos XML de referencia.');
       const rules = xml.template(body.original,body.corrected,body.type);
       const {data,error} = await admin.rpc('tms_fiscal_activate_template',{p_type:body.type,p_original:body.original,p_corrected:body.corrected,p_rules:rules,p_actor:identity.user.id});
@@ -59,17 +59,17 @@ Deno.serve(async (req: Request) => {
     if (typeof body.original !== 'string') throw Error('Falta el XML original.');
     name = String(body.filename || '').replace(/^.*[\\/]/,'');
     if (!name || name.length > 255 || !/\.xml$/i.test(name) || /[\x00-\x1f]/.test(name)) throw Error('El nombre debe corresponder a un archivo XML.');
-    const {data:templates,error:templateError} = await admin.from('tms_fiscal_xml_templates').select('id,rules').eq('document_type',body.type).eq('active',true).eq('sap_accepted',true).limit(1);
+    const {data:templates,error:templateError} = await admin.from('tms_fiscal_xml_templates').select('id,rules').eq('document_type',body.type).eq('active',true).eq('dgii_accepted',true).limit(1);
     if (templateError) throw Error('No se pudo consultar la plantilla fiscal.');
     if (body.action === 'analyze') {
       const document = xml.parse(body.original), information = xml.information(document);
       if (information.detectedType && information.detectedType !== body.type) throw Error('El tipo identificado no coincide con la sección elegida.');
       let analysis = null;
       if (templates?.length) { const a = xml.analyze(body.original,templates[0].rules); analysis = {fields:a.fields,paths:a.paths}; }
-      await event('success',analysis?'XML validado estructuralmente':'XML leído; plantilla SAP pendiente');
+      await event('success',analysis?'XML validado estructuralmente':'XML leído; plantilla aceptada por la DGII pendiente');
       return response({information,analysis});
     }
-    if (!templates?.length) throw Error('Este tipo aún no tiene una plantilla validada y aceptada por SAP.');
+    if (!templates?.length) throw Error('Este tipo aún no tiene una plantilla validada y aceptada por la DGII.');
     if (body.confirmedType !== true) throw Error('Confirma el tipo de documento antes de generar.');
     const template = templates[0], result = xml.correct(body.original,template.rules,body.input || {});
     const observations = String(body.observations || '').trim(); if (observations.length > 2000) throw Error('Las observaciones superan 2.000 caracteres.');

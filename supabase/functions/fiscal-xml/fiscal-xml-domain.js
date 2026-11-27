@@ -154,7 +154,7 @@
     const serialized = (xml.startsWith('\uFEFF') ? '\uFEFF' : '') + new XMLSerializer().serializeToString(doc);
     const result = parse(serialized);
     if (!compareNodes(original.doc, result, authorized, inserted)) fail('La comparación detectó cambios no autorizados en el XML.');
-    return {xml: serialized, before: original.fields, after: {ncf,date,reference}, information:original.information, warnings: ['La validación estructural del TMS no sustituye la aceptación de SAP o la DGII.','No se ha validado un esquema XSD.']};
+    return {xml: serialized, before: original.fields, after: {ncf,date,reference}, information:original.information, warnings: ['La validación estructural del TMS no sustituye la aceptación de la DGII.','No se ha validado un esquema XSD.']};
   }
   return Object.freeze({ MAX_BYTES, parse, validNcf, validDate, template, information, analyze, correct, compareNodes, path });
 });

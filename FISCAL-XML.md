@@ -2,9 +2,9 @@
 
 Facturación contiene Herramientas fiscales, con secciones separadas de crédito y débito e historial. El permiso `fiscalXml` se asigna desde Configuración; inicialmente solo el administrador tiene acceso. Los usuarios deben tener permiso de lectura para consultar el módulo y de edición o importación para generar una corrección. El servidor vuelve a verificar la sesión y los permisos y guarda los documentos en tablas independientes con RLS; no utiliza servicios de inteligencia artificial.
 
-Cada tipo comienza **deshabilitado para generación**. Un administrador puede registrar un par de XML (original y corregido) únicamente tras comprobar que el corregido fue aceptado por SAP. La activación es independiente para cada tipo. El par se revisa estructuralmente para impedir que cambie otros campos. Si una plantilla demuestra la incorporación de un campo ausente, solo se permite insertarlo cuando la ubicación y secuencia de elementos coinciden con el original de referencia. Si falta una plantilla o existe cualquier ambigüedad, la generación se bloquea.
+Cada tipo comienza **deshabilitado para generación**. Un administrador puede registrar un par de XML (original y corregido) únicamente tras comprobar que el corregido fue aceptado por la DGII. La activación es independiente para cada tipo. El par se revisa estructuralmente para impedir que cambie otros campos. Si una plantilla demuestra la incorporación de un campo ausente, solo se permite insertarlo cuando la ubicación y secuencia de elementos coinciden con el original de referencia. Si falta una plantilla o existe cualquier ambigüedad, la generación se bloquea.
 
-El procesamiento admite XML UTF-8 de hasta 2 MB, rechaza DTD, entidades, firmas digitales, XML mal formado y campos fiscales repetidos. Solo se modifican NCF, fecha y, si se autoriza expresamente, referencia SAP. Se compara la estructura completa y el historial conserva original, resultado, autor, fecha, cambios y validaciones. La validación es estructural; no representa aceptación de SAP o DGII. Si no hay XSD configurado, se indica que no se ha validado el esquema.
+El procesamiento admite XML UTF-8 de hasta 2 MB, rechaza DTD, entidades, firmas digitales, XML mal formado y campos fiscales repetidos. Solo se modifican NCF, fecha y, si se autoriza expresamente, referencia SAP. Se compara la estructura completa y el historial conserva original, resultado, autor, fecha, cambios y validaciones. La validación es estructural; no representa aceptación de la DGII. Si no hay XSD configurado, se indica que no se ha validado el esquema.
 
 ## Orden de despliegue
 
@@ -12,7 +12,7 @@ El procesamiento admite XML UTF-8 de hasta 2 MB, rechaza DTD, entidades, firmas 
 2. Aplicar únicamente esa migración al proyecto Supabase del TMS; comprobar las funciones, concesiones y RLS.
 3. Publicar `supabase/functions/fiscal-xml` con verificación JWT, incluyendo `fiscal-xml-domain.js`. La copia debe ser idéntica al archivo raíz.
 4. Publicar el frontend y verificar que los dos tipos aparecen pendientes y que usuarios sin permiso no acceden.
-5. Activar cada tipo solo con su par real validado y aceptado por SAP, y comprobar el resultado real antes de su uso operativo. El ejemplo aceptado por DGII es útil como referencia, pero no demuestra por sí solo la aceptación de SAP.
+5. Activar cada tipo solo con su par real: original emitido por SAP y corregido aceptado por la DGII; comprobar el resultado real antes de su uso operativo.
 
 ## Pruebas
 
@@ -28,3 +28,5 @@ git diff --check
 ```
 
 Las pruebas de navegador utilizan `TMS_PLAYWRIGHT` o la instalación local habitual del proyecto. Las pruebas de servidor y base de datos utilizan datos sintéticos, una API simulada y PostgreSQL efímero; no escriben en producción. `TMS_FISCAL_RUNTIME` permite cambiar la carpeta de dependencias temporales.
+
+La migración `20261127163834_fiscal_dgii_acceptance.sql` corrige el criterio de aceptación. Conserva los ejemplos existentes pero desactiva las plantillas anteriores hasta que se confirme su aceptación por la DGII.
