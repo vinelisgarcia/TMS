@@ -8,7 +8,7 @@ El procesamiento admite XML UTF-8 de hasta 2 MB, rechaza DTD, entidades, firmas 
 
 ## Orden de despliegue
 
-1. Ejecutar las pruebas locales abajo y revisar los permisos y la migración aditiva `supabase/migrations/20261127160514_fiscal_xml.sql`. No incorpora plantillas ni datos ficticios.
+1. Ejecutar las pruebas locales abajo y revisar los permisos y la migración aditiva `supabase/migrations/20261127162536_fiscal_xml.sql`. No incorpora plantillas ni datos ficticios.
 2. Aplicar únicamente esa migración al proyecto Supabase del TMS; comprobar las funciones, concesiones y RLS.
 3. Publicar `supabase/functions/fiscal-xml` con verificación JWT, incluyendo `fiscal-xml-domain.js`. La copia debe ser idéntica al archivo raíz.
 4. Publicar el frontend y verificar que los dos tipos aparecen pendientes y que usuarios sin permiso no acceden.
