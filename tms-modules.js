@@ -5,6 +5,7 @@
     inventarios: { title: 'Gestión de inventarios', label: 'Inventarios', icon: '<path d="m3 7 9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4m-9 4v10M7 5l10 5"/>', views: ['inventario','showroom'] },
     importaciones: { title: 'Gestión de importaciones', label: 'Importaciones', icon: '<path d="M3 18h18M5 15h14l2-6-9-3-9 3 2 6Zm7-9V3m-4 7h.01M12 11h.01M16 10h.01"/>', views: ['materialesTransito','packingMiami','auditoriaJamaica','eur1'] },
     comercial: { title: 'Comercial', label: 'Comercial', icon: '<path d="M4 8h16v11H4zM9 8V5h6v3M4 12h16m-9 0v2h2v-2"/>', views: ['comercial','calendario'] },
+    facturacion: { title: 'Facturación', label: 'Facturación', icon: '<path d="M6 3h9l4 4v14H6zM15 3v5h4M9 12h7M9 16h7"/>', views: ['fiscalXml'] },
     configuracion: { title: 'Configuración', label: 'Configuración', icon: '<path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/>', views: ['configClientes','auditoriaSistema'] }
   };
   const permission = {configClientes:'configuracion'};

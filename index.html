@@ -1066,6 +1066,7 @@ html { -webkit-text-size-adjust: 100%; }
         <option value="auditoriaJamaica" hidden>Auditoría Jamaica</option>
         <option value="packingMiami" hidden>Packing list Miami</option>
         <option value="eur1" hidden>Verificador EUR.1</option>
+        <option value="fiscalXml" hidden>Herramientas fiscales</option>
         <option value="auditoriaSistema" hidden>Actividad del sistema</option>
         <option value="materialesTransito">Materiales en tránsito</option>
         <option value="prioridades">Prioridades</option>
@@ -1102,6 +1103,7 @@ html { -webkit-text-size-adjust: 100%; }
     <button class="nav-btn" id="nav-auditoriaJamaica" style="display:none" onclick="abrirAuditoriaJamaica()"><span class="nav-icon">📋</span><span class="nav-label">Auditoría Jamaica</span></button>
     <button class="nav-btn" id="nav-auditoriaSistema" style="display:none" onclick="cambiarVista('auditoriaSistema',this)"><span class="nav-icon">◷</span><span class="nav-label">Actividad del sistema</span></button>
     <button class="nav-btn" id="nav-eur1" style="display:none" onclick="cambiarVista('eur1',this)"><span class="nav-icon">✓</span><span class="nav-label">Verificador EUR.1</span></button>
+    <button class="nav-btn" id="nav-fiscalXml" style="display:none" onclick="cambiarVista('fiscalXml',this)"><span class="nav-icon">▤</span><span class="nav-label">Herramientas fiscales</span></button>
     <button class="nav-btn" id="nav-packingMiami" style="display:none" onclick="cambiarVista('packingMiami',this)"><span class="nav-icon">▤</span><span class="nav-label">Packing list Miami</span></button>
     <button class="nav-btn" id="nav-materialesTransito" onclick="cambiarVista('materialesTransito',this)">
       <span class="nav-icon">⇥</span><span class="nav-label">Materiales en tránsito</span>
@@ -1129,6 +1131,7 @@ html { -webkit-text-size-adjust: 100%; }
     <div id="inventario" class="view"><div id="inventoryNavMount"></div><div id="inventoryMount"></div><div id="inventoryCountMount" hidden></div></div>
     <div id="packingMiami" class="view"></div>
     <div id="eur1" class="view"></div>
+    <div id="fiscalXml" class="view"></div>
     <div id="auditoriaSistema" class="view"></div>
 
     <!-- ========== VISTA 1: IMPORTAR SAP ========== -->
@@ -4659,7 +4662,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 <script defer src="./tms-snapshot-cache.js?v=20261124-module-fast"></script>
 <script defer src="./tms-sync.js?v=20261124-module-fast"></script>
 <script defer src="./warehouse-report-domain.js?v=20261103-executive"></script>
-<script defer src="./tms-v2.js?v=20261124-module-fast"></script>
+<script defer src="./tms-v2.js?v=20261127-fiscal"></script>
 <script defer src="./tms-audit-ui.js?v=20261124-reportes"></script>
 <script defer src="./inventory-domain.js?v=20261110-code-review"></script>
 <script defer src="./inventory-counts-domain.js?v=20261124-showroom-import"></script>
@@ -4691,8 +4694,11 @@ window.addEventListener('DOMContentLoaded', async () => {
 <script defer src="./eur1-excel.js?v=20261116-eur1"></script>
 <script defer src="./eur1-transit.js?v=20261117-eur-transit"></script>
 <script defer src="./eur1.js?v=20261124-reportes"></script>
-<link rel="stylesheet" href="./tms-modules.css?v=20261118-compact-home">
-<script defer src="./tms-modules.js?v=20261124-access-fast"></script>
+<link rel="stylesheet" href="./fiscal-xml.css?v=20261127-fiscal">
+<script defer src="./fiscal-xml-domain.js?v=20261127-fiscal"></script>
+<script defer src="./fiscal-xml.js?v=20261127-fiscal"></script>
+<link rel="stylesheet" href="./tms-modules.css?v=20261127-fiscal">
+<script defer src="./tms-modules.js?v=20261127-fiscal"></script>
 <script defer src="./sap-saved-files.js?v=20261116-sap-saved-files"></script>
 <link rel="stylesheet" href="./tms-settings.css?v=20261118-client-report">
 <script defer src="./tms-settings.js?v=20261118-settings-routes"></script>

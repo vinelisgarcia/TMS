@@ -183,3 +183,7 @@ html.auth-initializing #loginScreen{visibility:hidden}
  .module-card{min-height:87px;padding:9px}
  .module-card:last-child{min-height:78px}
 }
+/* Six module shortcuts remain balanced on desktop and on small screens. */
+@media(min-width:901px){.module-cards{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:900px){.module-cards:has(.module-card:nth-child(6)){grid-template-columns:repeat(3,minmax(0,1fr))}.module-cards:has(.module-card:nth-child(6)) .module-card:last-child{grid-column:auto}.module-cards:has(.module-card:nth-child(6)) .module-card{min-height:90px}.module-cards:has(.module-card:nth-child(6)) .module-card-body strong{font-size:12px}}
+@media(max-width:900px){.module-cards .module-card:last-child:nth-child(even){grid-column:auto}}

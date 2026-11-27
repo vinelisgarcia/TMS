@@ -141,6 +141,7 @@
     auditoriaJamaica: 'Auditoría Jamaica',
     packingMiami: 'Packing list Miami',
     eur1: 'Verificador EUR.1',
+    fiscalXml: 'Herramientas fiscales',
     showroom: 'Inventario showroom'
   };
 
@@ -1035,6 +1036,7 @@
       inventario: 'inventario',
       packingMiami: 'packingMiami',
       eur1: 'eur1',
+      fiscalXml: 'fiscalXml',
       auditoriaJamaica: 'auditoriaJamaica',
       showroom: 'showroom',
       reportes: 'reportes'
@@ -1116,6 +1118,7 @@
       inventario: 'inventario',
       packingMiami: 'packingMiami',
       eur1: 'eur1',
+      fiscalXml: 'fiscalXml',
       auditoriaJamaica: 'auditoriaJamaica',
       showroom: 'showroom'
     };
@@ -1167,6 +1170,7 @@
       syncMobileModuleSelect();
       if (id === 'inventario' && window.TMSInventory) window.TMSInventory.open();
       if (id === 'showroom' && window.TMSShowroom) window.TMSShowroom.open();
+      if (id === 'fiscalXml' && window.TMSFiscalUI) window.TMSFiscalUI.open();
       if (id === 'rutas') renderRouteCatalog();
       if (id === 'importaciones') renderImportaciones();
       if (id === 'materialesTransito') renderMaterialesTransito();
@@ -4512,7 +4516,7 @@
     const perms = getPermissionsForRole(role);
     return Object.entries(MODULE_LABELS).map(([module, label]) => {
       const actions = perms[module] || {};
-      const canImport = module === 'importar' || module === 'configuracion' || module === 'packingMiami' || module === 'eur1';
+      const canImport = module === 'importar' || module === 'configuracion' || module === 'packingMiami' || module === 'eur1' || module === 'fiscalXml';
       return `<tr>
         <th scope="row">${escapeHtml(label)}</th>
         <td><label class="access-check"><input type="checkbox" class="rolePerm" aria-label="Ver ${escapeHtml(label)}" data-module="${module}" data-action="ver" ${actions.ver ? 'checked' : ''} ${isAdminUser() ? '' : 'disabled'}><span aria-hidden="true"></span></label></td>
@@ -4673,6 +4677,7 @@
       auditoriaJamaica: { ver: true, editar: false, importar: false },
       packingMiami: { ver: true, editar: true, importar: true },
       eur1: { ver: true, editar: true, importar: true },
+      fiscalXml: { ver: role === 'Admin', editar: role === 'Admin', importar: role === 'Admin' },
       showroom: { ver: true, editar: true, importar: true }
     };
     if (role === 'Admin' || scope === 'full') return all;
